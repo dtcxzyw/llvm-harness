@@ -6,9 +6,11 @@ import traceback
 from argparse import ArgumentParser
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 import harness
+from autoreview.pr_extract import PRInfo, fetch_pr_info
+from harness.llvm import Harness
 from harness.lms.agent import AgentBase, AgentConfig, AgentHooks
 from harness.lms.meter import GlobalMeter
 from harness.lms.tool import (
@@ -21,11 +23,6 @@ from harness.lms.tool import (
 from harness.tools.subagent import SubAgentTool
 from harness.tools.todo import TodoTool
 from harness.utils.console import get_boxed_console
-
-from autoreview.pr_extract import PRInfo, fetch_pr_info
-
-if TYPE_CHECKING:
-  from harness.llvm.harness import Harness
 
 _PROMPTS = harness.load_yaml_config("autoreview", "archer.yaml")["prompts"]
 PROMPT_SYSTEM = _PROMPTS["system"]
@@ -77,7 +74,9 @@ ENABLED_REVIEW_SKILLS = {"llvm-insight-search"}
 ENABLED_CURATE_INSIGHT_TOOLS = {"read", "ripgrep", "insight"}
 ENABLED_CURATE_INSIGHT_SKILLS = {"llvm-insight-reflect"}
 
-ALL_ENABLED_TOOLS = ENABLED_ANALYZE_TOOLS | ENABLED_REVIEW_TOOLS | ENABLED_CURATE_INSIGHT_TOOLS
+ALL_ENABLED_TOOLS = (
+  ENABLED_ANALYZE_TOOLS | ENABLED_REVIEW_TOOLS | ENABLED_CURATE_INSIGHT_TOOLS
+)
 HEAVYWEIGHT_TOOLS = {"subagent", "llvm_verify_optim", "llvm_check_optim"}
 LIGHTWEIGHT_TOOLS = ALL_ENABLED_TOOLS - HEAVYWEIGHT_TOOLS
 DEFERRED_TOOLS = {
@@ -274,7 +273,9 @@ class TestsTool(StatefulFuncToolBase):
       "Manage extracted PR tests and verification progress.",
       [
         FuncToolSpec.Param("action", "string", True, "One of: list, get, mark_tested."),
-        FuncToolSpec.Param("index", "integer", False, "Required for get and mark_tested."),
+        FuncToolSpec.Param(
+          "index", "integer", False, "Required for get and mark_tested."
+        ),
       ],
       [],
     )
@@ -301,7 +302,7 @@ class TestsTool(StatefulFuncToolBase):
       raise FuncToolCallException("index is required for this action.")
     if index < 0 or index >= len(self.tests):
       raise FuncToolCallException(
-        f"Invalid test index {index}. Valid range: 0..{len(self.tests)-1}."
+        f"Invalid test index {index}. Valid range: 0..{len(self.tests) - 1}."
       )
 
     selected = self.tests[index]
@@ -481,7 +482,11 @@ def get_component_knowledge(components: list[str]) -> str:
     candidate = knowledge_dir / f"{component}.md"
     if candidate.exists():
       chunks.append(candidate.read_text(encoding="utf-8"))
-  return "\n".join(chunks) if chunks else "No specific knowledge provided for these components."
+  return (
+    "\n".join(chunks)
+    if chunks
+    else "No specific knowledge provided for these components."
+  )
 
 
 def _flatten_tests(pr_info: PRInfo) -> list[Test]:
@@ -540,7 +545,9 @@ def _collect_bug_if_any(stats: RunStats, name: str, args_json: str, res: str):
     before = _read_if_exists(args.get("input_path", ""))
     after = "<generated internally by llvm tool>"
 
-  stats.bugs.append(ReviewBug(tool=name, log=res, original_ir=before, transformed_ir=after))
+  stats.bugs.append(
+    ReviewBug(tool=name, log=res, original_ir=before, transformed_ir=after)
+  )
 
 
 def setup_llvm_environment(pr_info: PRInfo, h: Harness):
@@ -641,7 +648,9 @@ def run_archer_agent(
       )
     return True, ""
 
-  review_agent.register_tool(TestsTool(tests, validator=validator), MAX_TCS_LIGHTWEIGHT_TOOLS)
+  review_agent.register_tool(
+    TestsTool(tests, validator=validator), MAX_TCS_LIGHTWEIGHT_TOOLS
+  )
   review_agent.append_user_message(
     PROMPT_REVIEW.format(
       strategies=json.dumps(stats.strategies, ensure_ascii=False, indent=2),
