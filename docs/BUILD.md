@@ -57,7 +57,7 @@ You need a directory to save all dependencies, say `./dependencies`
 
 ```shell
 tmux # We need and only support tmux for now
-export LLVM_HARNESS_DEPS_DIR=./dependencies
+export LLVM_HARNESS_DEPS_DIR=$PWD/dependencies
 ./buildscripts/install.sh
 ```
 
