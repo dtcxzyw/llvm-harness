@@ -1,6 +1,9 @@
 """Text processing utilities — keyword extraction, tokenization, matching."""
 
+import os
 import re
+import tempfile
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Stop words
@@ -66,3 +69,51 @@ def tokenize_query(query: str) -> list[str]:
 def either_contains(query_term: str, keyword: str) -> bool:
   """True if either string contains the other (both sides assumed lowercase)."""
   return query_term in keyword or keyword in query_term
+
+
+# ---------------------------------------------------------------------------
+# Oversize-text spill
+# ---------------------------------------------------------------------------
+
+
+def spill_if_too_long(
+  content: str,
+  *,
+  file_path: Optional[str] = None,
+  file_prefix: str = "spill_",
+  char_limit: int = 15000,
+  line_limit: Optional[int] = 500,
+) -> str:
+  """Return *content* unchanged when small; spill to a file and return a
+  head/tail preview + the file path when it exceeds either limit.
+
+  Used to keep oversize text (verbose tool-call output, ``opt --debug-only=…``
+  logs, etc.) out of the agent's context window while still leaving the agent
+  the first/last *char_limit/2* characters and a pointer it can ``read`` on
+  demand for the middle.
+
+  When ``file_path`` is provided the content is written there (overwriting
+  any existing file — fine for fingerprint-keyed caches). When ``file_path``
+  is ``None`` a tempfile is created with the given ``file_prefix``.
+
+  Set ``line_limit=None`` to gate on character count only.
+  """
+  over_chars = len(content) > char_limit
+  over_lines = line_limit is not None and content.count("\n") + 1 > line_limit
+  if not (over_chars or over_lines):
+    return content
+  if file_path is None:
+    fd, file_path = tempfile.mkstemp(suffix=".txt", prefix=file_prefix)
+    try:
+      os.write(fd, content.encode())
+    finally:
+      os.close(fd)
+  else:
+    with open(file_path, "w") as fout:
+      fout.write(content)
+  half = char_limit // 2
+  return (
+    f"{content[:half]}\n"
+    f"...[output truncated, full output saved to {file_path}]...\n"
+    f"{content[-half:]}"
+  )

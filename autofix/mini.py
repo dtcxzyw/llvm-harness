@@ -27,6 +27,7 @@ from harness.lms.tool import (
 from harness.tools.subagent import SubAgentTool
 from harness.tools.todo import TodoTool
 from harness.utils.console import get_boxed_console
+from harness.utils.text import spill_if_too_long
 
 # - ===============================================
 # - Prompts
@@ -610,6 +611,15 @@ def run_mini_agent(
   # Reason about the root cause and propose potential edit points
   console.print("Analyzing the issue to gather required information ...")
   reason_agent = _create_reason_agent(aconf, harness, interactive=interactive)
+  # ``opt --debug-only=…`` can be hundreds of KB. Spill to a fingerprint-keyed
+  # file in the build dir if it'd blow the context window; the agent can
+  # ``read`` the rest on demand.
+  opt_log_for_prompt = spill_if_too_long(
+    opt_log,
+    file_path=os.path.join(str(harness.build_dir), f"opt_log.{rep.fingerprint()}.txt"),
+    char_limit=4096,
+    line_limit=150,
+  )
   reason_agent.append_user_message(
     PROMPT_REASON.format(
       pass_name=opt_pass,
@@ -617,7 +627,7 @@ def run_mini_agent(
       reprod_code=rep.file_path.read_text(),
       issue_symptom=rep.symptom,
       opt_cmd=opt_cmd,
-      opt_log=opt_log,
+      opt_log=opt_log_for_prompt,
       trans_point_file=str(backtrace[-1].file),
       trans_point_func=backtrace[-1].func,
       trans_point_stack="\n".join([str(it) for it in reversed(backtrace)]),

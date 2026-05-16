@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import tempfile
 from abc import abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +20,7 @@ from harness.lms.tool import (
   ToolRegistry,
 )
 from harness.utils.console import get_boxed_console
+from harness.utils.text import spill_if_too_long
 
 # ---------------------------------------------------------------------------
 # Agent messages
@@ -309,21 +308,12 @@ class AgentBase:
     )
 
   def perform_tool_call(self, tool_name: str, tool_args: dict) -> str:
-    MAX_TOOL_CALL_OUTPUT_LINES = 500
-    MAX_TOOL_CALL_OUTPUT_CHARS = 15000
-    res = self.tools.call(tool_name, tool_args)
-    lines = res.splitlines()
-    if len(lines) > MAX_TOOL_CALL_OUTPUT_LINES or len(res) > MAX_TOOL_CALL_OUTPUT_CHARS:
-      fd, path = tempfile.mkstemp(suffix=".txt", prefix=f"toolcall_{tool_name}_")
-      try:
-        os.write(fd, res.encode())
-      finally:
-        os.close(fd)
-      half = MAX_TOOL_CALL_OUTPUT_CHARS // 2
-      header = res[:half]
-      footer = res[-half:]
-      res = f"{header}\n...[output truncated, full output saved to {path}]...\n{footer}"
-    return res
+    return spill_if_too_long(
+      self.tools.call(tool_name, tool_args),
+      file_prefix=f"toolcall_{tool_name}_",
+      char_limit=15000,
+      line_limit=500,
+    )
 
   def _get_remaining_tools(self) -> list[FuncToolBase]:
     remaining = [self.tools.get(name) for name in self.tools.list(ignore_budget=False)]
