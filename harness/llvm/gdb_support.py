@@ -88,6 +88,22 @@ class GDB(DebuggerBase):
     # Disable remote trackback
     self.gdb_api.conn._config["include_local_traceback"] = False
 
+  def close(self) -> None:
+    """Tear down the rpyc connection and reap the gdb subprocess.
+
+    Long-running consumers (the ``ghbot`` serve loop, batch runners) attach
+    a fresh debugger per run; without this they accumulate one orphan gdb
+    process — plus a tmux pane on tmux hosts — per iteration.
+    """
+    try:
+      self.gdb_api.conn.close()
+    except Exception:
+      pass
+    try:
+      self.process.close()  # pwntools tube.close() shuts down stdio + reaps the child
+    except Exception:
+      pass
+
   def cont(self):
     self.gdb_api.write("continue\n")
     self.gdb_api.continue_and_wait()

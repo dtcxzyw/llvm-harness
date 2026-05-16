@@ -403,7 +403,13 @@ class Harness:
     return self
 
   def __exit__(self, *exc):
-    pass
+    # Long-running consumers (e.g. ``autofix.ghbot serve``) re-enter the
+    # context per processed issue; releasing the debugger here is what
+    # keeps gdb subprocesses (and on tmux hosts the spawned panes) from
+    # accumulating across iterations.
+    if self._debugger is not None:
+      self._debugger.close()
+      self._debugger = None
 
   # -------------------------------------------------------------------
   # Operations

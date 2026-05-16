@@ -51,6 +51,14 @@ class DebuggerBase(ABC):
   def __init__(self):
     pass
 
+  def close(self) -> None:
+    """Release the underlying debugger process and any helper resources.
+
+    Default no-op so simple/test debuggers don't need to implement it; the
+    real subprocess-backed implementations (e.g. :class:`GDB`) override.
+    """
+    pass
+
   @abstractmethod
   def run(
     self,
