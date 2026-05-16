@@ -17,7 +17,7 @@ def safe_killpg(pid: int, sig: int):
   try:
     os.killpg(pid, sig)
   except ProcessLookupError:
-    pass  # Ignore if there is no such proces
+    pass  # Ignore if there is no such process
 
 
 def spawn_process(

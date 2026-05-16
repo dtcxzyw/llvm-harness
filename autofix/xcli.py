@@ -17,6 +17,7 @@ from autofix.mini import (
   add_common_args,
   build_harness_from_args,
   configure_lit_test_dirs,
+  log_issue_banner,
 )
 from harness.llvm.harness import Harness
 from harness.lms.agent import AgentConfig
@@ -209,14 +210,7 @@ def main():
     panic(str(e))
 
   with harness_ctx as h:
-    if args.issue is not None:
-      print(f"Issue ID: {args.issue}")
-    else:
-      repro = h.fixenv.card.reproducers[0]
-      print(f"Reproducer File: {repro.file}")
-      print(f"Reproducer Command: {repro.commands[0]}")
-      print(f"Bug Type: {h.fixenv.get_bug_type()}")
-      print(f"Base Commit: {h.fixenv.get_base_commit()}")
+    log_issue_banner(h, args, log=print)
     print("Building LLVM and try reproducing the issue ...")
     issue = h.reproduce()
     print("Issue reproduced successfully.")

@@ -24,6 +24,7 @@ from typing import Tuple
 from github import Auth, Github, GithubException
 
 from harness.llvm.intern import llvm as llvm_ops
+from harness.llvm.issue import SUPPORTED_BUG_TYPES, parse_lit_reproducer_text
 from harness.lms.agent import AgentConfig, AgentHooks
 from harness.lms.tool import (
   FuncToolCallException,
@@ -136,13 +137,23 @@ def _strip_markdown_fence(text: str) -> str:
 
 class _SubmitReproducerTool(StatelessFuncToolBase):
   """Single tool the autoreduce-parser agent uses to hand back the
-  normalized ``.ll`` content."""
+  normalized ``.ll`` content + the commits the reproducer was reduced on.
+
+  Validation delegates to :func:`parse_lit_reproducer_text` so the BUG/RUN
+  rules stay in one place. On success the captured fields are written into
+  the ``submission`` dict supplied at construction; the agent loop stops on
+  the first successful call via :class:`AgentHooks` ``post_tool_call``.
+  """
+
+  def __init__(self, submission: dict):
+    self._submission = submission
 
   def spec(self) -> FuncToolSpec:
     return FuncToolSpec(
       "submit_reproducer",
-      "Submit the parsed reproducer as a self-contained .ll file and commits. "
-      "Content MUST start with `; BUG: crash` or `; BUG: miscompilation`, "
+      "Submit the parsed reproducer as a self-contained .ll file and the "
+      "LLVM/Alive2/LLUBI commits it was reduced against. Content MUST start "
+      "with `; BUG: " + "|".join(sorted(SUPPORTED_BUG_TYPES)) + "`, "
       "followed by a `; RUN: opt ... < %s` line, then the IR module. "
       "No markdown fences, no prose.",
       [
@@ -151,7 +162,9 @@ class _SubmitReproducerTool(StatelessFuncToolBase):
           "string",
           True,
           "The full .ll file content (no markdown fences). "
-          "First non-blank line: `; BUG: <crash|miscompilation>`. "
+          "First non-blank line: `; BUG: <"
+          + "|".join(sorted(SUPPORTED_BUG_TYPES))
+          + ">`. "
           "Second non-blank line: `; RUN: opt ... < %s`. "
           "Then the IR module verbatim.",
         ),
@@ -186,50 +199,40 @@ class _SubmitReproducerTool(StatelessFuncToolBase):
     llubi_commit: str,
     **kwargs,
   ) -> str:
-    if not content or not content.strip():
-      raise FuncToolCallException("content must not be empty")
-    if not llvm_commit or not llvm_commit.strip():
-      raise FuncToolCallException("llvm_commit must not be empty")
-    if not alive2_commit or not alive2_commit.strip():
-      raise FuncToolCallException("alive2_commit must not be empty")
-    if not llubi_commit or not llubi_commit.strip():
-      raise FuncToolCallException("llubi_commit must not be empty")
+    for label, val in (
+      ("content", content),
+      ("llvm_commit", llvm_commit),
+      ("alive2_commit", alive2_commit),
+      ("llubi_commit", llubi_commit),
+    ):
+      if not val or not val.strip():
+        raise FuncToolCallException(f"{label} must not be empty")
     text = _strip_markdown_fence(content).strip()
-    non_blank = [ln for ln in text.splitlines() if ln.strip()][:5]
-    bug_lines = [
-      ln.lstrip()[len("; BUG:") :].strip().lower()
-      for ln in non_blank
-      if ln.lstrip().startswith("; BUG:")
-    ]
-    if not bug_lines:
+    try:
+      parse_lit_reproducer_text(text, source="<submission>")
+    except ValueError as e:
+      raise FuncToolCallException(str(e))
+    try:
+      resolved_llvm = llvm_ops.git_execute(["rev-parse", llvm_commit.strip()]).strip()
+      # TODO: resolve alive2 and llubi
+    except Exception:
       raise FuncToolCallException(
-        "missing `; BUG: crash|miscompilation` directive in the first 5 non-blank lines"
+        f"llvm_commit {llvm_commit!r} is not a valid commit hash in the LLVM repo"
       )
-    if bug_lines[0] not in {"crash", "miscompilation"}:
-      raise FuncToolCallException(
-        f"`; BUG: {bug_lines[0]}` is not supported; "
-        "only `crash` and `miscompilation` are allowed"
-      )
-    run_lines = [
-      ln.lstrip()[len("; RUN:") :].strip()
-      for ln in non_blank
-      if ln.lstrip().startswith("; RUN:")
-    ]
-    if not run_lines:
-      raise FuncToolCallException(
-        "missing `; RUN: opt ... < %s` directive in the first 5 non-blank lines"
-      )
-    if not run_lines[0].startswith("opt"):
-      raise FuncToolCallException(
-        f"`; RUN:` must invoke `opt`, got: {run_lines[0][:40]!r}"
-      )
-    return "<<<<->>>>".join([text, llvm_commit, alive2_commit, llubi_commit])
+    self._submission.update(
+      content=text,
+      llvm_commit=resolved_llvm,
+      alive2_commit=alive2_commit.strip(),
+      llubi_commit=llubi_commit.strip(),
+    )
+    return "Reproducer submitted successfully."
 
 
 def _normalize_with_llm(raw: str, *, agent_config: AgentConfig) -> ReprodInfo:
-  """Run a single-tool agent loop and return the submitted reproducer text."""
+  """Run a single-tool agent loop and return the submitted reproducer info."""
+  submission: dict = {}
   agent = agent_config.create_agent(
-    tools=[(_SubmitReproducerTool(), 5)],  # a few retries on validation errors
+    tools=[(_SubmitReproducerTool(submission), 5)],
   )
 
   agent.append_system_message(_SYSTEM_PROMPT)
@@ -242,27 +245,14 @@ def _normalize_with_llm(raw: str, *, agent_config: AgentConfig) -> ReprodInfo:
     )
 
   def post_tool_call(name: str, _args: str, result: str):
-    if name == "submit_reproducer":
-      text, llvm_commit, alive2_commit, llubi_commit = result.split("<<<<->>>>")
-      try:
-        llvm_commit = llvm_ops.git_execute(["rev-parse", llvm_commit]).strip()
-        # TODO: validate alive2_commit and llubi_commit against their respective repos
-      except Exception:
-        return (
-          False,
-          "Error: the provided llvm_commit is not a valid commit hash in the LLVM repo",
-        )
-      return False, ReprodInfo(
-        llvm_commit=llvm_commit,
-        alive2_commit=alive2_commit,
-        llubi_commit=llubi_commit,
-        content=text,
-      )  # stop with the validated content
+    if name == "submit_reproducer" and submission:
+      return False, result  # validation passed; stop the loop
     return True, result
 
-  return agent.run(
-    AgentHooks(post_response=post_response, post_tool_call=post_tool_call),
-  )
+  agent.run(AgentHooks(post_response=post_response, post_tool_call=post_tool_call))
+  if not submission:
+    raise RuntimeError("autoreduce agent finished without submitting a reproducer")
+  return ReprodInfo(**submission)
 
 
 def fetch_autoreduce_reproducer(
@@ -288,7 +278,7 @@ def fetch_autoreduce_reproducer(
   return Path(path), rinfo
 
 
-def main() -> 0:
+def main() -> int:
   import argparse
   import sys
 
@@ -352,4 +342,6 @@ def main() -> 0:
 
 
 if __name__ == "__main__":
-  SystemExit(main())
+  import sys
+
+  sys.exit(main())

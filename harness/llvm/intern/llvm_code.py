@@ -1,3 +1,4 @@
+import functools
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -154,9 +155,18 @@ class LlvmCode:
     surfaced by InstCombine, so its bugs should be regression-guarded by
     the InstCombine test suite). Returns ``None`` when the path isn't in
     the table — callers should fall back to other heuristics.
+
+    Matches require the prefix to either be followed by ``/`` (directory),
+    by ``.`` (a ``.cpp``/``.h`` file with that stem), or to end the path
+    exactly — so a future ``ValueTrackingExtras.cpp`` won't falsely map
+    through ``ValueTracking``.
     """
     for prefix, pass_name in self._UTILITY_TO_PASS:
-      if prefix in file_path:
+      if (
+        f"{prefix}/" in file_path
+        or f"{prefix}." in file_path
+        or file_path.endswith(prefix)
+      ):
         return pass_name
     return None
 
@@ -215,6 +225,26 @@ class LlvmCode:
       return ["-aa-pipeline=basic-aa", "-print-all-alias-modref-info"]
     return []
 
+  @functools.cached_property
+  def _test_dir_index(self) -> Dict[str, str]:
+    """Map normalized test-dir names to their relative paths.
+
+    Built once per :class:`LlvmCode` instance — the test tree doesn't change
+    during a session, so the two ``iterdir()`` scans don't need to repeat on
+    every :meth:`resolve_test_dir` call.
+    """
+    index: Dict[str, str] = {}
+    for parent in ("Transforms", "Analysis"):
+      parent_dir = self.llvm_dir / "llvm" / "test" / parent
+      if not parent_dir.is_dir():
+        continue
+      for entry in parent_dir.iterdir():
+        if not entry.is_dir():
+          continue
+        normalized = "".join(c.lower() for c in entry.name if c.isalnum())
+        index[normalized] = f"llvm/test/{parent}/{entry.name}"
+    return index
+
   def resolve_test_dir(self, candidate_name: str) -> str | None:
     """Find the lit test directory matching ``candidate_name``.
 
@@ -227,17 +257,7 @@ class LlvmCode:
     target = "".join(c.lower() for c in candidate_name if c.isalnum())
     if not target:
       return None
-    for parent in ("Transforms", "Analysis"):
-      parent_dir = self.llvm_dir / "llvm" / "test" / parent
-      if not parent_dir.is_dir():
-        continue
-      for entry in parent_dir.iterdir():
-        if not entry.is_dir():
-          continue
-        normalized = "".join(c.lower() for c in entry.name if c.isalnum())
-        if normalized == target:
-          return f"llvm/test/{parent}/{entry.name}"
-    return None
+    return self._test_dir_index.get(target)
 
   def resolve_debug_types(self, files: Set[Path]) -> List[str]:
     """Resolve debug types of given files"""

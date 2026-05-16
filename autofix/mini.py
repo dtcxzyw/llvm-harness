@@ -1069,6 +1069,28 @@ def autofix(
   )
 
 
+def log_issue_banner(harness: Harness, args, log=print) -> None:
+  """Emit a one-shot banner describing the input source.
+
+  Bench (``--issue``): issue id, title, labels, base commit.
+  Ad-hoc (``--reproducer`` or ``--autoreduce``): reproducer file, command,
+  bug type, base commit. Shared across mini/xcli/mswe so the surface stays
+  uniform.
+  """
+  if args.issue is not None and not getattr(args, "autoreduce", False):
+    log(f"Issue ID: {args.issue}")
+    log(f"Issue Type: {harness.fixenv.get_bug_type()}")
+    log(f"Issue Commit: {harness.fixenv.get_base_commit()}")
+    log(f"Issue Title: {harness.fixenv.get_issue_title()}")
+    log(f"Issue Labels: {harness.fixenv.get_issue_labels()}")
+  else:
+    repro = harness.fixenv.card.reproducers[0]
+    log(f"Reproducer File: {repro.file}")
+    log(f"Reproducer Command: {repro.commands[0]}")
+    log(f"Bug Type: {harness.fixenv.get_bug_type()}")
+    log(f"Base Commit: {harness.fixenv.get_base_commit()}")
+
+
 def add_common_args(parser: ArgumentParser) -> None:
   """Register ``--issue``/``--reproducer`` (mutex), ``--base-commit``, and
   ``--pull-latest``.
@@ -1275,18 +1297,7 @@ def main():
     if bug_type not in ["crash", "miscompilation"]:
       panic(f"Unsupported bug type: {bug_type}")
 
-    if args.issue is not None:
-      console.print(f"Issue ID: {args.issue}")
-      console.print(f"Issue Type: {bug_type}")
-      console.print(f"Issue Commit: {h.fixenv.get_base_commit()}")
-      console.print(f"Issue Title: {h.fixenv.get_issue_title()}")
-      console.print(f"Issue Labels: {h.fixenv.get_issue_labels()}")
-    else:
-      repro = h.fixenv.card.reproducers[0]
-      console.print(f"Reproducer File: {repro.file}")
-      console.print(f"Reproducer Command: {repro.commands[0]}")
-      console.print(f"Bug Type: {bug_type}")
-      console.print(f"Base Commit: {h.fixenv.get_base_commit()}")
+    log_issue_banner(h, args, log=console.print)
 
     console.print("Building LLVM and try reproducing the issue ...")
     rep = h.reproduce()

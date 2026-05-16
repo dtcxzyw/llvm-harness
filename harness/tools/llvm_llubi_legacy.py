@@ -1,9 +1,7 @@
-import shlex
-import subprocess
 from pathlib import Path
 
 from harness.lms.tool import FuncToolCallException, FuncToolSpec, StatelessFuncToolBase
-from harness.utils.cmdline import spawn_process
+from harness.tools.llvm_llubi import run_llubi
 
 
 class InterpretIrLegacyTool(StatelessFuncToolBase):
@@ -55,23 +53,4 @@ class InterpretIrLegacyTool(StatelessFuncToolBase):
     )
 
   def _call(self, *, input_path: str, args: str = "", **kwargs) -> str:
-    input_file = Path(input_path)
-    if not input_file.is_file():
-      raise FuncToolCallException(f"Input file not found: {input_path}")
-
-    proc = spawn_process(
-      shlex.split(f"{self._llubi} {args.strip()} {input_file}"),
-      stdout=subprocess.PIPE,
-      stderr=subprocess.PIPE,
-      timeout=60,
-    )
-
-    stdout = (proc.stdout or b"").decode("utf-8", errors="replace")
-    stderr = (proc.stderr or b"").decode("utf-8", errors="replace")
-
-    parts = [f"Exit code: {proc.returncode}"]
-    if stdout.strip():
-      parts.append(f"stdout:\n{stdout.rstrip()}")
-    if stderr.strip():
-      parts.append(f"stderr:\n{stderr.rstrip()}")
-    return "\n".join(parts)
+    return run_llubi(self._llubi, input_path, args)

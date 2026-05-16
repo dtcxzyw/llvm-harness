@@ -603,7 +603,7 @@ class Harness:
     tools.append(VerifyIrTool(self.alive_tv_path))
     tools.append(VerifyOptimTool(build_dir, str(self.alive_tv_path)))
 
-    # -- Llegacy llubi (independent of the LLVM build dir) --
+    # -- Legacy llubi (independent of the LLVM build dir) --
     from harness.tools.llvm_llubi_legacy import InterpretIrLegacyTool
 
     tools.append(InterpretIrLegacyTool(str(self.llubi_legacy_path)))

@@ -52,7 +52,7 @@ class IssueCard:
 _RUN_RE = re.compile(r"^\s*;\s*RUN:\s*(.+?)\s*$")
 _BUG_RE = re.compile(r"^\s*;\s*BUG:\s*(\S+)\s*$")
 
-_SUPPORTED_BUG_TYPES = {"crash", "miscompilation"}
+SUPPORTED_BUG_TYPES = {"crash", "miscompilation"}
 
 
 def _sanitize_run_command(raw: str) -> str:
@@ -96,8 +96,19 @@ def parse_lit_reproducer(path: str | Path) -> tuple[Reproducer, str]:
   p = Path(path).resolve()
   if not p.exists():
     raise ValueError(f"Reproducer file not found: {p}")
-  text = p.read_text()
+  return parse_lit_reproducer_text(p.read_text(), file=str(p), source=str(p))
 
+
+def parse_lit_reproducer_text(
+  text: str, *, file: str | None = None, source: str = "<text>"
+) -> tuple[Reproducer, str]:
+  """Parse the directives + IR from in-memory reproducer text.
+
+  ``source`` is used only in error messages. ``file`` is the path stored on
+  the returned :class:`Reproducer`; defaults to ``source`` when omitted.
+  Useful for callers that already have the text (e.g. agent submissions)
+  without an on-disk path.
+  """
   bug_lines: list[str] = []
   run_lines: list[str] = []
   for line in text.splitlines():
@@ -111,35 +122,35 @@ def parse_lit_reproducer(path: str | Path) -> tuple[Reproducer, str]:
 
   if not bug_lines:
     raise ValueError(
-      f"{p}: no `; BUG:` directive found. "
+      f"{source}: no `; BUG:` directive found. "
       f"Add a line like `; BUG: crash` (one of: "
-      f"{', '.join(sorted(_SUPPORTED_BUG_TYPES))})."
+      f"{', '.join(sorted(SUPPORTED_BUG_TYPES))})."
     )
   bug_type = bug_lines[0]
-  if bug_type not in _SUPPORTED_BUG_TYPES:
+  if bug_type not in SUPPORTED_BUG_TYPES:
     raise ValueError(
-      f"{p}: unsupported bug type {bug_type!r}. "
-      f"Supported: {', '.join(sorted(_SUPPORTED_BUG_TYPES))}."
+      f"{source}: unsupported bug type {bug_type!r}. "
+      f"Supported: {', '.join(sorted(SUPPORTED_BUG_TYPES))}."
     )
 
   if not run_lines:
     raise ValueError(
-      f"{p}: no `; RUN:` directive found. "
+      f"{source}: no `; RUN:` directive found. "
       f"Add a line like `; RUN: opt -passes=instcombine -S < %s`."
     )
 
   command = _sanitize_run_command(run_lines[0])
   if not command:
-    raise ValueError(f"{p}: `; RUN:` line is empty after sanitization.")
+    raise ValueError(f"{source}: `; RUN:` line is empty after sanitization.")
   tool = command.split()[0].rsplit("/", 1)[-1]
   if tool != "opt":
     raise ValueError(
-      f"{p}: only `opt` is supported in ad-hoc mode; got {tool!r}. "
+      f"{source}: only `opt` is supported in ad-hoc mode; got {tool!r}. "
       f"Other tools (lli, llc, clang, …) are not yet supported."
     )
 
   reproducer = Reproducer(
-    file=str(p),
+    file=file or source,
     commands=[command],
     tests=[{"test_name": "adhoc", "test_body": text}],
   )

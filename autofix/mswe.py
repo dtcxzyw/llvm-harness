@@ -32,6 +32,7 @@ from autofix.mini import (
   build_agent_config,
   build_harness_from_args,
   configure_lit_test_dirs,
+  log_issue_banner,
 )
 from harness.llvm.harness import Harness
 from harness.lms.meter import GlobalMeter
@@ -257,7 +258,7 @@ def main():
     try:
       harness_ctx = build_harness_from_args(
         args,
-        agent_config=build_agent_config,
+        agent_config=build_agent_config(args.driver, args.model, args.debug),
         aggressive_testing=args.aggressive_testing,
         do_print=console.print,
       )
@@ -268,14 +269,7 @@ def main():
       agent = MyAgent(args.model, args.driver, stats, workdir=str(h.llvm_dir))
       agent.setup(h)
 
-      if args.issue is not None:
-        console.print(f"Issue ID: {args.issue}")
-      else:
-        repro = h.fixenv.card.reproducers[0]
-        console.print(f"Reproducer File: {repro.file}")
-        console.print(f"Reproducer Command: {repro.commands[0]}")
-        console.print(f"Bug Type: {h.fixenv.get_bug_type()}")
-        console.print(f"Base Commit: {h.fixenv.get_base_commit()}")
+      log_issue_banner(h, args, log=console.print)
       console.print("Building LLVM and try reproducing the issue ...")
       issue = h.reproduce()
       console.print("Issue reproduced successfully.")

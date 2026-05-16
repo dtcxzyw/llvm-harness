@@ -42,7 +42,7 @@ class BashTool(StatelessFuncToolBase):
       "requiring chaining commands with pipes (NO other tool supports this), "
       "running shell scripts you wrote to accomplish a specific task, "
       "executing binaries found but not covered by other tools, or "
-      "other shell tasks not supported elsewhere."
+      "other shell tasks not supported elsewhere. "
       "Some commands (git, rm, curl, etc.) are restricted.",
       [
         FuncToolSpec.Param(
