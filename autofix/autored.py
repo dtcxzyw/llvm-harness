@@ -4,8 +4,7 @@ An autoreduce "issue ID" is a GitHub issue number in
 https://github.com/dtcxzyw/llvm-autoreduce. The issue body / comments embed
 the reduced reproducer (IR + opt command) in human-readable form. We:
 
-1. Fetch the issue and its comments via the GitHub REST API (with optional
-   ``GITHUB_TOKEN``/``GH_TOKEN`` for higher rate limits).
+1. Fetch the issue and its comments via the GitHub REST API.
 2. Hand the raw text to an LLM with a strict system prompt that asks for a
    self-contained ``.ll`` file in our embedded-directive format
    (``; BUG: …`` + ``; RUN: opt …`` + IR module).
@@ -21,7 +20,7 @@ from collections import namedtuple
 from pathlib import Path
 from typing import Tuple
 
-from github import Auth, Github, GithubException
+from github import Github, GithubException
 
 from harness.llvm.intern import llvm as llvm_ops
 from harness.llvm.issue import SUPPORTED_BUG_TYPES, parse_lit_reproducer_text
@@ -32,7 +31,7 @@ from harness.lms.tool import (
   StatelessFuncToolBase,
 )
 
-_AUTOREDUCE_REPO = "dtcxzyw/llvm-autoreduce"
+AUTOREDUCE_REPO = "dtcxzyw/llvm-autoreduce"
 
 _SYSTEM_PROMPT = """\
 Parse the following issue report into a self-contained LLVM IR (.ll)
@@ -78,7 +77,8 @@ entry:
 
 - The first non-blank line MUST be `; BUG: crash` or `; BUG: miscompilation`.
 - The second non-blank line MUST be a `; RUN:` line whose command starts \
-with `opt` and uses `%s` as the input-file placeholder.
+with `opt` and uses `%s` as the input-file placeholder and uses `-S` to \
+emit LLVM IR in text form for miscompilations since we will use alive2.
 - The rest of the file is the LLVM IR module verbatim — no markdown fences \
 (no triple backticks), no prose, no commentary.
 - If the issue contains multiple reproducers, pick the smallest one that \
@@ -96,21 +96,17 @@ ReprodInfo = namedtuple(
 )
 
 
-def _github_client() -> Github:
-  """Return a PyGithub client, authenticated when a token is present."""
-  token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-  return Github(auth=Auth.Token(token)) if token else Github()
-
-
 def _fetch_issue_text(issue_id: str) -> str:
-  """Fetch an autoreduce issue's body via PyGithub.
+  """Fetch an autoreduce issue's body via PyGithub (anonymous).
 
-  If ``GITHUB_TOKEN`` or ``GH_TOKEN`` is set, the request is authenticated
-  (recommended — the unauthenticated rate limit is 60 req/hour per IP).
-  Raises ``RuntimeError`` on any API failure with a clear message.
+  Anonymous calls are rate-limited to 60 requests/hour per IP, which is
+  enough for the CLI's interactive use; ``autofix.ghbot`` runs as a
+  GitHub App and never touches this path. Raises ``RuntimeError`` on any
+  API failure with a clear message.
   """
   try:
-    repo = _github_client().get_repo(_AUTOREDUCE_REPO)
+    # TODO: Add GH_TOKEN and GITHUB_TOKEN back to allow access private repos
+    repo = Github().get_repo(AUTOREDUCE_REPO)
     issue = repo.get_issue(int(issue_id))
   except GithubException as e:
     raise RuntimeError(
@@ -209,9 +205,20 @@ class _SubmitReproducerTool(StatelessFuncToolBase):
         raise FuncToolCallException(f"{label} must not be empty")
     text = _strip_markdown_fence(content).strip()
     try:
-      parse_lit_reproducer_text(text, source="<submission>")
+      repro, bug_type = parse_lit_reproducer_text(text, source="<submission>")
     except ValueError as e:
       raise FuncToolCallException(str(e))
+    # Miscompilation reproducers feed opt's stdout into alive2; without
+    # ``-S`` opt emits bitcode and downstream decoding fails on the magic
+    # bytes. Reject here so the agent retries with a corrected command
+    # rather than producing a broken reproducer.
+    if bug_type == "miscompilation":
+      for cmd in repro.commands:
+        if "opt" in cmd.split() and "-S" not in cmd.split():
+          raise FuncToolCallException(
+            f"miscompilation RUN command must include `-S` to emit textual "
+            f"LLVM IR (got: {cmd!r}). Add `-S` and resubmit."
+          )
     try:
       resolved_llvm = llvm_ops.git_execute(["rev-parse", llvm_commit.strip()]).strip()
       # TODO: resolve alive2 and llubi
