@@ -22,6 +22,7 @@ class GPTGenericAgent(GenericAgent):
       messages=messages,
       temperature=self.temperature,
       top_p=self.top_p,
+      max_tokens=self.max_completion_tokens,
       max_completion_tokens=self.max_completion_tokens,
       reasoning_effort=self.reasoning_effort,
       stream=True,
