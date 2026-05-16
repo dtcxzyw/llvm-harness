@@ -1,8 +1,9 @@
 import os
 import platform
+import subprocess
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 from pwnlib import gdb, tubes
 from pwnlib.context import context
@@ -23,6 +24,22 @@ source {llvm_dir}/llvm/utils/gdb-scripts/prettyprinters.py
 set print pretty on
 continue
 """
+
+
+def _list_tmux_panes() -> Set[str]:
+  """Snapshot of currently-live tmux pane ids across all sessions.
+
+  Returns an empty set when no tmux server is running (the call exits
+  nonzero) — exactly the right baseline before pwntools spawns one.
+  """
+  try:
+    out = subprocess.check_output(
+      ["tmux", "list-panes", "-a", "-F", "#{pane_id}"],
+      stderr=subprocess.DEVNULL,
+    )
+    return set(out.decode().split())
+  except Exception:
+    return set()
 
 
 class GDB(DebuggerBase):
@@ -81,19 +98,28 @@ class GDB(DebuggerBase):
     print("GDB Python version:", gdb_python_version)
     print("Expected Python version:", platform.python_version())
 
+    # Snapshot tmux panes before pwntools spawns its gdb terminal so we can
+    # kill exactly the pane(s) it created in ``close()``. For the in-TMUX
+    # ``splitw`` path this is a new pane in the user's existing session; for
+    # the detached ``new-session`` path it is a whole new session whose only
+    # pane appears in the diff (killing the last pane destroys the session).
+    panes_before = _list_tmux_panes()
     self.process = gdb.debug(
       args=arguments, gdbscript=INIT_GDB_SCRIPT, aslr=False, api=True, sysroot="/"
     )
+    self._tmux_panes_to_kill: Set[str] = _list_tmux_panes() - panes_before
     self.gdb_api = self.process.gdb
     # Disable remote trackback
     self.gdb_api.conn._config["include_local_traceback"] = False
 
   def close(self) -> None:
-    """Tear down the rpyc connection and reap the gdb subprocess.
+    """Tear down the rpyc connection, reap the gdb subprocess, and kill any
+    tmux pane(s) pwntools spawned for this session.
 
     Long-running consumers (the ``ghbot`` serve loop, batch runners) attach
     a fresh debugger per run; without this they accumulate one orphan gdb
-    process — plus a tmux pane on tmux hosts — per iteration.
+    process and one orphan tmux pane (or whole session, in the detached
+    path) per iteration.
     """
     try:
       self.gdb_api.conn.close()
@@ -103,6 +129,16 @@ class GDB(DebuggerBase):
       self.process.close()  # pwntools tube.close() shuts down stdio + reaps the child
     except Exception:
       pass
+    for pane_id in self._tmux_panes_to_kill:
+      try:
+        subprocess.run(
+          ["tmux", "kill-pane", "-t", pane_id],
+          stderr=subprocess.DEVNULL,
+          check=False,
+        )
+      except Exception:
+        pass
+    self._tmux_panes_to_kill = set()
 
   def cont(self):
     self.gdb_api.write("continue\n")
