@@ -92,7 +92,7 @@ class BashTool(StatelessFuncToolBase):
 
     try:
       output = cmdline.getoutput(bash_cmd, cwd=work_dir, check=True, timeout=timeout)
-      return output.decode("utf-8")
+      return output.decode("utf-8", errors="replace")
     except CalledProcessError as e:
       # If the command failed, return the combined output and error message.
       error_output = e.stdout.decode("utf-8") if e.stdout else ""

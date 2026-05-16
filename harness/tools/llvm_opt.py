@@ -56,5 +56,5 @@ class OptimizeIrTool(LlvmBuildDirMixin, StatelessFuncToolBase):
 
     err = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
     if is_opt_crash(err):
-      return f"opt crashed:\n{err}"
+      raise FuncToolCallException(f"opt crashed:\n{err}")
     raise FuncToolCallException(f"opt failed: {err}")
