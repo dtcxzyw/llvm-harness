@@ -789,6 +789,25 @@ def is_interesting_file(filename: str) -> bool:
   return False
 
 
+_BREAKPOINT_CACHE_FILE = "autofix_breakpoints.json"
+
+
+def _load_breakpoint_cache(path: str) -> dict:
+  if not os.path.exists(path):
+    return {}
+  try:
+    with open(path) as fin:
+      data = json.load(fin)
+    return data if isinstance(data, dict) else {}
+  except (json.JSONDecodeError, OSError):
+    return {}
+
+
+def _save_breakpoint_cache(path: str, cache: dict) -> None:
+  with open(path, "w") as fout:
+    json.dump(cache, fout, indent=2, sort_keys=True)
+
+
 def prepare_debugger(
   rep: ReprodRes, *, harness: Harness
 ) -> Tuple[DebuggerBase, StackTrace]:
@@ -799,16 +818,17 @@ def prepare_debugger(
   breakpints = (
     ASSERTION_FUNCTION_LIST if bug_type == "crash" else TRANSFORMATION_FUNCTION_LIST
   )
-  cached_breakpoint_file = os.path.join(
-    str(harness.build_dir), "autofix_breakpoint_cache.txt"
-  )
-  cached_breakpoint = None
-  if os.path.exists(cached_breakpoint_file):
-    with open(cached_breakpoint_file, "r") as fin:
-      cached_breakpoint = fin.read().strip()
-    if cached_breakpoint:
-      console.print(f"Using the cached breakpoint function: {cached_breakpoint}")
-      breakpints = [cached_breakpoint]
+  # Bench issues get a per-issue build dir, so a single-entry cache file
+  # works there. Ad-hoc reproducers (--reproducer / --autoreduce) share the
+  # default build dir, so we key the cache by a hash of the reproducer's
+  # IR + RUN command — same content reuses, distinct content stays isolated.
+  cache_path = os.path.join(str(harness.build_dir), _BREAKPOINT_CACHE_FILE)
+  cache = _load_breakpoint_cache(cache_path)
+  cache_key = rep.fingerprint()
+  cached_breakpoint = cache.get(cache_key)
+  if cached_breakpoint:
+    console.print(f"Using the cached breakpoint function: {cached_breakpoint}")
+    breakpints = [cached_breakpoint]
   console.print("Reproducing the issue with debugger...")
   backtrace, breakpoint = debugger.run(
     harness.llvm_dir,
@@ -817,9 +837,9 @@ def prepare_debugger(
     frame_limit=25,  # 25 frames should be enough
   )
   if not cached_breakpoint and breakpoint:
-    console.print(f"The cached breakpoint function: {breakpoint}")
-    with open(cached_breakpoint_file, "w") as fou:
-      fou.write(breakpoint)
+    console.print(f"Caching breakpoint function for this reproducer: {breakpoint}")
+    cache[cache_key] = breakpoint
+    _save_breakpoint_cache(cache_path, cache)
 
   if bug_type == "miscompilation":
     backtrace.pop()  # Pop out the topmost transformation function

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import tempfile
 from dataclasses import dataclass
@@ -27,6 +28,13 @@ class ReprodRes:
   raw_command: str  # original unresolved command string
   source: str  # IR reproducer text
   symptom: str  # rendered log output
+
+  def fingerprint(self) -> str:
+    """Stable short identifier derived from the IR text and RUN command."""
+    payload = f"{self.bug_type}\n{self.raw_command}\n{self.source}".encode(
+      "utf-8", errors="replace"
+    )
+    return hashlib.sha256(payload).hexdigest()[:16]
 
 
 def _parse_raw_command(raw_cmd: str, reprod_file: str, opt_binary: str) -> list[str]:
