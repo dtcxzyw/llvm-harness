@@ -14,8 +14,6 @@ the reduced reproducer (IR + opt command) in human-readable form. We:
 
 from __future__ import annotations
 
-import os
-import tempfile
 from collections import namedtuple
 from pathlib import Path
 from typing import Tuple
@@ -30,6 +28,7 @@ from harness.lms.tool import (
   FuncToolSpec,
   StatelessFuncToolBase,
 )
+from harness.utils.text import write_temp_file
 
 AUTOREDUCE_REPO = "dtcxzyw/llvm-autoreduce"
 
@@ -277,12 +276,8 @@ def fetch_autoreduce_reproducer(
       f"autoreduce issue {issue_id} doesn't contain an ```llvm code block"
     )
   rinfo = _normalize_with_llm(raw, agent_config=agent_config)
-  fd, path = tempfile.mkstemp(suffix=".ll", prefix=f"autored_{issue_id}_")
-  try:
-    os.write(fd, rinfo.content.encode("utf-8"))
-  finally:
-    os.close(fd)
-  return Path(path), rinfo
+  path = write_temp_file(rinfo.content, suffix=".ll", prefix=f"autored_{issue_id}_")
+  return path, rinfo
 
 
 def main() -> int:

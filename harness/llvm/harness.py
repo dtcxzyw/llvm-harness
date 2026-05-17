@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -16,6 +15,7 @@ from harness.llvm.intern.llvm_code import LlvmCode
 from harness.llvm.issue import IssueCard, Reproducer, parse_lit_reproducer
 from harness.lms.tool import FuncToolBase
 from harness.utils import cmdline
+from harness.utils.text import write_temp_file
 
 
 @dataclass
@@ -60,12 +60,7 @@ def _parse_raw_command(raw_cmd: str, reprod_file: str, opt_binary: str) -> list[
 
 def _make_temp_ll(issue_id: str, content: str) -> Path:
   """Write *content* to a uniquely-named temp ``.ll`` file and return its path."""
-  fd, path = tempfile.mkstemp(suffix=".ll", prefix=f"reprod_{issue_id}_")
-  try:
-    os.write(fd, content.encode())
-  finally:
-    os.close(fd)
-  return Path(path)
+  return write_temp_file(content, suffix=".ll", prefix=f"reprod_{issue_id}_")
 
 
 def _llvm_root() -> str:

@@ -3,6 +3,7 @@
 import os
 import re
 import tempfile
+from pathlib import Path
 from typing import Optional
 
 # ---------------------------------------------------------------------------
@@ -72,6 +73,31 @@ def either_contains(query_term: str, keyword: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Temp-file write
+# ---------------------------------------------------------------------------
+
+
+def write_temp_file(
+  content: str,
+  *,
+  suffix: str = "",
+  prefix: str = "tmp_",
+) -> Path:
+  """Write *content* to a uniquely-named temp file and return its :class:`Path`.
+
+  Robust against partial writes (uses :meth:`Path.write_text`, which loops
+  internally). The file is created via :func:`tempfile.mkstemp` so it is
+  unique and owner-only (mode ``0o600``); the close-then-rewrite has no
+  meaningful race.
+  """
+  fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix)
+  os.close(fd)
+  path = Path(path)
+  path.write_text(content, encoding="utf-8")
+  return path
+
+
+# ---------------------------------------------------------------------------
 # Oversize-text spill
 # ---------------------------------------------------------------------------
 
@@ -103,14 +129,9 @@ def spill_if_too_long(
   if not (over_chars or over_lines):
     return content
   if file_path is None:
-    fd, file_path = tempfile.mkstemp(suffix=".txt", prefix=file_prefix)
-    try:
-      os.write(fd, content.encode())
-    finally:
-      os.close(fd)
+    file_path = str(write_temp_file(content, suffix=".txt", prefix=file_prefix))
   else:
-    with open(file_path, "w") as fout:
-      fout.write(content)
+    Path(file_path).write_text(content, encoding="utf-8")
   half = char_limit // 2
   return (
     f"{content[:half]}\n"
