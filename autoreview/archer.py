@@ -622,7 +622,7 @@ def run_archer_agent(
   stats.analyze_rounds = analyze_agent.meter.chat_rounds
 
   try:
-     parsed = json.loads(analysis)
+    parsed = json.loads(analysis)
   except Exception as exc:
     analysis_preview = analysis[:200] if isinstance(analysis, str) else repr(analysis)
     raise RuntimeError(
