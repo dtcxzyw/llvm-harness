@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 from unidiff import PatchSet
@@ -83,7 +83,9 @@ def _github_paginated_json(url: str) -> list[dict]:
   while True:
     batch = _github_get_json(_append_query(url, per_page=100, page=page))
     if not isinstance(batch, list):
-      raise RuntimeError(f"Expected list response from GitHub for {url}, got {type(batch)}")
+      raise RuntimeError(
+        f"Expected list response from GitHub for {url}, got {type(batch)}"
+      )
     items.extend(batch)
     if len(batch) < 100:
       break
@@ -127,6 +129,63 @@ def filter_patch_exclude_tests(full_patch: str) -> str:
   return "".join(str(item) for item in filtered)
 
 
+def _join_continuation_lines(text: str) -> str:
+  """Join lines ending with backslash (line continuations) in LLVM test files.
+
+  Handles two patterns found in LLVM RUN lines:
+    1. ``; RUN: cmd \\`` followed by a non-``; RUN:`` continuation line
+    2. ``; RUN: cmd \\`` followed by ``; RUN: continuation``
+  In both cases the continuation is appended (without the leading
+  ``; RUN:`` prefix, if present) to form a single logical line.
+  """
+  lines = text.splitlines()
+  result: list[str] = []
+  i = 0
+  while i < len(lines):
+    line = lines[i]
+    if line.rstrip().endswith("\\"):
+      parts = [line.rstrip()[:-1]]  # strip trailing backslash
+      i += 1
+      while i < len(lines):
+        next_line = lines[i]
+        if next_line.rstrip().endswith("\\"):
+          stripped = next_line.rstrip()[:-1]
+          # Remove optional leading "; RUN:" on continuation lines
+          stripped = re.sub(r"^;\s*RUN:\s*", "", stripped)
+          parts.append(stripped)
+          i += 1
+        else:
+          stripped = next_line
+          stripped = re.sub(r"^;\s*RUN:\s*", "", stripped)
+          parts.append(stripped)
+          i += 1
+          break
+      result.append("".join(parts))
+    else:
+      result.append(line)
+      i += 1
+  return "\n".join(result)
+
+
+def _extract_run_commands(text: str) -> list[str]:
+  """Extract RUN-line commands from an LLVM test file.
+
+  1. Joins continuation lines (trailing backslash).
+  2. Matches ``; RUN: <command>`` broadly (no FileCheck requirement).
+  3. Truncates each command at the first ``| FileCheck`` (case-insensitive)
+     to keep only the tool invocation before the check, matching the
+     behaviour of the original regex while supporting more variants.
+  """
+  joined = _join_continuation_lines(text)
+  raw_commands = re.findall(r";\s*RUN:\s*(.+)", joined)
+  commands: list[str] = []
+  for cmd in raw_commands:
+    truncated = re.split(r"\|\s*[Ff]ile[Cc]heck", cmd)[0].strip()
+    if truncated:
+      commands.append(truncated)
+  return commands
+
+
 def extract_tests_from_patch(full_patch: str) -> list[dict]:
   tests = []
   try:
@@ -137,9 +196,10 @@ def extract_tests_from_patch(full_patch: str) -> list[dict]:
   if not shutil.which("llvm-extract"):
     raise RuntimeError("The `llvm-extract` command is not found.")
 
-  runline_pattern = re.compile(r"; RUN: (.+?)\| FileCheck")
   testname_pattern = re.compile(r"define .+ @([.\w]+)\(")
-  llvm_dir = os.environ["LAB_LLVM_DIR"]
+  llvm_dir = os.environ.get("LAB_LLVM_DIR")
+  if not llvm_dir:
+    raise RuntimeError("The `LAB_LLVM_DIR` environment variable is not set.")
 
   for file in patchset:
     if not file.path.startswith("llvm/test/") or file.is_removed_file:
@@ -151,7 +211,9 @@ def extract_tests_from_patch(full_patch: str) -> list[dict]:
     except Exception:
       continue
 
-    commands = [match.strip() for match in re.findall(runline_pattern, test_file)]
+    commands = _extract_run_commands(test_file)
+    if not commands:
+      print(f"WARNING: No RUN lines extracted from {file.path}")
     test_names = set()
 
     if file.is_added_file:
@@ -181,6 +243,7 @@ def extract_tests_from_patch(full_patch: str) -> list[dict]:
       subtests.append({"test_name": test_name, "test_body": test_body})
 
     if not subtests:
+
       def is_valid_test_line(line: str) -> bool:
         stripped = line.strip()
         return not (
@@ -212,15 +275,15 @@ def fetch_pr_info(pr_id: int, *, refresh: bool = False) -> PRInfo:
 
   pr_api = f"https://api.github.com/repos/llvm/llvm-project/pulls/{pr_id}"
   pr = _github_get_json(pr_api)
-  if pr.get("message") == "Not Found":
-    raise RuntimeError(f"PR #{pr_id} not found.")
 
   state = pr.get("state", "open")
   files = _github_paginated_json(pr["url"] + "/files")
   changed_files = [item["filename"] for item in files]
   changed_files_str = "\n".join(changed_files)
   if "/AsmParser/" in changed_files_str or "/Bitcode/" in changed_files_str:
-    raise RuntimeError("PR contains AsmParser or Bitcode changes, which are not supported.")
+    raise RuntimeError(
+      "PR contains AsmParser or Bitcode changes, which are not supported."
+    )
 
   llvm_files = [
     path for path in changed_files if path.startswith(("llvm/lib/", "llvm/include/"))
