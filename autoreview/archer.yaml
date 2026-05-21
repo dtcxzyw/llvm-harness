@@ -87,23 +87,30 @@ prompts:
 
     1. Call `tests_manager(action="list")` to inspect extracted tests.
     2. Call `tests_manager(action="get", index=...)` before working on a test.
-    3. Create temporary `.ll` files under `/tmp` using `write`.
-    4. Verify with existing tools directly:
+    3. Track strategy coverage explicitly: after each verification sequence, call
+       `tests_manager(action="confirm_strategy", index=..., strategy="<Phase-1 strategy name>")`
+       for the strategy that verification just covered.
+    4. Create temporary `.ll` files under `/tmp` using `write`.
+    5. Verify with existing tools directly:
        - `llvm_optimize_ir`
        - `llvm_verify_optim`
        - `llvm_check_optim`
        - `llvm_verify_ir`
        - `llvm_execute_ir`
        - `llvm_interpret_ir`
-    5. Prefer proving semantic correctness (`llvm_verify_optim` / `llvm_verify_ir`) first,
+    6. Prefer proving semantic correctness (`llvm_verify_optim` / `llvm_verify_ir`) first,
        then use behavioral checks (`llvm_check_optim` / execute/interpret) as complementary evidence.
-    6. Call `tests_manager(action="mark_tested", index=...)` only after at least one
-       verification/execution tool is used after `get`.
-    7. If useful, consult or record insights with `insight`.
+       For example, when alive2 reports errors, use `llvm_execute/interpret` to execute programs with inputs instead.
+    7. Call `tests_manager(action="mark_tested", index=...)` only after at least one
+       verification/execution tool is used after `get`, and only after all Phase-1
+       strategies have been confirmed for that test.
+    8. If useful, consult or record insights with `insight`.
 
     ## Completion
 
     - When all tests are handled, call `submit_reviewreport(report=...)`.
+    - Normal completion requires every extracted test to be marked tested and every
+      Phase-1 strategy to be confirmed for every extracted test.
     - If you must stop early, call `submit_reviewreport(report=..., force=true)` and explain why.
     - Do not finish with plain text.
     - In the final report, include: scope of validation, strongest evidence, and residual risk.
