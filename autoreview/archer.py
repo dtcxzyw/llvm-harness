@@ -1055,6 +1055,16 @@ def main():
     if review_path and stats.review_report:
       with review_path.open("w", encoding="utf-8") as fout:
         fout.write(stats.review_report)
+        if stats.bugs:
+          fout.write("\n\n---\n\n## Bugs Found During Verification\n\n")
+          for idx, bug in enumerate(stats.bugs):
+            fout.write(f"### Bug {idx + 1}: {bug.tool}\n\n")
+            fout.write(f"**Tool**: `{bug.tool}`\n\n")
+            fout.write(f"**Log**:\n\n```\n{bug.log}\n```\n\n")
+            if bug.original_ir != "<unavailable>":
+              fout.write(f"**Original IR**:\n\n```\n{bug.original_ir}\n```\n\n")
+            if bug.transformed_ir != "<unavailable>":
+              fout.write(f"**Transformed IR**:\n\n```\n{bug.transformed_ir}\n```\n\n")
       console.print(f"Review saved to {review_path}.")
 
   console.print("Final Review")
