@@ -29,7 +29,7 @@ PROMPT_REVIEW = _PROMPTS["review"]
 
 AGENT_TEMPERATURE = 0
 AGENT_TOP_P = 0.95
-AGENT_MAX_COMPLETION_TOKENS = 8092
+AGENT_MAX_COMPLETION_TOKENS = 8192
 AGENT_REASONING_EFFORT = "medium"
 AGENT_MAX_CHAT_ROUNDS = 500
 AGENT_MAX_CONSUMED_TOKENS = 5_000_000
@@ -278,7 +278,7 @@ class TestsTool(StatefulFuncToolBase):
       [],
     )
 
-  def _call(self, *, action: str, index: int = None, **kwargs) -> str:
+  def _call(self, *, action: str, index: Optional[int] = None, **kwargs) -> str:
     if action == "list":
       return json.dumps(
         {
@@ -621,7 +621,19 @@ def run_archer_agent(
   )
   stats.analyze_rounds = analyze_agent.meter.chat_rounds
 
-  parsed = json.loads(analysis)
+  try:
+     parsed = json.loads(analysis)
+  except Exception as exc:
+    analysis_preview = analysis[:200] if isinstance(analysis, str) else repr(analysis)
+    raise RuntimeError(
+      "Phase 1 did not return valid JSON from submit_analysis. "
+      f"Received: {analysis_preview!r}"
+    ) from exc
+  if not isinstance(parsed, dict):
+    raise RuntimeError(
+      "Phase 1 submit_analysis payload must be a JSON object. "
+      f"Received {type(parsed).__name__}."
+    )
   stats.analyze_thoughts = parsed.get("thoughts", "")
   stats.strategies = list(parsed.get("strategies", []))
 
@@ -649,12 +661,11 @@ def run_archer_agent(
   review_agent.register_tool(
     TestsTool(tests, validator=validator), MAX_TCS_LIGHTWEIGHT_TOOLS
   )
-  review_agent.append_user_message(
-    PROMPT_REVIEW.format(
-      strategies=json.dumps(stats.strategies, ensure_ascii=False, indent=2),
-      tests_overview=tests_overview,
-    )
-  )
+  review_prompt = PROMPT_REVIEW.replace(
+    "{strategies}",
+    json.dumps(stats.strategies, ensure_ascii=False, indent=2),
+  ).replace("{tests_overview}", tests_overview)
+  review_agent.append_user_message(review_prompt)
 
   def review_post_response(_: str):
     ensure_tools_available(review_agent, ["submit_reviewreport", "tests_manager"])
@@ -828,8 +839,6 @@ def main():
   console.print(f"Components: {', '.join(pr_info.components) or '<unknown>'}")
   console.print(f"Base commit: {pr_info.base_commit}")
   console.print(f"Head commit: {pr_info.fix_commit}")
-
-  from harness.llvm.harness import Harness
 
   review_result = None
   run_history = None
