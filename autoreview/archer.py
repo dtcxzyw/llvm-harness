@@ -164,6 +164,7 @@ class Test:
   test_body: str
   commands: list[str] = field(default_factory=list)
   tested: bool = False
+  covered_strategies: set[str] = field(default_factory=set)
 
 
 class SubmitAnalysisTool(StatelessFuncToolBase):
@@ -249,8 +250,19 @@ class SubmitReviewReportTool(StatelessFuncToolBase):
 
 
 class TestsTool(StatefulFuncToolBase):
-  def __init__(self, tests: list[Test], validator=None):
+  def __init__(
+    self,
+    tests: list[Test],
+    strategies: list[dict] | None = None,
+    validator=None,
+  ):
     self.tests = tests
+    self.strategies = strategies or []
+    self.all_strategies = {
+      str(strategy.get("name")).strip()
+      for strategy in self.strategies
+      if str(strategy.get("name", "")).strip()
+    }
     self.validator = validator
 
   def fresh(self) -> "TestsTool":
@@ -260,26 +272,66 @@ class TestsTool(StatefulFuncToolBase):
         test_body=test.test_body,
         commands=list(test.commands),
         tested=test.tested,
+        covered_strategies=set(test.covered_strategies),
       )
       for test in self.tests
     ]
-    return TestsTool(cloned, validator=self.validator)
+    return TestsTool(cloned, strategies=list(self.strategies), validator=self.validator)
+
+  def get_uncovered_strategies(self, index: int) -> list[str]:
+    if index < 0 or index >= len(self.tests):
+      return []
+    return sorted(self.all_strategies - self.tests[index].covered_strategies)
+
+  def get_all_uncovered_strategies(self) -> dict[int, list[str]]:
+    uncovered = {}
+    for i, _ in enumerate(self.tests):
+      remaining = self.get_uncovered_strategies(i)
+      if remaining:
+        uncovered[i] = remaining
+    return uncovered
+
+  def all_tests_tested(self) -> bool:
+    return all(test.tested for test in self.tests)
 
   def spec(self) -> FuncToolSpec:
     return FuncToolSpec(
       "tests_manager",
-      "Manage extracted PR tests and verification progress.",
+      "Manage extracted PR tests, strategy coverage, and verification progress.",
       [
-        FuncToolSpec.Param("action", "string", True, "One of: list, get, mark_tested."),
         FuncToolSpec.Param(
-          "index", "integer", False, "Required for get and mark_tested."
+          "action",
+          "string",
+          True,
+          "One of: list, get, confirm_strategy, mark_tested.",
+        ),
+        FuncToolSpec.Param(
+          "index",
+          "integer",
+          False,
+          "Required for get, confirm_strategy, and mark_tested.",
+        ),
+        FuncToolSpec.Param(
+          "strategy",
+          "string",
+          False,
+          "Required for confirm_strategy. Must match a Phase-1 strategy name.",
         ),
       ],
       [],
     )
 
-  def _call(self, *, action: str, index: Optional[int] = None, **kwargs) -> str:
+  def _call(
+    self,
+    *,
+    action: str,
+    index: Optional[int] = None,
+    strategy: Optional[str] = None,
+    **kwargs,
+  ) -> str:
     if action == "list":
+      all_tested = self.all_tests_tested()
+      uncovered = self.get_all_uncovered_strategies()
       return json.dumps(
         {
           "tests": [
@@ -288,10 +340,18 @@ class TestsTool(StatefulFuncToolBase):
               "name": t.test_name,
               "tested": t.tested,
               "commands": t.commands,
+              "covered_strategies": sorted(t.covered_strategies),
+              "uncovered_strategies": self.get_uncovered_strategies(i),
             }
             for i, t in enumerate(self.tests)
           ],
-          "all_tested": all(t.tested for t in self.tests),
+          "all_tested": all_tested,
+          "all_strategies_covered": not uncovered,
+          "message": (
+            "All tests have been tested and every test covers all Phase-1 strategies."
+            if all_tested and not uncovered
+            else "Some tests still need verification or strategy coverage."
+          ),
         },
         indent=2,
       )
@@ -311,18 +371,70 @@ class TestsTool(StatefulFuncToolBase):
           "test_body": selected.test_body,
           "commands": selected.commands,
           "tested": selected.tested,
+          "covered_strategies": sorted(selected.covered_strategies),
+          "uncovered_strategies": self.get_uncovered_strategies(index),
         },
         indent=2,
       )
 
+    if action == "confirm_strategy":
+      if strategy is None or not strategy.strip():
+        raise FuncToolCallException("strategy is required for confirm_strategy.")
+
+      strategy_name = strategy.strip()
+      if strategy_name not in self.all_strategies:
+        raise FuncToolCallException(
+          "Unknown strategy "
+          f"'{strategy_name}'. Valid strategies: {sorted(self.all_strategies)}"
+        )
+
+      if strategy_name in selected.covered_strategies:
+        return (
+          f"Strategy '{strategy_name}' was already confirmed for test {index}. "
+          f"Remaining uncovered strategies: {self.get_uncovered_strategies(index)}"
+        )
+
+      if self.validator is not None:
+        ok, reason = self.validator(action=action, index=index, strategy=strategy_name)
+        if not ok:
+          return (
+            f"Strategy '{strategy_name}' NOT confirmed for test {index}. "
+            f"Reason: {reason}"
+          )
+
+      selected.covered_strategies.add(strategy_name)
+      uncovered = self.get_uncovered_strategies(index)
+      if not uncovered:
+        return (
+          f"Strategy '{strategy_name}' confirmed for test {index}. "
+          "This test now covers all Phase-1 strategies."
+        )
+      return (
+        f"Strategy '{strategy_name}' confirmed for test {index}. "
+        f"Remaining uncovered strategies: {uncovered}"
+      )
+
     if action == "mark_tested":
       if self.validator is not None:
-        ok, reason = self.validator(index)
+        ok, reason = self.validator(action=action, index=index)
         if not ok:
           return f"Test {index} NOT marked as tested. Reason: {reason}"
+
+      uncovered = self.get_uncovered_strategies(index)
+      if uncovered:
+        return (
+          f"Test {index} NOT marked as tested. Uncovered strategies remain: {uncovered}. "
+          "Confirm each strategy after corresponding verification before marking tested."
+        )
+
       selected.tested = True
-      if all(t.tested for t in self.tests):
-        return f"Test {index} marked as tested. All extracted tests are covered."
+      all_tested = all(t.tested for t in self.tests)
+      all_uncovered = self.get_all_uncovered_strategies()
+      if all_tested and not all_uncovered:
+        return (
+          f"Test {index} marked as tested. All extracted tests are covered and all "
+          "Phase-1 strategies have been confirmed for every test."
+        )
       return f"Test {index} marked as tested. Continue with remaining tests."
 
     raise FuncToolCallException(f"Invalid action '{action}'.")
@@ -642,13 +754,41 @@ def run_archer_agent(
 
   test_get_timestamps: dict[int, int] = {}
   verification_events: list[str] = []
+  test_strategy_cursors: dict[int, int] = {}
 
-  def validator(index: int):
+  all_strategy_names = {
+    str(strategy.get("name")).strip()
+    for strategy in stats.strategies
+    if str(strategy.get("name", "")).strip()
+  }
+
+  def validator(*, action: str, index: int, strategy: Optional[str] = None):
     if index not in test_get_timestamps:
+      target = (
+        f"confirming strategy '{strategy}'"
+        if action == "confirm_strategy" and strategy is not None
+        else "marking tested"
+      )
       return (
         False,
-        f"You must call tests_manager(action='get', index={index}) before marking tested.",
+        f"You must call tests_manager(action='get', index={index}) before {target}.",
       )
+
+    if action == "confirm_strategy":
+      if strategy is None or strategy not in all_strategy_names:
+        return False, f"Unknown Phase-1 strategy: {strategy}"
+      start = max(test_get_timestamps[index], test_strategy_cursors.get(index, 0))
+      has_verify = any(
+        name in VERIFICATION_TOOLS for name in verification_events[start:]
+      )
+      if not has_verify:
+        return (
+          False,
+          "You must call at least one verification/execution tool after get and before confirming a strategy.",
+        )
+      test_strategy_cursors[index] = len(verification_events)
+      return True, ""
+
     start = test_get_timestamps[index]
     has_verify = any(name in VERIFICATION_TOOLS for name in verification_events[start:])
     if not has_verify:
@@ -658,9 +798,8 @@ def run_archer_agent(
       )
     return True, ""
 
-  review_agent.register_tool(
-    TestsTool(tests, validator=validator), MAX_TCS_LIGHTWEIGHT_TOOLS
-  )
+  tests_manager = TestsTool(tests, strategies=stats.strategies, validator=validator)
+  review_agent.register_tool(tests_manager, MAX_TCS_LIGHTWEIGHT_TOOLS)
   review_prompt = PROMPT_REVIEW.replace(
     "{strategies}",
     json.dumps(stats.strategies, ensure_ascii=False, indent=2),
@@ -681,7 +820,9 @@ def run_archer_agent(
       try:
         args_obj = json.loads(args_json)
         if args_obj.get("action") == "get" and args_obj.get("index") is not None:
-          test_get_timestamps[int(args_obj["index"])] = len(verification_events)
+          index = int(args_obj["index"])
+          test_get_timestamps[index] = len(verification_events)
+          test_strategy_cursors[index] = len(verification_events)
       except Exception:
         pass
       return True, res
@@ -695,11 +836,19 @@ def run_archer_agent(
     if name == "submit_reviewreport":
       payload = json.loads(res)
       force = bool(payload.get("force", False))
-      all_tested = all(t.tested for t in tests)
-      if not all_tested and not force:
+      all_tested = tests_manager.all_tests_tested()
+      uncovered = tests_manager.get_all_uncovered_strategies()
+      if (not all_tested or uncovered) and not force:
+        reasons = []
+        if not all_tested:
+          reasons.append("some extracted tests are untested")
+        if uncovered:
+          reasons.append(f"strategy coverage is incomplete: {uncovered}")
         return (
           True,
-          "Cannot submit yet: some extracted tests are untested. Continue or use force=true with clear justification.",
+          "Cannot submit yet: "
+          + "; ".join(reasons)
+          + ". Continue or use force=true with clear justification.",
         )
       stats.review_report = payload.get("report", "")
       return False, stats.review_report
