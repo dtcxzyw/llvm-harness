@@ -100,23 +100,6 @@ VERIFICATION_TOOLS = {
   "llvm_interpret_ir_legacy",
 }
 
-CRASH_INDICATORS = {
-  "LLVM ERROR",
-  "compilation aborted",
-  "Stack dump:",
-  "Broken module found",
-  "does not dominate all uses",
-  "PLEASE submit a bug report",
-  "opt crashed:",
-}
-
-CRASH_FALSE_POSITIVES = {
-  "PHI nodes not grouped at top of basic block!",
-  "immarg operand has non-immediate parameter",
-  "fpmath requires a floating point result!",
-  "did not reach a fixpoint",
-}
-
 console = get_boxed_console(debug_mode=False)
 
 
@@ -642,13 +625,9 @@ def _read_if_exists(path_str: str) -> str:
   return "<unavailable>"
 
 
-def _is_opt_crash_report(log: str) -> bool:
-  if any(marker in log for marker in CRASH_FALSE_POSITIVES):
-    return False
-  return any(marker in log for marker in CRASH_INDICATORS)
-
-
 def _collect_bug_if_any(stats: RunStats, name: str, args_json: str, res: str):
+  from harness.llvm.intern import llvm as llvm_ops
+
   found = False
   if name in {"llvm_verify_optim", "llvm_verify_ir"} and res.startswith(
     "Transformation is INCORRECT"
@@ -656,7 +635,7 @@ def _collect_bug_if_any(stats: RunStats, name: str, args_json: str, res: str):
     found = True
   if name == "llvm_check_optim" and res.startswith("Optimization is INCORRECT"):
     found = True
-  if name in VERIFICATION_TOOLS and _is_opt_crash_report(res):
+  if name in VERIFICATION_TOOLS and llvm_ops.is_opt_crash(res):
     found = True
   if not found:
     return
