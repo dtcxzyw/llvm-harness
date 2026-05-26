@@ -101,6 +101,8 @@ type mismatch). The verification did not complete.
 | `--disable-undef-input` | Skip checks with undef inputs (reduces spurious failures) |
 | `--disable-poison-input` | Skip checks with poison inputs |
 | `--smt-to=<ms>` | SMT solver timeout in milliseconds (default: 10000) |
+| `--src-unroll=<N>` | Unroll loops in source N times (default: 0 = first iteration only, no back-edge; use ≥2 for meaningful loop coverage) |
+| `--tgt-unroll=<N>` | Unroll loops in target N times (default: 0 = first iteration only, no back-edge; use ≥2 for meaningful loop coverage) |
 | `--bidirectional` | Check both src→tgt and tgt→src |
 | `--succinct` | Less verbose output |
 | `--tactic-timeout=<ms>` | Per-tactic solver timeout |
