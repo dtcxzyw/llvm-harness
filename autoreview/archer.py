@@ -797,10 +797,10 @@ def run_archer_agent(
 
   tests_manager = TestsTool(tests, strategies=stats.strategies, validator=validator)
   review_agent.register_tool(tests_manager, MAX_TCS_LIGHTWEIGHT_TOOLS)
-  review_prompt = PROMPT_REVIEW.replace(
-    "{strategies}",
-    json.dumps(stats.strategies, ensure_ascii=False, indent=2),
-  ).replace("{tests_overview}", tests_overview)
+  review_prompt = PROMPT_REVIEW.format(
+    strategies=json.dumps(stats.strategies, ensure_ascii=False, indent=2),
+    tests_overview=tests_overview,
+  )
   review_agent.append_user_message(review_prompt)
 
   def review_post_response(_: str):
