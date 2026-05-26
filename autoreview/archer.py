@@ -62,6 +62,7 @@ ENABLED_REVIEW_TOOLS = {
   "llvm_verify_ir",
   "llvm_execute_ir",
   "llvm_interpret_ir",
+  "llvm_interpret_ir_legacy",
   "insight",
   "subagent",
   "todo",
@@ -86,6 +87,7 @@ DEFERRED_TOOLS = {
   "llvm_verify_ir",
   "llvm_execute_ir",
   "llvm_interpret_ir",
+  "llvm_interpret_ir_legacy",
   "llvm-insight-search",
   "llvm-insight-reflect",
 }
@@ -95,6 +97,7 @@ VERIFICATION_TOOLS = {
   "llvm_verify_ir",
   "llvm_execute_ir",
   "llvm_interpret_ir",
+  "llvm_interpret_ir_legacy",
 }
 
 CRASH_INDICATORS = {
@@ -584,19 +587,34 @@ def _build_tests_overview(pr_info: PRInfo) -> str:
 
 
 def get_component_knowledge(components: list[str]) -> str:
-  knowledge_dir = Path(harness.require_home_dir()) / "insight" / "shared"
+  repo_root = Path(__file__).resolve().parents[1]
+  knowledge_dir = repo_root / "harness" / "skills" / "llvm-patchreview" / "references"
+
+  requested = [component.strip() for component in components if component.strip()]
+  if not requested:
+    return "No specific knowledge provided for these components."
+
   if not knowledge_dir.exists():
     return "No specific knowledge provided for these components."
+
+  stem_to_path = {
+    item.stem.lower(): item for item in knowledge_dir.glob("*.md") if item.is_file()
+  }
   chunks = []
-  for component in components:
+  for component in requested:
     candidate = knowledge_dir / f"{component}.md"
     if candidate.exists():
       chunks.append(candidate.read_text(encoding="utf-8"))
-  return (
-    "\n".join(chunks)
-    if chunks
-    else "No specific knowledge provided for these components."
-  )
+      continue
+
+    lowered = component.lower()
+    if lowered in stem_to_path:
+      chunks.append(stem_to_path[lowered].read_text(encoding="utf-8"))
+
+  if chunks:
+    return "\n".join(chunks)
+
+  return "No specific knowledge provided for these components."
 
 
 def _flatten_tests(pr_info: PRInfo) -> list[Test]:
