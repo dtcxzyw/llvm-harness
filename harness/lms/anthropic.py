@@ -24,6 +24,12 @@ class ClaudeAgent(AgentBase):
       self.thinking = "disabled"
     else:
       self.thinking = "adaptive"
+    self.console.print(
+      "WARNING: Temperature setting has been deprecated for Claude models and will be ignored."
+    )
+    self.console.print(
+      "WARNING: Top-p setting has been deprecated for Claude models and will be ignored."
+    )
     api_key = os.environ.get("LLVM_HARNESS_LM_API_KEY")
     base_url = os.environ.get("LLVM_HARNESS_LM_API_ENDPOINT") or None
     self.client = Anthropic(api_key=api_key, base_url=base_url)
@@ -60,7 +66,6 @@ class ClaudeAgent(AgentBase):
       response = self._completion_api_with_backoff(
         model=self.model,
         messages=messages,
-        temperature=self.temperature,
         max_tokens=self.max_completion_tokens,
         thinking=self.thinking,
         tools=(
