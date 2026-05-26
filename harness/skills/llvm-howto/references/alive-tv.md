@@ -81,6 +81,12 @@ the transformation is incorrect. Possible causes:
 - Unsupported IR feature
 - Complex transformation beyond solver capacity
 
+Suggestions are to use smaller bitwidths such as:
+
+- `i8` instead of `i32` or `i64`
+- `half` instead of `float` or `double`
+- `target datalayout="p:8:8:8"` instead of pointer with larger address space or alignment
+
 ### Alive2 error
 
 ```
