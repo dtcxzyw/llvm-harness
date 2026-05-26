@@ -45,14 +45,14 @@ def _append_query(url: str, **params) -> str:
 
 def _github_headers(accept: str) -> dict[str, str]:
   token = os.environ.get("LAB_GITHUB_TOKEN")
-  if not token:
-    raise RuntimeError("The environment variable LAB_GITHUB_TOKEN is not set.")
-  return {
+  headers = {
     "X-GitHub-Api-Version": "2022-11-28",
-    "Authorization": f"Bearer {token}",
     "Accept": accept,
     "User-Agent": "llvm-autofix-autoreview",
   }
+  if token:
+    headers["Authorization"] = f"Bearer {token}"
+  return headers
 
 
 def _github_get(url: str, *, accept: str) -> tuple[bytes, object]:
