@@ -14,6 +14,14 @@ _OPT_CRASH_INDICATORS = [
   "Broken module found",
   "does not dominate all uses",
   "PLEASE submit a bug report",
+  "opt crashed:",
+]
+
+_OPT_CRASH_FALSE_POSITIVES = [
+  "PHI nodes not grouped at top of basic block!",
+  "immarg operand has non-immediate parameter",
+  "fpmath requires a floating point result!",
+  "did not reach a fixpoint",
 ]
 
 llvm_dir = os.environ["LAB_LLVM_DIR"]
@@ -43,6 +51,8 @@ def _decode_output(output):
 
 
 def is_opt_crash(msg: str) -> bool:
+  if any(indicator in msg for indicator in _OPT_CRASH_FALSE_POSITIVES):
+    return False
   return any(indicator in msg for indicator in _OPT_CRASH_INDICATORS)
 
 
