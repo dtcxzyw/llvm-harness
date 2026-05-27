@@ -48,7 +48,7 @@ def _github_headers(accept: str) -> dict[str, str]:
   headers = {
     "X-GitHub-Api-Version": "2022-11-28",
     "Accept": accept,
-    "User-Agent": "llvm-autofix-autoreview",
+    "User-Agent": "llvm-autoreview",
   }
   if token:
     headers["Authorization"] = f"Bearer {token}"
