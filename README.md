@@ -19,13 +19,14 @@ llvm-harness is an agentic harness of [LLVM](https://github.com/llvm/llvm-projec
 
 ## 🗺️ Overview
 
-Agents are being increasingly applied to real-world software engineering tasks, but their performance on complex, real-world codebases remains underexplored. Our evaluation of frontier models, including GPT‑5, Gemini 2.5 Pro, DeepSeek V3.2, and Qwen 3 Max, highlights several findings:
+Agents are being increasingly applied to real-world software engineering tasks, but their performance on complex, real-world codebases for example LLVM remains underexplored. Our evaluation of frontier models, including GPT‑5, Gemini 2.5 Pro, DeepSeek V3.2, and Qwen 3 Max, highlights several findings:
 
 1. Although these models perform well on general SWE-bench Verified, they struggle on `llvm-bench live`: ~60% vs. ~38%.
-3. As benchmark splits become more challenging (easy $\to$ medium $\to$ difficult), the performance of frontier models degrades significantly.
-4. After code review by LLVM developers, the *true* bug-fixing capability of frontier models remains below 15%.
+2. As benchmark splits become more challenging (easy $\to$ medium $\to$ difficult), the performance of frontier models degrades significantly.
+3. After code review by LLVM developers, the *true* bug-fixing capability of frontier models remains below 15%.
 
 This project aims to bridge the gap between frontier models and LLVM by providing a comprehensive agentic harness, including tools, skills, and benchmarks. We have developed two minimal proof-of-concept agents, and with this harness:
+
 1. `llvm-autofix (mini)` outperforms `mini-SWE-agent` by ~50% on `llvm-bench (live)` after code review, leading to a ~21% true bug-fixing capability.
 2. `llvm-autoreview (archer)` has found more than 50 real LLVM bugs by reviewing LLVM's open and closed PRs. The most up-to-date Archer lives at: https://github.com/cuhk-s3/Archer.
 
@@ -55,7 +56,7 @@ python -m autofix.mini --autoreduce --issue <issue_id> --model <model_name>
 
 where `<issue_id>` is the ID of the issue you want to fix, which can be found in the URL of [llvm-autoreduce issues](https://github.com/dtcxzyw/llvm-autoreduce/issues).
 
-**Lauch `llvm-autoreview` on a specific PR with:**
+**Launch `llvm-autoreview` on a specific PR with:**
 
 ```bash
 python -m autoreview.archer --pr <pr_id> --model <model_name>
