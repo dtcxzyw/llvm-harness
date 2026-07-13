@@ -25,6 +25,8 @@ RUN export DEBIAN_FRONTEND=noninteractive \
         vim \
         tmux \
         zstd \
+        uuid-dev \
+        openjdk-25-jre \
     && apt autoremove -y && apt clean -y \
     && rm -rf /var/lib/apt/lists/*
 

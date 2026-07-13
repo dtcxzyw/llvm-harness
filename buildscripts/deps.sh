@@ -54,6 +54,22 @@ DEP_RE2C_SOURCE_DIR=${DEP_RE2C_DIR}/re2c-${DEP_RE2C_VERSION}
 DEP_RE2C_BUILD_DIR=${DEP_RE2C_DIR}/build
 
 #-================================
+# backend-tv
+#-================================
+
+DEP_BACKEND_TV_DIR=${LLVM_HARNESS_DEPS_DIR}/backend-tv
+DEP_BACKEND_TV_VERSION=d580e3942720b36eda7e4046be92562fb9452dbd
+DEP_BACKEND_TV_SOURCE_DIR=${DEP_BACKEND_TV_DIR}/backend-tv
+DEP_BACKEND_TV_BUILD_DIR=${DEP_BACKEND_TV_DIR}/backend-tv/build
+
+# ANTLR4
+
+DEP_ANTLR4_DIR=${LLVM_HARNESS_DEPS_DIR}/altlr4
+DEP_ANTLR4_VERSION=4.13.2
+DEP_ANTLR4_SOURCE_DIR=${DEP_ANTLR4_DIR}/antlr4
+DEP_ANTLR4_BUILD_DIR=${DEP_ANTLR4_DIR}/build
+
+#-================================
 # llubi (legacy)
 #-================================
 
