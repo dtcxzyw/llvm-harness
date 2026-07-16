@@ -93,16 +93,12 @@ sudo ninja -C ${DEP_ALIVE2_BUILD_DIR} install
 # backend-tv
 #-================================
 
-mkdir -p ${DEP_BACKEND_TV_BUILD_DIR}
-
 # aslp-server
 
-sh <(curl -L https://nixos.org/nix/install) --no-daemon
-mkdir -p  ~/.config/nix
-printf "extra-trusted-users = $USER\nexperimental-features = nix-command flakes\n" | tee -a ~/.config/nix/nix.conf
+curl -L https://nixos.org/nix/install | sh -s -- --no-daemon
+mkdir -p ~/.config/nix
+printf "extra-trusted-users = $LLVM_HARNESS_ADMIN_USERNAME\nexperimental-features = nix-command flakes\n" | tee -a ~/.config/nix/nix.conf
 PATH=~/.nix-profile/bin:$PATH
-nix build 'github:katrinafyi/pac-nix#aslp-server' -o ${DEP_BACKEND_TV_BUILD_DIR}/aslp
-nix build 'nixpkgs#varnish' -o ${DEP_BACKEND_TV_BUILD_DIR}/varnish
 
 # antlr4
 
@@ -111,7 +107,7 @@ wget https://www.antlr.org/download/antlr-${DEP_ANTLR4_VERSION}-complete.jar -O 
 wget https://www.antlr.org/download/antlr4-cpp-runtime-${DEP_ANTLR4_VERSION}-source.zip -O ${DEP_ANTLR4_SOURCE_DIR}/antlr-runtime.zip
 unzip ${DEP_ANTLR4_SOURCE_DIR}/antlr-runtime.zip -d ${DEP_ANTLR4_SOURCE_DIR}
 cmake -S ${DEP_ANTLR4_SOURCE_DIR} -B ${DEP_ANTLR4_BUILD_DIR} -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_BUILD_TYPE=Release -DANTLR4_INSTALL=ON
 ninja -C ${DEP_ANTLR4_BUILD_DIR}
 sudo ninja -C ${DEP_ANTLR4_BUILD_DIR} install
 
@@ -120,8 +116,11 @@ sudo ninja -C ${DEP_ANTLR4_BUILD_DIR} install
 mkdir -p ${DEP_BACKEND_TV_DIR}
 git clone https://github.com/regehr/alive2 ${DEP_BACKEND_TV_SOURCE_DIR}
 git -C ${DEP_BACKEND_TV_SOURCE_DIR} checkout ${DEP_BACKEND_TV_VERSION}
+mkdir -p ${DEP_BACKEND_TV_BUILD_DIR}
+nix build 'github:katrinafyi/pac-nix#aslp-server' -o ${DEP_BACKEND_TV_BUILD_DIR}/aslp
+nix build 'nixpkgs#varnish' -o ${DEP_BACKEND_TV_BUILD_DIR}/varnish
 cmake -S ${DEP_BACKEND_TV_SOURCE_DIR} -B ${DEP_BACKEND_TV_BUILD_DIR} -DBUILD_TV=1 \
-  -DCMAKE_PREFIX_PATH=${DEP_LLVM_BUILD_DIR} \
+  -DLLVM_DIR=${DEP_LLVM_BUILD_DIR}/lib/cmake/llvm \
   -DANTLR4_JAR_LOCATION=${DEP_ANTLR4_SOURCE_DIR}/antlr-complete.jar \
   -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja -C ${DEP_BACKEND_TV_BUILD_DIR}

@@ -43,7 +43,7 @@ chmod 0440 /etc/sudoers.d/$LLVM_HARNESS_ADMIN_USERNAME
 mkdir -p $LLVM_HARNESS_DEPS_DIR
 chown $LLVM_HARNESS_ADMIN_USERNAME:$LLVM_HARNESS_ADMIN_USERNAME $LLVM_HARNESS_DEPS_DIR
 chmod 775 $LLVM_HARNESS_DEPS_DIR # Grant users in our group the same permission as the admin user
-sudo -E -u $LLVM_HARNESS_ADMIN_USERNAME /usr/bin/env bash $LLVM_HARNESS_INSTALL_SCRIPT_DIR/install.sh
+sudo -E -u $LLVM_HARNESS_ADMIN_USERNAME HOME=/home/$LLVM_HARNESS_ADMIN_USERNAME /usr/bin/env bash $LLVM_HARNESS_INSTALL_SCRIPT_DIR/install.sh
 
 # Clean up the installation script directory
 rm -rf $LLVM_HARNESS_INSTALL_SCRIPT_DIR
