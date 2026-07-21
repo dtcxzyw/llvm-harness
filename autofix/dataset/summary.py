@@ -9,6 +9,7 @@ import harness.llvm.intern.llvm as llvm_helper
 bug_type = {
   "miscompilation": 0,
   "crash": 0,
+  "backend-miscompilation": 0,
 }
 components = {}
 labels = {}

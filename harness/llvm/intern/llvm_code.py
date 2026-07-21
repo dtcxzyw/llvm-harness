@@ -442,6 +442,8 @@ class LlvmCode:
       "llvm/lib/Transforms/IPO/",
       "llvm/lib/Transforms/",
       "llvm/lib/IR/",
+      "llvm/lib/CodeGen/",
+      "llvm/lib/Target/",
     ]
     components = set()
     for file in diff_files:

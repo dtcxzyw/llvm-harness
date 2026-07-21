@@ -33,7 +33,7 @@ class IssueCard:
   """
 
   # Required
-  bug_type: str  # "crash" | "miscompilation" | "hang"
+  bug_type: str  # "crash" | "miscompilation" | "backend-miscompilation" | "hang"
   reproducers: list[Reproducer]
 
   # Optional (defaults for open issues)
@@ -52,7 +52,7 @@ class IssueCard:
 _RUN_RE = re.compile(r"^\s*;\s*RUN:\s*(.+?)\s*$")
 _BUG_RE = re.compile(r"^\s*;\s*BUG:\s*(\S+)\s*$")
 
-SUPPORTED_BUG_TYPES = {"crash", "miscompilation"}
+SUPPORTED_BUG_TYPES = {"crash", "miscompilation", "backend-miscompilation"}
 
 
 def _sanitize_run_command(raw: str) -> str:
@@ -88,7 +88,7 @@ def parse_lit_reproducer(path: str | Path) -> tuple[Reproducer, str]:
 
   The file must contain:
 
-  * ``; BUG: crash`` or ``; BUG: miscompilation``
+  * ``; BUG: crash``, ``; BUG: miscompilation``, or ``; BUG: backend-miscompilation``
   * ``; RUN: opt …`` — the reproduction command (FileCheck pipelines stripped)
 
   Returns ``(Reproducer, bug_type)``. Raises ``ValueError`` on any failure.
@@ -143,10 +143,14 @@ def parse_lit_reproducer_text(
   if not command:
     raise ValueError(f"{source}: `; RUN:` line is empty after sanitization.")
   tool = command.split()[0].rsplit("/", 1)[-1]
-  if tool != "opt":
+  if bug_type == "backend-miscompilation":
+    allowed_tools = {"llc"}
+  else:
+    allowed_tools = {"opt"}
+  if tool not in allowed_tools:
     raise ValueError(
-      f"{source}: only `opt` is supported in ad-hoc mode; got {tool!r}. "
-      f"Other tools (lli, llc, clang, …) are not yet supported."
+      f"{source}: only {', '.join(sorted(allowed_tools))} is supported "
+      f"for bug type {bug_type!r}; got {tool!r}."
     )
 
   reproducer = Reproducer(

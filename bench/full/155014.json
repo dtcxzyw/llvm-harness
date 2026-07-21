@@ -1,0 +1,90 @@
+{
+  "base_commit": "c33ccfa52b2db90bae72ac11ee50639231e93310",
+  "bug_id": "155014",
+  "bug_type": "backend-miscompilation",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "foldSelectOfCTTZOrCTLZ"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          18837,
+          18842
+        ],
+        [
+          18845,
+          18851
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "cb89ffdd34aa6b7e6d1417ef68e1d837c8e651a1"
+  },
+  "issue": {
+    "author": "regehr",
+    "body": "this function:\n```\ndeclare i7 @llvm.cttz.i7(i7, i1 immarg)\n\ndefine i7 @f(i7 %0) {\n  %2 = call i7 @llvm.cttz.i7(i7 %0, i1 false)\n  %3 = icmp eq i7 %0, 0\n  %4 = select i1 %3, i7 0, i7 %2\n  ret i7 %4\n}\n```\nis getting miscompiled by the RISCV64+B backend as:\n```\nf:\n\tori\ta0, a0, 128\n\tctz\ta0, a0\n\tandi\ta0, a0, 6\n\tret\n```\nthe `6` in the output doesn't make sense, it is coming from an insufficiently-protected `Bitwidth - 1`. \n\n@MitchBriles, a student working with me, has the following candidate patch. it certainly fixes this case but we've not fully vetted it yet. actually, if nobody is in a rush to fix this, Mitch would like to be the one to submit the PR for it.\n\n```\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 4a1db80076..7a5ebf74c4 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -18740,6 +18740,10 @@ static SDValue foldSelectOfCTTZOrCTLZ(SDNode *N, SelectionDAG &DAG) {\n   if (Cond->getOperand(0) != CountZeroesArgument)\n     return SDValue();\n \n+  unsigned BitWidth = CountZeroes.getValueSizeInBits();\n+  if (!isPowerOf2_32(BitWidth))\n+    return SDValue();\n+\n   if (CountZeroes.getOpcode() == ISD::CTTZ_ZERO_UNDEF) {\n     CountZeroes = DAG.getNode(ISD::CTTZ, SDLoc(CountZeroes),\n                               CountZeroes.getValueType(), CountZeroesArgument);\n@@ -18748,7 +18752,6 @@ static SDValue foldSelectOfCTTZOrCTLZ(SDNode *N, SelectionDAG &DAG) {\n                               CountZeroes.getValueType(), CountZeroesArgument);\n   }\n \n-  unsigned BitWidth = CountZeroes.getValueSizeInBits();\n   SDValue BitWidthMinusOne =\n       DAG.getConstant(BitWidth - 1, SDLoc(N), CountZeroes.getValueType());\n ```\n",
+    "comments": [
+      {
+        "author": "lenary",
+        "body": "Please do have Mitch go ahead and submit that patch. We're at a good point in the release cycle that this doesn't have to be fixed yesterday.\n\nThe preferred way the PR should be structured is similar to instcombine PRs: a commit that adds (in this case, `llc` tests), and then a second commit that fixes the issue and updates the test output. Use of `llvm/utils/update_llc_test_checks.py` is encouraged\n\n"
+      },
+      {
+        "author": "lenary",
+        "body": "(If mitch comments on this issue, I can assign it to him)"
+      },
+      {
+        "author": "MitchBriles",
+        "body": "Great, thanks. I'll start working on a PR."
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "miscompilation"
+    ],
+    "title": "risc-v backend miscompile of cttz-related optimization"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/155014",
+  "knowledge_cutoff": "2025-08-22T19:04:07Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit cb89ffdd34aa6b7e6d1417ef68e1d837c8e651a1\nAuthor: Mitch <mitchbriles@gmail.com>\nDate:   Tue Sep 2 19:13:54 2025 -0600\n\n    [RISCV] Fix incorrect folding of select on ctlz/cttz (#155231)\n    \n    This patch tries to fix\n    [#155014](https://github.com/llvm/llvm-project/issues/155014). The\n    pattern of `ctlz`/`cttz` -> `icmp` -> `select` can occur when accounting\n    for targets which don't support `cttz(0)` or `ctlz(0)`. We can replace\n    this with a mask, but **only on power-of-2 bitwidths**.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 3d07702c6f78..5aef6fbff54f 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -18837,6 +18837,10 @@ static SDValue foldSelectOfCTTZOrCTLZ(SDNode *N, SelectionDAG &DAG) {\n   if (Cond->getOperand(0) != CountZeroesArgument)\n     return SDValue();\n \n+  unsigned BitWidth = CountZeroes.getValueSizeInBits();\n+  if (!isPowerOf2_32(BitWidth))\n+    return SDValue();\n+\n   if (CountZeroes.getOpcode() == ISD::CTTZ_ZERO_UNDEF) {\n     CountZeroes = DAG.getNode(ISD::CTTZ, SDLoc(CountZeroes),\n                               CountZeroes.getValueType(), CountZeroesArgument);\n@@ -18845,7 +18849,6 @@ static SDValue foldSelectOfCTTZOrCTLZ(SDNode *N, SelectionDAG &DAG) {\n                               CountZeroes.getValueType(), CountZeroesArgument);\n   }\n \n-  unsigned BitWidth = CountZeroes.getValueSizeInBits();\n   SDValue BitWidthMinusOne =\n       DAG.getConstant(BitWidth - 1, SDLoc(N), CountZeroes.getValueType());\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=riscv64 -mattr=+zbb -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -verify-machineinstrs < %s"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/ctz_zero_return_test.ll",
+      "tests": [
+        {
+          "test_body": "define i16 @test_ctlz_select_i16(i16 %0) {\n  %2 = call i16 @llvm.cttz.i16(i16 %0, i1 false)\n  %3 = icmp eq i16 %0, 0\n  %4 = select i1 %3, i16 0, i16 %2\n  ret i16 %4\n}\n\n; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)\ndeclare i16 @llvm.cttz.i16(i16, i1 immarg) #0\n\nattributes #0 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }\n",
+          "test_name": "test_ctlz_select_i16"
+        },
+        {
+          "test_body": "define i10 @test_ctlz_select_i10(i10 %0) {\n  %2 = call i10 @llvm.ctlz.i10(i10 %0, i1 false)\n  %3 = icmp eq i10 %0, 0\n  %4 = select i1 %3, i10 0, i10 %2\n  ret i10 %4\n}\n\n; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)\ndeclare i10 @llvm.ctlz.i10(i10, i1 immarg) #0\n\nattributes #0 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }\n",
+          "test_name": "test_ctlz_select_i10"
+        },
+        {
+          "test_body": "define i7 @test_cttz_select_i7(i7 %0) {\n  %2 = call i7 @llvm.cttz.i7(i7 %0, i1 false)\n  %3 = icmp eq i7 %0, 0\n  %4 = select i1 %3, i7 0, i7 %2\n  ret i7 %4\n}\n\n; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)\ndeclare i7 @llvm.cttz.i7(i7, i1 immarg) #0\n\nattributes #0 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }\n",
+          "test_name": "test_cttz_select_i7"
+        },
+        {
+          "test_body": "define i32 @test_ctlz_select_i32(i32 %0) {\n  %2 = call i32 @llvm.ctlz.i32(i32 %0, i1 false)\n  %3 = icmp eq i32 %0, 0\n  %4 = select i1 %3, i32 0, i32 %2\n  ret i32 %4\n}\n\n; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)\ndeclare i32 @llvm.ctlz.i32(i32, i1 immarg) #0\n\nattributes #0 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }\n",
+          "test_name": "test_ctlz_select_i32"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

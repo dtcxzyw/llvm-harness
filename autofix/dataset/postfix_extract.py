@@ -16,17 +16,19 @@ harness.require_home_dir()
 
 github_token = os.environ.get("LAB_GITHUB_TOKEN")
 if not github_token:
-  print("Error: The environment variable LAB_GITHUB_TOKEN is not set.")
-  exit(1)
+  print(
+    "Warning: LAB_GITHUB_TOKEN is not set. "
+    "Using unauthenticated access (rate limit: 60 req/hour)."
+  )
 
 session = requests.Session()
-session.headers.update(
-  {
-    "X-GitHub-Api-Version": "2022-11-28",
-    "Authorization": f"Bearer {github_token}",
-    "Accept": "application/vnd.github+json",
-  }
-)
+headers = {
+  "X-GitHub-Api-Version": "2022-11-28",
+  "Accept": "application/vnd.github+json",
+}
+if github_token:
+  headers["Authorization"] = f"Bearer {github_token}"
+session.headers.update(headers)
 
 subprocess.check_output(["llvm-extract", "--version"])
 
@@ -56,7 +58,7 @@ if (issue["state"] != "closed" or issue["state_reason"] != "completed") and not 
   exit(1)
 
 knowledge_cutoff = issue["created_at"]
-timeline = session.get(issue["timeline_url"]).json()
+timeline = session.get(issue["timeline_url"] + "?per_page=100").json()
 fix_commit = None
 
 for event in timeline:
@@ -96,6 +98,13 @@ for label in issue["labels"]:
   ]:
     print("This issue is marked as invalid")
     exit(1)
+  if label_name in (
+    "backend",
+    "llvm:codegen",
+    "llvm:SelectionDAG",
+  ) or label_name.startswith("llvm:Target/"):
+    if issue_type == "miscompilation":
+      issue_type = "backend-miscompilation"
 
 base_commit = llvm_helper.git_execute(["rev-parse", fix_commit + "~"]).strip()
 changed_files = llvm_helper.git_execute(
@@ -104,6 +113,16 @@ changed_files = llvm_helper.git_execute(
 if "/AsmParser/" in changed_files or "/Bitcode/" in changed_files:
   print("This issue is marked as invalid")
   exit(0)
+
+if issue_type == "miscompilation":
+  has_backend = (
+    "/Target/" in changed_files
+    or "/CodeGen/" in changed_files
+    or "/SelectionDAG/" in changed_files
+  )
+  has_midend = "/Transforms/" in changed_files or "/Analysis/" in changed_files
+  if has_backend and not has_midend:
+    issue_type = "backend-miscompilation"
 
 # Component level
 components = LlvmCode.infer_related_components(changed_files.split("\n"))
@@ -155,12 +174,61 @@ def remove_target_suffix(path):
   return path
 
 
-lit_test_dir = set(
-  map(
-    lambda x: remove_target_suffix(os.path.dirname(x)),
-    filter(lambda x: x.count("llvm/test/"), changed_files.split("\n")),
-  )
-)
+def _trim_to_target_dir(path: str) -> str:
+  """For backend-miscompilation, keep the path up to the target directory,
+  stripping sub-targets like msa/rvv while preserving the main target name.
+  e.g. llvm/test/CodeGen/Mips/msa -> llvm/test/CodeGen/Mips
+  """
+  targets = [
+    "X86",
+    "AArch64",
+    "ARM",
+    "Mips",
+    "RISCV",
+    "PowerPC",
+    "LoongArch",
+    "AMDGPU",
+    "SystemZ",
+    "Hexagon",
+    "NVPTX",
+  ]
+  parts = path.split("/")
+  if len(parts) <= 3:
+    return path
+  if parts[-1] in targets:
+    return path
+  if len(parts) >= 4 and parts[-2] in targets:
+    return "/".join(parts[:-1])
+  return path
+
+
+lit_test_dir = set()
+for path in filter(lambda x: x.count("llvm/test/"), changed_files.split("\n")):
+  d = os.path.dirname(path)
+  if issue_type == "backend-miscompilation":
+    d = _trim_to_target_dir(d)
+  else:
+    d = remove_target_suffix(d)
+  lit_test_dir.add(d)
+
+
+def _extract_triple_from_cmd(cmd: str) -> str | None:
+  m = re.search(r"-mtriple[= ](\S+)", cmd)
+  if m:
+    return m.group(1)
+  m = re.search(r"-march[= ](\S+)", cmd)
+  if m:
+    return m.group(1)
+  return None
+
+
+def _extract_target_triple(ir: str) -> str | None:
+  m = re.search(r'target triple\s*=\s*"(.+?)"', ir)
+  if m:
+    return m.group(1)
+  return None
+
+
 tests = []
 # FIXME: Run line extraction is fragile. It doesn't handle the cases that involve macros.
 # FIXME: The comments in regression tests may leak information about the original issue.
@@ -171,7 +239,29 @@ for file in test_patchset:
   commands = []
   for match in re.findall(runline_pattern, test_file):
     commands.append(match.strip())
-  if issue_type != "miscompilation" and file.is_added_file:
+
+  if issue_type == "backend-miscompilation":
+    ir_triple = _extract_target_triple(test_file)
+    filtered = []
+    for cmd in commands:
+      triple = _extract_triple_from_cmd(cmd)
+      if not triple:
+        triple = ir_triple
+        if triple:
+          cmd += f" -mtriple={triple}"
+      if triple and (
+        triple.startswith("riscv64")
+        or triple.startswith("aarch64")
+        or triple.startswith("arm64")
+      ):
+        filtered.append(cmd)
+    commands = filtered
+    if not commands:
+      continue
+  if (
+    issue_type not in ("miscompilation", "backend-miscompilation")
+    and file.is_added_file
+  ):
     print(file.path, "full")
 
     def is_valid_test_line(line: str):

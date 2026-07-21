@@ -20,6 +20,9 @@ llvm_dir = os.environ["LAB_LLVM_DIR"]
 __llvm_build_dir = os.environ["LAB_LLVM_BUILD_DIR"]
 llvm_alive_tv = os.environ["LAB_LLVM_ALIVE_TV"]
 llvm_llubi_legacy = os.environ["LAB_LLVM_LLUBI_LEGACY"]
+llvm_backend_tv = os.environ.get(
+  "LAB_LLVM_BACKEND_TV", "/llvm-harness-deps/backend-tv/backend-tv/build/backend-tv"
+)
 dataset_dir = os.environ["LAB_DATASET_DIR"]
 if "--quiet" not in subprocess.run(
   ["ninja", "--help"], capture_output=True
@@ -169,6 +172,45 @@ def alive2_check(src: str, tgt: str, additional_args: str, repro: bool):
     return (False, str(e) + "\n" + _decode_output(e.output))
 
 
+def backend_tv_check(
+  ir: str, asm: str, backend: str, additional_args: str, repro: bool
+):
+  try:
+    with tempfile.NamedTemporaryFile(suffix=".ll") as ir_file:
+      with tempfile.NamedTemporaryFile(suffix=".s") as asm_file:
+        ir_file.write(ir.encode())
+        asm_file.write(asm.encode())
+        ir_file.flush()
+        asm_file.flush()
+
+        args = [
+          llvm_backend_tv,
+          "--asm-input",
+          asm_file.name,
+          "--backend",
+          backend,
+          "--disable-undef-input",
+        ]
+        if additional_args:
+          args += additional_args.strip().split(" ")
+        args.append(ir_file.name)
+
+        out = subprocess.check_output(args, stderr=subprocess.STDOUT).decode()
+        success = (
+          "0 incorrect transformations" in out
+          and "0 failed-to-prove transformations" in out
+          and "0 Alive2 errors" in out
+        )
+        failure = (
+          "0 incorrect transformations" not in out
+          and "0 failed-to-prove transformations" in out
+          and "0 Alive2 errors" in out
+        )
+        return (failure if repro else success, {"log": out})
+  except subprocess.CalledProcessError as e:
+    return (False, str(e) + "\n" + _decode_output(e.output))
+
+
 def copy_triple(input: str, out: bytes):
   triple_pattern = "target triple ="
   if triple_pattern in input:
@@ -193,6 +235,31 @@ def copy_datalayout(input: str, out: bytes):
   return input
 
 
+def _extract_backend_target(args: str) -> str:
+  """Extract the target backend name from an llc command string.
+
+  Parses ``-mtriple`` (e.g. ``aarch64-unknown-linux-gnu`` → ``aarch64``)
+  or ``-march`` (e.g. ``-march=aarch64`` → ``aarch64``). Normalses aliases
+  (``arm64`` → ``aarch64``) for ``backend-tv`` compatibility. Returns an
+  empty string when no target is found (backend-tv will use its default).
+  """
+  import re
+
+  m = re.search(r"-mtriple[= ](\S+)", args)
+  if m:
+    arch = m.group(1).split("-")[0]
+  else:
+    m = re.search(r"-march[= ](\S+)", args)
+    if m:
+      arch = m.group(1)
+    else:
+      return ""
+
+  if arch in ("arm64", "arm64e"):
+    arch = "aarch64"
+  return arch
+
+
 def verify_dispatch(
   repro: bool,
   input: str,
@@ -200,6 +267,15 @@ def verify_dispatch(
   type: str,
   additional_args: str,
 ):
+  if type == "backend-miscompilation":
+    tool_name = "llc"
+    timeout = 60.0
+  else:
+    tool_name = "opt"
+    timeout = 600.0 if type == "crash" else 10.0
+
+  tool_path = os.path.join(__llvm_build_dir, "bin", tool_name)
+
   args_list = list(
     filter(
       lambda x: x != "",
@@ -208,7 +284,7 @@ def verify_dispatch(
       .replace("2>&1", "")
       .replace("'", "")
       .replace('"', "")
-      .replace("opt", os.path.join(__llvm_build_dir, "bin/opt"), 1)
+      .replace(tool_name, tool_path, 1)
       .strip()
       .split(" "),
     )
@@ -217,7 +293,7 @@ def verify_dispatch(
     out = subprocess.run(
       args_list,
       input=input.encode(),
-      timeout=600.0 if type == "crash" else 10.0,
+      timeout=timeout,
       check=True,
       capture_output=True,
     )
@@ -233,6 +309,18 @@ def verify_dispatch(
         log = _decode_output(out.stderr) + "\n" + log
       else:
         log["opt_stderr"] = _decode_output(out.stderr)
+      return (res, log)
+    if type == "backend-miscompilation":
+      backend = _extract_backend_target(args)
+      asm = out.stdout.decode()
+      backend_tv_args = "--smt-to=60000"
+      if additional_args:
+        backend_tv_args += " " + additional_args
+      res, log = backend_tv_check(input, asm, backend, backend_tv_args, repro)
+      if isinstance(log, str):
+        log = _decode_output(out.stderr) + "\n" + log
+      else:
+        log["llc_stderr"] = _decode_output(out.stderr)
       return (res, log)
     return (not repro, "success\n" + _decode_output(out.stderr))
   except subprocess.CalledProcessError as e:
