@@ -1,0 +1,114 @@
+{
+  "base_commit": "375af75efb2ed24f17c1d261bc3c094cac644509",
+  "bug_id": "145363",
+  "bug_type": "backend-miscompilation",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/include/llvm/CodeGen/SelectionDAGNodes.h": [
+        "getBasePtr",
+        "getChain",
+        "refineAlignment"
+      ],
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp": [
+        "SelectionDAG::AddModifiedNodeToCSEMaps",
+        "SelectionDAG::getAtomic",
+        "SelectionDAG::getLoadVP"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/include/llvm/CodeGen/SelectionDAGNodes.h": [
+        [
+          1497,
+          1502
+        ]
+      ],
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp": [
+        [
+          1275,
+          1280
+        ],
+        [
+          9110,
+          9117
+        ],
+        [
+          9402,
+          9409
+        ],
+        [
+          9623,
+          9630
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "9df1c81fee5b304ca412f45eb922d8069b0aa996"
+  },
+  "issue": {
+    "author": "regehr",
+    "body": "let's take this function:\n```llvm\ndefine i32 @f(ptr %0) {\n  %2 = load i32, ptr %0, align 4, !range !0\n  %3 = load i32, ptr %0, align 4\n  %4 = add i32 1206154280, %3\n  ret i32 %4\n}\n\n!0 = !{i32 1, i32 2, i32 3, i32 4}\n```\nboth the risc64 and aarch64 backends lower it to something that does an `or` instead of an `add`:\n```\nf:\n        lw      a0, 0(a0)\n        lui     a1, 294471\n        addi    a1, a1, 1064\n        or      a0, a0, a1\n        ret\n```\nthis would work fine if it was `%2` that was getting added, but it's `%3`. if the range invariant isn't respected by the data in memory `%2` harmlessly gets poison, but this doesn't allow us to infer anything about `%3`\n\ncc @nunoplopes \n",
+    "comments": [
+      {
+        "author": "jroelofs",
+        "body": "Why isn't this a valid GVN-ing of `%3` => `%2`? https://alive2.llvm.org/ce/z/xbMspv"
+      },
+      {
+        "author": "regehr",
+        "body": "> Why isn't this a valid GVN-ing of `%2` => `%3`? https://alive2.llvm.org/ce/z/xbMspv\n\nthe transformation makes the code valid in fewer situations than the original code was-- it returns poison more often, so it can't be done. when doing any sort of CSE, we'll need to take the intersection of the non-poison-generating ranges, not the union."
+      },
+      {
+        "author": "topperc",
+        "body": "This fixes this case, but I'm not sure if there are other CSE paths we need to fix.\n\n```\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp b/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\nindex 30ee6a99b9df..64fd8848f534 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\n@@ -9403,6 +9403,8 @@ SDValue SelectionDAG::getLoad(ISD::MemIndexedMode AM, ISD::LoadExtType ExtType,\n   void *IP = nullptr;\n   if (SDNode *E = FindNodeOrInsertPos(ID, dl, IP)) {\n     cast<LoadSDNode>(E)->refineAlignment(MMO);\n+    if (cast<LoadSDNode>(E)->getMemOperand()->getRanges() && !MMO->getRanges())\n+      cast<LoadSDNode>(E)->getMemOperand()->clearRanges();\n     return SDValue(E, 0);\n   }\n   auto *N = newSDNode<LoadSDNode>(dl.getIROrder(), dl.getDebugLoc(), VTs, AM,\n```"
+      },
+      {
+        "author": "regehr",
+        "body": "Craig do you want to intersect the ranges instead of clearing?"
+      },
+      {
+        "author": "topperc",
+        "body": "> Craig do you want to intersect the ranges instead of clearing?\n\nI agree that would be more correct, but we're holding a reference to an IR metadata node. I wasn't sure about creating new IR metadata nodes that aren't used by IR itself."
+      },
+      {
+        "author": "topperc",
+        "body": "> > Craig do you want to intersect the ranges instead of clearing?\n> \n> I agree that would be more correct, but we're holding a reference to an IR metadata node. I wasn't sure about creating new IR metadata nodes that aren't used by IR itself.\n\nLooks like we do create a new node in at least one place in DAGCombiner so I guess it should be ok."
+      }
+    ],
+    "labels": [
+      "miscompilation",
+      "llvm:SelectionDAG"
+    ],
+    "title": "riscv64 and aarch64 backends propagating range metadata too aggressively"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/145363",
+  "knowledge_cutoff": "2025-06-23T17:08:00Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 9df1c81fee5b304ca412f45eb922d8069b0aa996\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Fri Jun 27 08:58:06 2025 -0700\n\n    [SelectionDAG] Combine range metadata when loads are CSEd. (#146026)\n    \n    When CSEing a load with an existing load with different range\n    metadata, clear the range metadata on the existing\n    load.\n    \n    This is conservative, alternatively we could calculate new range\n    metadata using MDNode::getMostGenericRange. Without a test case I wasn't\n    sure it was worth it.\n    \n    MDnode::getMostGenericRange takes a non-const MDNode*, but all of\n    SelectionDAG\n    uses const MDNode*. A const_cast will need to be used somewhere or\n    we need to make the codebase consistent about whether MDNode pointers\n    should be const or not.\n    \n    I'm sure this isn't the only place that needs to be updated to handle\n    the CSE.\n    \n    Fixes #145363.\n\ndiff --git a/llvm/include/llvm/CodeGen/SelectionDAGNodes.h b/llvm/include/llvm/CodeGen/SelectionDAGNodes.h\nindex 92da4ef7f055..a3675eecfea3 100644\n--- a/llvm/include/llvm/CodeGen/SelectionDAGNodes.h\n+++ b/llvm/include/llvm/CodeGen/SelectionDAGNodes.h\n@@ -1497,6 +1497,14 @@ public:\n     MMO->refineAlignment(NewMMO);\n   }\n \n+  void refineRanges(const MachineMemOperand *NewMMO) {\n+    // If this node has range metadata that is different than NewMMO, clear the\n+    // range metadata.\n+    // FIXME: Union the ranges instead?\n+    if (getRanges() && getRanges() != NewMMO->getRanges())\n+      MMO->clearRanges();\n+  }\n+\n   const SDValue &getChain() const { return getOperand(0); }\n \n   const SDValue &getBasePtr() const {\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp b/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\nindex 790d2972448f..fe9a6ea3e77e 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\n@@ -1275,6 +1275,8 @@ SelectionDAG::AddModifiedNodeToCSEMaps(SDNode *N) {\n       // to replace the dead one with the existing one.  This can cause\n       // recursive merging of other unrelated nodes down the line.\n       Existing->intersectFlagsWith(N->getFlags());\n+      if (auto *MemNode = dyn_cast<MemSDNode>(Existing))\n+        MemNode->refineRanges(cast<MemSDNode>(N)->getMemOperand());\n       ReplaceAllUsesWith(N, Existing);\n \n       // N is now dead. Inform the listeners and delete it.\n@@ -9110,8 +9112,9 @@ SDValue SelectionDAG::getAtomic(unsigned Opcode, const SDLoc &dl, EVT MemVT,\n   ID.AddInteger(MMO->getPointerInfo().getAddrSpace());\n   ID.AddInteger(MMO->getFlags());\n   void* IP = nullptr;\n-  if (SDNode *E = FindNodeOrInsertPos(ID, dl, IP)) {\n-    cast<AtomicSDNode>(E)->refineAlignment(MMO);\n+  if (auto *E = cast_or_null<AtomicSDNode>(FindNodeOrInsertPos(ID, dl, IP))) {\n+    E->refineAlignment(MMO);\n+    E->refineRanges(MMO);\n     return SDValue(E, 0);\n   }\n \n@@ -9402,8 +9405,9 @@ SDValue SelectionDAG::getLoad(ISD::MemIndexedMode AM, ISD::LoadExtType ExtType,\n   ID.AddInteger(MMO->getPointerInfo().getAddrSpace());\n   ID.AddInteger(MMO->getFlags());\n   void *IP = nullptr;\n-  if (SDNode *E = FindNodeOrInsertPos(ID, dl, IP)) {\n-    cast<LoadSDNode>(E)->refineAlignment(MMO);\n+  if (auto *E = cast_or_null<LoadSDNode>(FindNodeOrInsertPos(ID, dl, IP))) {\n+    E->refineAlignment(MMO);\n+    E->refineRanges(MMO);\n     return SDValue(E, 0);\n   }\n   auto *N = newSDNode<LoadSDNode>(dl.getIROrder(), dl.getDebugLoc(), VTs, AM,\n@@ -9623,8 +9627,9 @@ SDValue SelectionDAG::getLoadVP(ISD::MemIndexedMode AM,\n   ID.AddInteger(MMO->getPointerInfo().getAddrSpace());\n   ID.AddInteger(MMO->getFlags());\n   void *IP = nullptr;\n-  if (SDNode *E = FindNodeOrInsertPos(ID, dl, IP)) {\n-    cast<VPLoadSDNode>(E)->refineAlignment(MMO);\n+  if (auto *E = cast_or_null<VPLoadSDNode>(FindNodeOrInsertPos(ID, dl, IP))) {\n+    E->refineAlignment(MMO);\n+    E->refineRanges(MMO);\n     return SDValue(E, 0);\n   }\n   auto *N = newSDNode<VPLoadSDNode>(dl.getIROrder(), dl.getDebugLoc(), VTs, AM,\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/pr145363.ll",
+      "tests": [
+        {
+          "test_body": "define i32 @f(ptr %p) {\n  %load = load i32, ptr %p, align 4, !range !0\n  %load2 = load i32, ptr %p, align 4\n  %add = add i32 1206154280, %load2\n  ret i32 %add\n}\n\n!0 = !{i32 1, i32 2, i32 3, i32 4}\n",
+          "test_name": "f"
+        },
+        {
+          "test_body": "define i32 @test(ptr %p, i32 %x, ptr %q) {\n  %load = load i32, ptr %p, align 4, !range !0\n  %mul = mul i32 0, %x\n  %a = getelementptr i32, ptr %p, i32 %mul\n  %load2 = load i32, ptr %a, align 4\n  %add = add i32 1206154280, %load2\n  store i32 %load, ptr %q, align 4\n  ret i32 %add\n}\n\n!0 = !{i32 1, i32 2, i32 3, i32 4}\n",
+          "test_name": "test"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

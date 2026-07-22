@@ -302,6 +302,7 @@ for file in test_patchset:
       test_body = test_body.removeprefix(
         "; ModuleID = '<stdin>'\nsource_filename = \"<stdin>\"\n"
       ).removeprefix("\n")
+      test_body = test_body.replace(" nocreateundeforpoison ", " ")
       subtests.append(
         {
           "test_name": test_name,

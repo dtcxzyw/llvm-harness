@@ -1,0 +1,77 @@
+{
+  "base_commit": "a657440bc695a98c54cd95bb7cc4cec5ab811d17",
+  "bug_id": "90936",
+  "bug_type": "backend-miscompilation",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "DAGCombiner::mergeTruncStores"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          8840,
+          8845
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "3563af6c06ebc92bcaacef0e33285148ef0f75bd"
+  },
+  "issue": {
+    "author": "regehr",
+    "body": "here's a function:\r\n```llvm\r\ndefine void @f(i16 %0, ptr %1) {\r\n  %3 = trunc i16 %0 to i8\r\n  %4 = trunc i16 %0 to i14\r\n  %new0 = lshr i14 %4, 8\r\n  store i8 %3, ptr %1, align 1\r\n  %5 = getelementptr i8, ptr %1, i64 1\r\n  %6 = trunc i14 %new0 to i8\r\n  store i8 %6, ptr %5, align 1\r\n  ret void\r\n}\r\n```\r\n\r\nduring codegen, the two 8-bit stores are getting merged:\r\n```\r\n_f:    \r\n\tstrh\tw0, [x1]\r\n\tret\r\n```\r\n\r\nbut the backend seems to miss that the trunc changed the value, it dropped those 2 high bits. \r\nI also have versions of this that improperly merge 16-bit stores and 32-bit stores.\r\n\r\nwe can demonstrate using this driver:\r\n```c\r\n#include <stdio.h>\r\n\r\nvoid f(unsigned short, unsigned char *);\r\n\r\nint main(void) {\r\n  unsigned char mem[8];\r\n\r\n  for (int i=0; i<8; ++i)\r\n    mem[i] = 0xee;\r\n\r\n  f(0xFFFF, mem);\r\n\r\n  for (int i=0; i<8; ++i)\r\n    printf(\"%x\\n\", mem[i]);\r\n}\r\n```\r\n\r\n```\r\nJohns-MacBook-Pro:tmp regehr$ ~/llvm-project/for-alive/bin/llc foo.ll\r\nJohns-MacBook-Pro:tmp regehr$ clang driver.c foo.s && ./a.out \r\nff\r\nff\r\nee\r\nee\r\nee\r\nee\r\nee\r\nee\r\nJohns-MacBook-Pro:tmp regehr$ \r\n```\r\n\r\nin contrast, global isel properly notices that those high bits were chopped off:\r\n```\r\nJohns-MacBook-Pro:tmp regehr$ ~/llvm-project/for-alive/bin/llc foo.ll -global-isel\r\nJohns-MacBook-Pro:tmp regehr$ clang driver.c foo.s && ./a.out \r\nff\r\n3f\r\nee\r\nee\r\nee\r\nee\r\nee\r\nee\r\n```\r\n\r\ncc @hatsunespica\r\n",
+    "comments": [
+      {
+        "author": "topperc",
+        "body": "Looks like it happens on X86 too."
+      },
+      {
+        "author": "regehr",
+        "body": "hi @topperc I started some focused testing to make sure this patch works and it looks like maybe there's another problem lurking here, this time with a 4-way merge. can you take a look at this test case?\r\n```llvm\r\ndefine void @f(i32 %0, ptr %1) {\r\n  %3 = trunc i32 %0 to i8\r\n  store i8 %3, ptr %1, align 1\r\n  %4 = lshr i32 %0, 8\r\n  %5 = trunc i32 %4 to i8\r\n  %6 = getelementptr i8, ptr %1, i64 1\r\n  store i8 %5, ptr %6, align 1\r\n  %7 = lshr i32 %0, 16\r\n  %8 = trunc i32 %7 to i8\r\n  %9 = getelementptr i8, ptr %1, i64 2\r\n  store i8 %8, ptr %9, align 1\r\n  %10 = zext i8 %3 to i32\r\n  %11 = lshr i32 %10, 24\r\n  %12 = getelementptr i8, ptr %1, i64 3\r\n  %13 = trunc i32 %11 to i8\r\n  store i8 %13, ptr %12, align 1\r\n  ret void\r\n}\r\n```\r\nthis codegens to:\r\n```\r\n_f:               \r\n\tand\tw8, w0, #0xff\r\n\tstr\tw8, [x1]\r\n\tret\r\n```\r\nAlive is saying that passing in `0x00800000` as the first argument will result in the wrong value in that 3rd byte of the destination buffer"
+      },
+      {
+        "author": "regehr",
+        "body": "or maybe this is a separate issue? please let me know if I should file separately"
+      },
+      {
+        "author": "topperc",
+        "body": "It's in related code we can reuse this ticket."
+      }
+    ],
+    "labels": [
+      "miscompilation",
+      "llvm:SelectionDAG"
+    ],
+    "title": "miscompile related to coalescing stores in AArch64 SDAG backend"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/90936",
+  "knowledge_cutoff": "2024-05-03T03:59:37Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 3563af6c06ebc92bcaacef0e33285148ef0f75bd\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Fri May 3 09:59:33 2024 -0700\n\n    [DAGCombiner] In mergeTruncStore, make sure we aren't storing shifted in bits. (#90939)\n    \n    When looking through a right shift, we need to make sure that all of\n    the bits we are using from the shift come from the shift input and\n    not the sign or zero bits that are shifted in.\n    \n    Fixes #90936.\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex c0bbea16a642..fc6bbc119d3c 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -8840,6 +8840,10 @@ SDValue DAGCombiner::mergeTruncStores(StoreSDNode *N) {\n       if (ShiftAmtC % NarrowNumBits != 0)\n         return SDValue();\n \n+      // Make sure we aren't reading bits that are shifted in.\n+      if (ShiftAmtC > WideVal.getScalarValueSizeInBits() - NarrowNumBits)\n+        return SDValue();\n+\n       Offset = ShiftAmtC / NarrowNumBits;\n       WideVal = WideVal.getOperand(0);\n     }\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/pr90936.ll",
+      "tests": [
+        {
+          "test_body": "define void @f(i16 %arg, ptr %arg1) {\nbb:\n  %i = trunc i16 %arg to i8\n  %i2 = trunc i16 %arg to i14\n  %i3 = lshr i14 %i2, 8\n  store i8 %i, ptr %arg1, align 1\n  %i4 = getelementptr i8, ptr %arg1, i64 1\n  %i5 = trunc i14 %i3 to i8\n  store i8 %i5, ptr %i4, align 1\n  ret void\n}\n",
+          "test_name": "f"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}
