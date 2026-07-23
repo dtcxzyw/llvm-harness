@@ -1,0 +1,61 @@
+{
+  "base_commit": "274f8332b9d1d460d38516f2c685692a46a93c7a",
+  "bug_id": "76769",
+  "bug_type": "backend-miscompilation",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "performUADDVAddCombine"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          16516,
+          16524
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "780a5116ba68ec8c53b65008b3407479478b2d5e"
+  },
+  "issue": {
+    "author": "regehr",
+    "body": "I'm pretty sure this code is getting miscompiled by the AArch64 backend:\r\n```llvm\r\ndefine i32 @f(ptr %0) {\r\n  %2 = load <4 x i8>, ptr %0, align 8\r\n  %3 = zext <4 x i8> %2 to <4 x i32>\r\n  %4 = add <4 x i32> %3, %3\r\n  %5 = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> %4)\r\n  ret i32 %5\r\n}\r\n\r\ndeclare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>)\r\n```\r\n\r\nllc gives:\r\n```\r\n_f: \r\n\tldr\ts0, [x0]\r\n\tushll.8h\tv0, v0, #0\r\n\tuaddlv.8h\ts0, v0\r\n\tfmov\tw0, s0\r\n\tret\r\n```\r\nbut this is just adding up the values, the other addition that doubles the value of each vector element seems to be getting dropped, the immediate argument to the ushll should be 1, not 0.",
+    "comments": [],
+    "labels": [
+      "backend:AArch64",
+      "miscompilation",
+      "NEON"
+    ],
+    "title": "likely miscompile of vector code by AArch64 backend"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/76769",
+  "knowledge_cutoff": "2024-01-03T00:26:36Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 780a5116ba68ec8c53b65008b3407479478b2d5e\nAuthor: David Green <david.green@arm.com>\nDate:   Sun Jan 7 08:23:17 2024 +0000\n\n    [AArch64] Fix condition for combining UADDV and Add. (#76809)\n    \n    This should have been checking that the transform was valid, but used\n    incorrect conditions letting through invalid combinations of lo/hi\n    extracts.\n    \n    Hopefully fixes #76769\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex 102fd0c3dae2..3583b7d2ce4e 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -16516,9 +16516,9 @@ static SDValue performUADDVAddCombine(SDValue A, SelectionDAG &DAG) {\n     if (Ext0.getOperand(0).getValueType().getVectorNumElements() !=\n         VT.getVectorNumElements() * 2)\n       return SDValue();\n-    if ((Ext0.getConstantOperandVal(1) != 0 &&\n+    if ((Ext0.getConstantOperandVal(1) != 0 ||\n          Ext1.getConstantOperandVal(1) != VT.getVectorNumElements()) &&\n-        (Ext1.getConstantOperandVal(1) != 0 &&\n+        (Ext1.getConstantOperandVal(1) != 0 ||\n          Ext0.getConstantOperandVal(1) != VT.getVectorNumElements()))\n       return SDValue();\n     unsigned Opcode = Op0.getOpcode() == ISD::ZERO_EXTEND ? AArch64ISD::UADDLP\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64"
+      ],
+      "file": "<issue-body>",
+      "tests": [
+        {
+          "test_body": "define i32 @f(ptr %0) {\r\n  %2 = load <4 x i8>, ptr %0, align 8\r\n  %3 = zext <4 x i8> %2 to <4 x i32>\r\n  %4 = add <4 x i32> %3, %3\r\n  %5 = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> %4)\r\n  ret i32 %5\r\n}\r\n\r\ndeclare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>)",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

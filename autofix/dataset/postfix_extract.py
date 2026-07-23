@@ -229,11 +229,25 @@ def _extract_target_triple(ir: str) -> str | None:
   return None
 
 
+def _has_external_calls(ir: str) -> bool:
+  """Check if the IR body calls functions not defined within it.
+  llvm-extract turns referenced module-local functions into declare
+  stubs, which backend-tv cannot handle.
+  """
+  defined = set(re.findall(r"define\s+.+?\s+@(\w+)", ir))
+  called = set(re.findall(r"call\s+.+?\s+@(\w+)", ir))
+  for fn in called - defined:
+    if not fn.startswith("llvm."):
+      return True
+  return False
+
+
 tests = []
 # FIXME: Run line extraction is fragile. It doesn't handle the cases that involve macros.
 # FIXME: The comments in regression tests may leak information about the original issue.
 runline_pattern = re.compile(r"; RUN: (.+)\| FileCheck")
 testname_pattern = re.compile(r"define .+ @([.\w]+)\(")
+llvm_block_pattern = re.compile(r"```(?:llvm\s*\n)?(.*?)```", re.DOTALL)
 for file in test_patchset:
   test_file = llvm_helper.git_execute(["show", f"{fix_commit}:{file.path}"])
   commands = []
@@ -303,6 +317,8 @@ for file in test_patchset:
         "; ModuleID = '<stdin>'\nsource_filename = \"<stdin>\"\n"
       ).removeprefix("\n")
       test_body = test_body.replace(" nocreateundeforpoison ", " ")
+      if _has_external_calls(test_body):
+        continue
       subtests.append(
         {
           "test_name": test_name,
@@ -331,6 +347,56 @@ normalized_issue = {
   "labels": list(map(lambda x: x["name"], issue["labels"])),
   "comments": issue_comments,
 }
+
+# Fallback: extract IR from issue body when no tests found from fix commit.
+if not tests and issue_type == "backend-miscompilation":
+  llvm_blocks = llvm_block_pattern.findall(issue["body"] or "")
+  # Filter blocks that contain LLVM IR definitions.
+  ir_blocks = [b for b in llvm_blocks if re.search(r"\bdefine\b", b)]
+  if ir_blocks:
+    body_ir = ir_blocks[0].strip()
+    func_names = set()
+    for match in testname_pattern.finditer(body_ir):
+      func_names.add(match.group(1))
+    body_triple = _extract_target_triple(body_ir)
+    if not body_triple:
+      ctx = (
+        (issue.get("title") or "")
+        + " "
+        + "\n".join(c["body"] for c in normalized_issue["comments"])
+      ).lower()
+      if "aarch64" in ctx or "arm64" in ctx:
+        body_triple = "aarch64"
+      elif "riscv64" in ctx:
+        body_triple = "riscv64"
+    fallback_cmd = "llc < %s"
+    if body_triple:
+      fallback_cmd += f" -mtriple={body_triple}"
+    fallback_tests = []
+    for fn in func_names:
+      try:
+        fn_body = subprocess.check_output(
+          ["llvm-extract", f"--func={fn}", "-S", "-"],
+          input=body_ir.encode(),
+        ).decode()
+        fn_body = fn_body.removeprefix(
+          "; ModuleID = '<stdin>'\nsource_filename = \"<stdin>\"\n"
+        ).removeprefix("\n")
+        fn_body = fn_body.replace(" nocreateundeforpoison ", " ")
+        if _has_external_calls(fn_body):
+          continue
+        fallback_tests.append({"test_name": fn, "test_body": fn_body})
+      except Exception:
+        pass
+    if not fallback_tests:
+      fallback_tests = [{"test_name": "<module>", "test_body": body_ir}]
+    tests.append(
+      {
+        "file": "<issue-body>",
+        "commands": [fallback_cmd],
+        "tests": fallback_tests,
+      }
+    )
 
 bug_func_count = 0
 for item in bug_location_funcname.values():

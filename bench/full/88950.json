@@ -1,0 +1,126 @@
+{
+  "base_commit": "6578356a4e3e6acd7983c74feab43ac96925894c",
+  "bug_id": "88950",
+  "bug_type": "backend-miscompilation",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64InstrInfo.cpp": [
+        "AArch64InstrInfo::genAlternativeCodeSequence",
+        "genSubAdd2SubSub"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64InstrInfo.cpp": [
+        [
+          6924,
+          6942
+        ],
+        [
+          6966,
+          6978
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "23b6709c72357c8b8f0ffa6cdbd860977441982b"
+  },
+  "issue": {
+    "author": "regehr",
+    "body": "here's a function:\r\n```llvm\r\ndeclare i64 @llvm.sshl.sat.i64(i64, i64) #0\r\n\r\ndefine i64 @f(i64 %0, i64 %1, i64 %2) {\r\n  %4 = or i64 %0, 1\r\n  %5 = add i64 %4, %0\r\n  %6 = sub nsw i64 %1, %5\r\n  %7 = call i64 @llvm.sshl.sat.i64(i64 %6, i64 1)\r\n  ret i64 %7\r\n}\r\n\r\nattributes #0 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }\r\n```\r\nlet's invoke it using this driver:\r\n```c\r\n#include <stdio.h>\r\n\r\n// i64 %#0 = #x5dbdff5f99a88000 (6754835802190544896)\r\n// i64 %#1 = #x0000000000000000 (0)\r\n// i64 %#2 = #x0000000000000000 (0)\r\n\r\nunsigned long f(unsigned long, unsigned long, unsigned long);\r\n\r\nint main(void) {\r\n  printf(\"%lx\\n\", f(6754835802190544896ULL, 0, 0));\r\n}\r\n```\r\nthe result is:\r\n```\r\nJohns-MacBook-Pro:reduce regehr$ ~/llvm-project/for-alive/bin/llc reduced.ll\r\nJohns-MacBook-Pro:reduce regehr$ clang driver.c reduced.s\r\nJohns-MacBook-Pro:reduce regehr$ ./a.out \r\n8000000000000000\r\nJohns-MacBook-Pro:reduce regehr$ \r\n```\r\nbut it looks like the answer should be LONG_MAX instead. here I'll just give Alive's work, which appears correct:\r\n```\r\ni64 %#4 = #x5dbdff5f99a88001 (6754835802190544897)\r\ni64 %#5 = #xbb7bfebf33510001 (13509671604381089793, -4937072469328461823)\r\ni64 %#6 = #x44840140ccaeffff (4937072469328461823)\r\ni64 %#7 = #x7fffffffffffffff (9223372036854775807)\r\n```\r\n",
+    "comments": [
+      {
+        "author": "regehr",
+        "body": "the `nsw` in the bug trigger is necessary, so perhaps this is just a missing freeze"
+      },
+      {
+        "author": "antoniofrighetto",
+        "body": "I'm taking a look."
+      },
+      {
+        "author": "antoniofrighetto",
+        "body": "May be fixed upstream (https://godbolt.org/z/fP9hKjfrM)? `llc` trunk lowers `f` to the following:\r\n```asm\r\nf:                                      // @f\r\n\t.cfi_startproc\r\n// %bb.0:\r\n\torr\tx8, x0, #0x1\r\n\tadd\tx8, x8, x0\r\n\tsubs\tx10, x1, x8\r\n\tsubs\tx8, x10, #0\r\n\tmov\tx8, #-9223372036854775808       // =0x8000000000000000\r\n\tcinv\tx8, x8, ge\r\n\tlsl\tx9, x10, #1\r\n\tsubs\tx10, x10, x9, asr #1\r\n\tcsel\tx0, x8, x9, ne\r\n\tret\r\n```\r\n`x0` is set to `0x7fffffffffffffff`."
+      },
+      {
+        "author": "regehr",
+        "body": "ok I don't know what's going on but I just built a fresh LLVM and I'm getting a different codegen than what you show, and it's still producing LONG_MIN for those inputs:\r\n```\r\nJohns-MacBook-Pro:tmp regehr$ ~/llvm-project/for-alive/bin/llc foo.ll -o - -march=aarch64\r\n\t.section\t__TEXT,__text,regular,pure_instructions\r\n\t.build_version macos, 14, 0\r\n\t.globl\t_f                              ; -- Begin function f\r\n\t.p2align\t2\r\n_f:                                     ; @f\r\n\t.cfi_startproc\r\n; %bb.0:\r\n\torr\tx8, x0, #0x1\r\n\tsub\tx9, x1, x0\r\n\tmov\tx10, #-9223372036854775808      ; =0x8000000000000000\r\n\tsubs\tx8, x9, x8\r\n\tlsl\tx9, x8, #1\r\n\tcinv\tx10, x10, ge\r\n\tcmp\tx8, x9, asr #1\r\n\tcsel\tx0, x10, x9, ne\r\n\tret\r\n\t.cfi_endproc\r\n                                        ; -- End function\r\n.subsections_via_symbols\r\nJohns-MacBook-Pro:tmp regehr$ \r\n```\r\n"
+      },
+      {
+        "author": "regehr",
+        "body": "wait a second-- godbolt at your link is showing the same codegen that I get on my local machine, which is different than what you put into the comment @antoniofrighetto "
+      },
+      {
+        "author": "antoniofrighetto",
+        "body": "@regehr isn't the assembly you pasted correct? Looking at `x0` before it returns seems to contain the correct result, namely 9223372036854775807 (https://alive2.llvm.org/ce/z/l-w3CQ). Sorry if I'm missing something!"
+      },
+      {
+        "author": "regehr",
+        "body": "hi @antoniofrighetto I'm still getting 9223372036854775808 as the output when running that code on my M1 Mac, not 9223372036854775807\r\n\r\n```\r\nJohns-MacBook-Pro:tmp regehr$ cat foo.s\r\n\t.section\t__TEXT,__text,regular,pure_instructions\r\n\t.build_version macos, 14, 0\r\n\t.globl\t_f                              ; -- Begin function f\r\n\t.p2align\t2\r\n_f:                                     ; @f\r\n\t.cfi_startproc\r\n; %bb.0:\r\n\torr\tx8, x0, #0x1\r\n\tsub\tx9, x1, x0\r\n\tmov\tx10, #-9223372036854775808      ; =0x8000000000000000\r\n\tsubs\tx8, x9, x8\r\n\tlsl\tx9, x8, #1\r\n\tcinv\tx10, x10, ge\r\n\tcmp\tx8, x9, asr #1\r\n\tcsel\tx0, x10, x9, ne\r\n\tret\r\n\t.cfi_endproc\r\n                                        ; -- End function\r\n.subsections_via_symbols\r\nJohns-MacBook-Pro:tmp regehr$ cat driver.c\r\n#include <stdio.h>\r\n\r\n// i64 %#0 = #x5dbdff5f99a88000 (6754835802190544896)\r\n// i64 %#1 = #x0000000000000000 (0)\r\n// i64 %#2 = #x0000000000000000 (0)\r\n\r\nunsigned long f(unsigned long, unsigned long, unsigned long);\r\n\r\nint main(void) {\r\n  printf(\"%lx\\n\", f(6754835802190544896ULL, 0, 0));\r\n}\r\nJohns-MacBook-Pro:tmp regehr$ clang driver.c foo.s && ./a.out\r\n8000000000000000\r\nJohns-MacBook-Pro:tmp regehr$ \r\n```"
+      },
+      {
+        "author": "antoniofrighetto",
+        "body": "@regehr, confirm I reproduced it with your snippet \u2013 now I wonder how I did get the IR I pasted above. Can you reproduce the issue when invoking latest clang with IR out of curiosity? I get the following:\r\n\r\n```\r\n% cat foo.ll \r\ndeclare i64 @llvm.sshl.sat.i64(i64, i64) #0\r\n\r\ndefine i64 @f(i64 %0, i64 %1, i64 %2) {\r\n  %4 = or i64 %0, 1\r\n  %5 = add i64 %4, %0\r\n  %6 = sub nsw i64 %1, %5\r\n  %7 = call i64 @llvm.sshl.sat.i64(i64 %6, i64 1)\r\n  ret i64 %7\r\n}\r\n% cat driver.c \r\n#include <stdio.h>\r\n\r\n// i64 %#0 = #x5dbdff5f99a88000 (6754835802190544896)\r\n// i64 %#1 = #x0000000000000000 (0)\r\n// i64 %#2 = #x0000000000000000 (0)\r\n\r\nunsigned long f(unsigned long, unsigned long, unsigned long);\r\n\r\nint main(void) {\r\n  printf(\"%lx\\n\", f(6754835802190544896ULL, 0, 0));\r\n}\r\n% ./build/bin/clang driver.c foo.ll && ./a.out\r\n7fffffffffffffff\r\n```"
+      },
+      {
+        "author": "regehr",
+        "body": "aha, now I see. if we invoke the AArch64 backend using clang as the driver, this works. but if we invoke the backend via llc, then we get the miscompile. \r\n\r\nargh I need to run to a meeting and then go teach but I'll look at this again towards the end of the day.\r\n\r\n```\r\nJohns-MacBook-Pro:tmp regehr$ ~/llvm-project/for-alive/bin/clang driver.c foo2.ll && ./a.out \r\nwarning: overriding the module target triple with arm64-apple-macosx14.0.0 [-Woverride-module]\r\n1 warning generated.\r\n7fffffffffffffff\r\nJohns-MacBook-Pro:tmp regehr$ ~/llvm-project/for-alive/bin/llc foo2.ll\r\nJohns-MacBook-Pro:tmp regehr$ ~/llvm-project/for-alive/bin/clang driver.c foo2.s && ./a.out \r\n8000000000000000\r\nJohns-MacBook-Pro:tmp regehr$ \r\n```\r\n"
+      },
+      {
+        "author": "regehr",
+        "body": "are clang and llc using different default target triples maybe?"
+      },
+      {
+        "author": "antoniofrighetto",
+        "body": "> are clang and llc using different default target triples maybe?\r\n\r\nThat's a good point to investigate! I'll try take a better look soon, thanks for confirming meanwhile! Best!"
+      },
+      {
+        "author": "regehr",
+        "body": "even with a reasonable target triple I see the same behavior (llc generates bad asm, clang generates good). so I guess target flags are the next thing to look at. these are bits of LLVM that I don't know much about at all!\r\n\r\n```\r\ntarget triple = \"arm64-apple-macosx14.0.0\"\r\n\r\ndeclare i64 @llvm.sshl.sat.i64(i64, i64) #0\r\n\r\ndefine i64 @f(i64 %0, i64 %1, i64 %2) {\r\n  %4 = or i64 %0, 1\r\n  %5 = add i64 %4, %0\r\n  %6 = sub nsw i64 %1, %5\r\n  %7 = call i64 @llvm.sshl.sat.i64(i64 %6, i64 1)\r\n  ret i64 %7\r\n}\r\n```\r\n"
+      },
+      {
+        "author": "regehr",
+        "body": "well, I'm trying to get llc to emulate clang (as it runs on my laptop, using -### to peek at the details) so I'm running it like this:\r\n\r\n`llc -mattr=\"+v8.5a\" -mattr=\"+aes\" -mattr=\"+crc\" -mattr=\"+dotprod\" -mattr=\"+fp-armv8\" -mattr=\"+fp16fml\" -mattr=\"+lse\" -mattr=\"+ras\" -mattr=\"+rcpc\" -mattr=\"+rdm\" -mattr=\"+sha2\" -mattr=\"+sha3\" -mattr=\"+neon\" -mattr=\"+zcm\" -mattr=\"+zcz\" -mattr=\"+fullfp16\" foo2.ll -mcpu=apple-m1`\r\n\r\nthis changes the generated code, but the code is still wrong. I haven't yet found the command line options for `llc` that make it generate the correct code that the backend emits when driven by clang"
+      },
+      {
+        "author": "davemgreen",
+        "body": "From what I can tell there is a combine in the machinecombiner that is reassociating add/sub. It should be dropping the nsw flags but doesn't, which allows AArch64InstrInfo::substituteCmpToZero to remove the condition even with them using the V condition flag. This was added in D124564, and it looks like the code at the end of AArch64InstrInfo::genAlternativeCodeSequence might be the part incorrectly setting the flags."
+      },
+      {
+        "author": "antoniofrighetto",
+        "body": "> From what I can tell there is a combine in the machinecombiner that is reassociating add/sub. It should be dropping the nsw flags but doesn't, which allows AArch64InstrInfo::substituteCmpToZero to remove the condition even with them using the V condition flag.\r\n\r\nLooks correct considering the reassociation being done, I confirm this stops the miscompilation:\r\n\r\n```diff\r\n--- a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp\r\n+++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp\r\n@@ -6918,14 +6918,22 @@ genSubAdd2SubSub(MachineFunction &MF, MachineRegisterInfo &MRI,\r\n     assert((Opcode == AArch64::SUBWrr || Opcode == AArch64::SUBXrr) &&\r\n            \"Unexpected instruction opcode.\");\r\n \r\n+  uint32_t RootFlags = Root.getFlags();\r\n+  if (RootFlags & MachineInstr::NoSWrap)\r\n+    Root.clearFlag(MachineInstr::NoSWrap);\r\n+  if (RootFlags & MachineInstr::NoUWrap)\r\n+    Root.clearFlag(MachineInstr::NoUWrap);\r\n+\r\n   MachineInstrBuilder MIB1 =\r\n       BuildMI(MF, MIMetadata(Root), TII->get(Opcode), NewVR)\r\n           .addReg(RegA, getKillRegState(RegAIsKill))\r\n-          .addReg(RegB, getKillRegState(RegBIsKill));\r\n+          .addReg(RegB, getKillRegState(RegBIsKill))\r\n+          .setMIFlags(Root.getFlags());\r\n   MachineInstrBuilder MIB2 =\r\n       BuildMI(MF, MIMetadata(Root), TII->get(Opcode), ResultReg)\r\n           .addReg(NewVR, getKillRegState(true))\r\n-          .addReg(RegC, getKillRegState(RegCIsKill));\r\n+          .addReg(RegC, getKillRegState(RegCIsKill))\r\n+          .setMIFlags(Root.getFlags());\r\n \r\n   InstrIdxForVirtReg.insert(std::make_pair(NewVR, 0));\r\n```\r\n\r\ncc/ @davemgreen\r\n"
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "miscompilation"
+    ],
+    "title": "AArch64 backend miscompilation related to sshl.sat"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/88950",
+  "knowledge_cutoff": "2024-04-16T18:15:37Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 23b6709c72357c8b8f0ffa6cdbd860977441982b\nAuthor: Antonio Frighetto <me@antoniofrighetto.com>\nDate:   Thu Apr 25 09:49:24 2024 +0200\n\n    [AArch64] Drop poison-generating flags in `genSubAdd2SubSub` combiner\n    \n    A miscompilation issue has been addressed with improved handling.\n    \n    Fixes: https://github.com/llvm/llvm-project/issues/88950.\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp\nindex 7bf06e71a030..55fecc4b4845 100644\n--- a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp\n@@ -6924,19 +6924,26 @@ genSubAdd2SubSub(MachineFunction &MF, MachineRegisterInfo &MRI,\n     assert((Opcode == AArch64::SUBWrr || Opcode == AArch64::SUBXrr) &&\n            \"Unexpected instruction opcode.\");\n \n+  uint32_t Flags = Root.mergeFlagsWith(*AddMI);\n+  Flags &= ~MachineInstr::NoSWrap;\n+  Flags &= ~MachineInstr::NoUWrap;\n+\n   MachineInstrBuilder MIB1 =\n       BuildMI(MF, MIMetadata(Root), TII->get(Opcode), NewVR)\n           .addReg(RegA, getKillRegState(RegAIsKill))\n-          .addReg(RegB, getKillRegState(RegBIsKill));\n+          .addReg(RegB, getKillRegState(RegBIsKill))\n+          .setMIFlags(Flags);\n   MachineInstrBuilder MIB2 =\n       BuildMI(MF, MIMetadata(Root), TII->get(Opcode), ResultReg)\n           .addReg(NewVR, getKillRegState(true))\n-          .addReg(RegC, getKillRegState(RegCIsKill));\n+          .addReg(RegC, getKillRegState(RegCIsKill))\n+          .setMIFlags(Flags);\n \n   InstrIdxForVirtReg.insert(std::make_pair(NewVR, 0));\n   InsInstrs.push_back(MIB1);\n   InsInstrs.push_back(MIB2);\n   DelInstrs.push_back(AddMI);\n+  DelInstrs.push_back(&Root);\n }\n \n /// When getMachineCombinerPatterns() finds potential patterns,\n@@ -6966,13 +6973,13 @@ void AArch64InstrInfo::genAlternativeCodeSequence(\n     // ==> (A - B) - C\n     genSubAdd2SubSub(MF, MRI, TII, Root, InsInstrs, DelInstrs, 1,\n                      InstrIdxForVirtReg);\n-    break;\n+    return;\n   case AArch64MachineCombinerPattern::SUBADD_OP2:\n     // A - (B + C)\n     // ==> (A - C) - B\n     genSubAdd2SubSub(MF, MRI, TII, Root, InsInstrs, DelInstrs, 2,\n                      InstrIdxForVirtReg);\n-    break;\n+    return;\n   case AArch64MachineCombinerPattern::MULADDW_OP1:\n   case AArch64MachineCombinerPattern::MULADDX_OP1:\n     // MUL I=A,B,0\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64"
+      ],
+      "file": "<issue-body>",
+      "tests": [
+        {
+          "test_body": "declare i64 @llvm.sshl.sat.i64(i64, i64) #0\r\n\r\ndefine i64 @f(i64 %0, i64 %1, i64 %2) {\r\n  %4 = or i64 %0, 1\r\n  %5 = add i64 %4, %0\r\n  %6 = sub nsw i64 %1, %5\r\n  %7 = call i64 @llvm.sshl.sat.i64(i64 %6, i64 1)\r\n  ret i64 %7\r\n}\r\n\r\nattributes #0 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

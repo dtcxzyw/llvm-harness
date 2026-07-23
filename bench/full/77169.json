@@ -1,0 +1,77 @@
+{
+  "base_commit": "8eb6757564ccea8f9fc3bb75480f1c1d1784415a",
+  "bug_id": "77169",
+  "bug_type": "backend-miscompilation",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp": [
+        "TargetLowering::prepareSREMEqFold"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp": [
+        [
+          6896,
+          6901
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "2c5a68858b046c8a2ca3ba07ecd82771a5a9b884"
+  },
+  "issue": {
+    "author": "regehr",
+    "body": "here's a function `@f` that I believe is being miscompiled and also a glue function `@g` that'll let us test it from C:\r\n```llvm\r\ndefine <4 x i32> @f(<4 x i32> %0) {\r\n  %2 = srem <4 x i32> %0, <i32 1, i32 1, i32 2, i32 3>\r\n  %3 = icmp eq <4 x i32> %2, zeroinitializer\r\n  %4 = zext <4 x i1> %3 to <4 x i32>\r\n  ret <4 x i32> %4\r\n}\r\n\r\ndefine void @g(ptr %p) {\r\n  %a = load <4 x i32>, ptr %p\r\n  %b = call <4 x i32> @f(<4 x i32> %a);\r\n  store <4 x i32> %b, ptr %p\r\n  ret void\r\n}\r\n```\r\n\r\nhere's a test driver:\r\n```c\r\n#include <stdio.h>\r\n\r\nint x[] = {0, 0, -2147483648, 0};\r\n\r\nvoid g(int *);\r\n\r\nint main(void) {\r\n  printf(\"%d %d %d %d\\n\", x[0], x[1], x[2], x[3]);\r\n  g(x);\r\n  printf(\"%d %d %d %d\\n\", x[0], x[1], x[2], x[3]);\r\n}\r\n```\r\n\r\non my M1 Mac it gives:\r\n```\r\nJohns-MacBook-Pro:build regehr$ ~/llvm-project/for-alive/bin/llc foo2.ll\r\nJohns-MacBook-Pro:build regehr$ clang test.c foo2.s\r\nJohns-MacBook-Pro:build regehr$ ./a.out \r\n0 0 -2147483648 0\r\n1 1 0 1\r\nJohns-MacBook-Pro:build regehr$ \r\n```\r\n\r\nbut, by inspection, we can see that the second line should have been `1 1 1 1`\r\n\r\nthe codegen for this one is kind of lengthy, so I hope this explanation suffices, thanks",
+    "comments": [
+      {
+        "author": "topperc",
+        "body": "I think this reproduces on X86 too?"
+      },
+      {
+        "author": "regehr",
+        "body": "it does repro on x86-64. sorry, I should have checked that last night, was being lazy"
+      },
+      {
+        "author": "topperc",
+        "body": "Looks like maybe an issue with the algorithm in TargetLowering::prepareSREMEqFold for N=INT_MIN and D is a power of 2. I think that comes from Hacker's Delight."
+      },
+      {
+        "author": "topperc",
+        "body": "I think the issue is that  q=mod(n*multiplicative_inverse(d0), 2^W) is not in the range [-2147483647, 2147483647] when n is -2147483648. So the thoerem that gives the rotate right trick doesn't apply.\r\n\r\nCC: @RKSimon @LebedevRI "
+      }
+    ],
+    "labels": [
+      "miscompilation",
+      "llvm:SelectionDAG"
+    ],
+    "title": "srem-related vector miscompile on AArch64"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/77169",
+  "knowledge_cutoff": "2024-01-06T02:55:48Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 2c5a68858b046c8a2ca3ba07ecd82771a5a9b884\nAuthor: Owen Anderson <resistor@mac.com>\nDate:   Sun Feb 25 10:13:05 2024 -0500\n\n    Fix non-splat vector SREM expansion when one of the divisors is a power of two. (#82706)\n    \n    The expansion previously used, derived from Hacker's Delight,\n    does not work correctly when the dividend is INT_MIN and the\n    divisor is a power of two. We now use an alternate derivation\n    of the A and Q constants specifically for the power-of-two divisor\n    case to avoid this problem. Credit to Fabian Giesen for the\n    new derivation.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/77169\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\nindex 07fb89127a73..6970b230837f 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\n@@ -6803,6 +6803,7 @@ TargetLowering::prepareSREMEqFold(EVT SETCCVT, SDValue REMNode,\n                                   SDValue CompTargetNode, ISD::CondCode Cond,\n                                   DAGCombinerInfo &DCI, const SDLoc &DL,\n                                   SmallVectorImpl<SDNode *> &Created) const {\n+  // Derived from Hacker's Delight, 2nd Edition, by Hank Warren. Section 10-17.\n   // Fold:\n   //   (seteq/ne (srem N, D), 0)\n   // To:\n@@ -6813,6 +6814,17 @@ TargetLowering::prepareSREMEqFold(EVT SETCCVT, SDValue REMNode,\n   // - A = bitwiseand(floor((2^(W - 1) - 1) / D0), (-(2^k)))\n   // - Q = floor((2 * A) / (2^K))\n   // where W is the width of the common type of N and D.\n+  //\n+  // When D is a power of two (and thus D0 is 1), the normal\n+  // formula for A and Q don't apply, because the derivation\n+  // depends on D not dividing 2^(W-1), and thus theorem ZRS\n+  // does not apply. This specifically fails when N = INT_MIN.\n+  //\n+  // Instead, for power-of-two D, we use:\n+  // - A = 2^(W-1)\n+  // |-> Order-preserving map from [-2^(W-1), 2^(W-1) - 1] to [0,2^W - 1])\n+  // - Q = 2^(W-K) - 1\n+  // |-> Test that the top K bits are zero after rotation\n   assert((Cond == ISD::SETEQ || Cond == ISD::SETNE) &&\n          \"Only applicable for (in)equality comparisons.\");\n \n@@ -6896,6 +6908,14 @@ TargetLowering::prepareSREMEqFold(EVT SETCCVT, SDValue REMNode,\n     // Q = floor((2 * A) / (2^K))\n     APInt Q = (2 * A).udiv(APInt::getOneBitSet(W, K));\n \n+    // If D was a power of two, apply the alternate constant derivation.\n+    if (D0.isOne()) {\n+      // A = 2^(W-1)\n+      A = APInt::getSignedMinValue(W);\n+      // - Q = 2^(W-K) - 1\n+      Q = APInt::getAllOnes(W - K).zext(W);\n+    }\n+\n     assert(APInt::getAllOnes(SVT.getSizeInBits()).ugt(A) &&\n            \"We are expecting that A is always less than all-ones for SVT\");\n     assert(APInt::getAllOnes(ShSVT.getSizeInBits()).ugt(K) &&\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64"
+      ],
+      "file": "<issue-body>",
+      "tests": [
+        {
+          "test_body": "define <4 x i32> @f(<4 x i32> %0) {\n  %2 = srem <4 x i32> %0, <i32 1, i32 1, i32 2, i32 3>\n  %3 = icmp eq <4 x i32> %2, zeroinitializer\n  %4 = zext <4 x i1> %3 to <4 x i32>\n  ret <4 x i32> %4\n}\n",
+          "test_name": "f"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}
