@@ -105,6 +105,8 @@ for label in issue["labels"]:
   ) or label_name.startswith("llvm:Target/"):
     if issue_type == "miscompilation":
       issue_type = "backend-miscompilation"
+    elif issue_type == "crash":
+      issue_type = "backend-crash"
 
 base_commit = llvm_helper.git_execute(["rev-parse", fix_commit + "~"]).strip()
 changed_files = llvm_helper.git_execute(
@@ -123,6 +125,16 @@ if issue_type == "miscompilation":
   has_midend = "/Transforms/" in changed_files or "/Analysis/" in changed_files
   if has_backend and not has_midend:
     issue_type = "backend-miscompilation"
+
+if issue_type == "crash":
+  has_backend = (
+    "/Target/" in changed_files
+    or "/CodeGen/" in changed_files
+    or "/SelectionDAG/" in changed_files
+  )
+  has_midend = "/Transforms/" in changed_files or "/Analysis/" in changed_files
+  if has_backend and not has_midend:
+    issue_type = "backend-crash"
 
 # Component level
 components = LlvmCode.infer_related_components(changed_files.split("\n"))
@@ -175,7 +187,7 @@ def remove_target_suffix(path):
 
 
 def _trim_to_target_dir(path: str) -> str:
-  """For backend-miscompilation, keep the path up to the target directory,
+  """For backend-miscompilation and backend-crash, keep the path up to the target directory,
   stripping sub-targets like msa/rvv while preserving the main target name.
   e.g. llvm/test/CodeGen/Mips/msa -> llvm/test/CodeGen/Mips
   """
@@ -205,7 +217,7 @@ def _trim_to_target_dir(path: str) -> str:
 lit_test_dir = set()
 for path in filter(lambda x: x.count("llvm/test/"), changed_files.split("\n")):
   d = os.path.dirname(path)
-  if issue_type == "backend-miscompilation":
+  if issue_type in ("backend-miscompilation", "backend-crash"):
     d = _trim_to_target_dir(d)
   else:
     d = remove_target_suffix(d)
@@ -349,7 +361,7 @@ normalized_issue = {
 }
 
 # Fallback: extract IR from issue body when no tests found from fix commit.
-if not tests and issue_type == "backend-miscompilation":
+if not tests and issue_type in ("backend-miscompilation", "backend-crash"):
   llvm_blocks = llvm_block_pattern.findall(issue["body"] or "")
   # Filter blocks that contain LLVM IR definitions.
   ir_blocks = [b for b in llvm_blocks if re.search(r"\bdefine\b", b)]

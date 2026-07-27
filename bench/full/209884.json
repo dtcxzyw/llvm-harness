@@ -1,0 +1,62 @@
+{
+  "base_commit": "82134c708f7ec224d86e2096d9b53c76640a490f",
+  "bug_id": "209884",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "DAGCombiner::visitSUB"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          4560,
+          4567
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "ea863cb2dec8e0f040dfe22a52d3b537e4a25c29"
+  },
+  "issue": {
+    "author": "aeubanks",
+    "body": "  `$ cat /tmp/a.ll`\n\n```llvm\n  target datalayout = \"e-m:x-p:32:32-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32-a:0:32-S32\"\n  target triple = \"i386-pc-windows-msvc19.34.0\"\n  \n  @global = external constant [2 x i8]\n  \n  define x86_thiscallcc i1 @wibble() {\n  bbl:\n    %icmp = icmp eq i32 add (i32 sub (i32 0, i32 ptrtoint (ptr getelementptr inbounds nuw (i8, ptr @global, i32 2) to i32)), i32 ptrtoint (ptr @global to i32)), 0\n    ret i1 %icmp\n  }\n```  \n```console\n$ llc /tmp/a.ll -o /dev/null\nllc: ../../llvm/include/llvm/ADT/APInt.h:128: llvm::APInt::APInt(unsigned int, uint64_t, bool, bool): Assertion `llvm::isUIntN(BitWidth, val) && \"Value is not an N-bit unsigned value\"' failed.\n```\n  ",
+    "comments": [],
+    "labels": [
+      "confirmed",
+      "crash-on-valid",
+      "llvm:SelectionDAG",
+      "regression:20"
+    ],
+    "title": "[DAGCombiner] Assertion `llvm::isUIntN(BitWidth, val) && \"Value is not an N- bit unsigned value\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/209884",
+  "knowledge_cutoff": "2026-07-15T20:35:16Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit ea863cb2dec8e0f040dfe22a52d3b537e4a25c29\nAuthor: Arthur Eubanks <aeubanks@google.com>\nDate:   Fri Jul 17 13:54:13 2026 -0700\n\n    [DAGCombiner] Fix APInt truncation assertion (#209914)\n    \n    getConstant() would create an APInt with ImplicitTrunc = false, but the\n    constant here can really be anything.\n    \n    Fixes #209884.\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex aba6d8c5ac31..32e6d65159b5 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -4560,8 +4560,10 @@ SDValue DAGCombiner::visitSUB(SDNode *N) {\n       // fold (sub Sym+c1, Sym+c2) -> c1-c2\n       if (GlobalAddressSDNode *GB = dyn_cast<GlobalAddressSDNode>(N1))\n         if (GA->getGlobal() == GB->getGlobal())\n-          return DAG.getConstant((uint64_t)GA->getOffset() - GB->getOffset(),\n-                                 DL, VT);\n+          return DAG.getConstant(\n+              APInt(VT.getScalarSizeInBits(), GA->getOffset() - GB->getOffset(),\n+                    /*isSigned=*/false, /*implicitTrunc=*/true),\n+              DL, VT);\n     }\n \n   // sub X, (sextinreg Y i1) -> add X, (and Y 1)\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=i386-pc-windows-msvc"
+      ],
+      "file": "llvm/test/CodeGen/X86/dagcombine-sub-globaladdress.ll",
+      "tests": [
+        {
+          "test_body": "\n@global = external constant i8\n\ndefine i32 @sub_global_offset() {\n  %a = ptrtoint ptr @global to i32\n  %b = ptrtoint ptr getelementptr (i8, ptr @global, i32 2) to i32\n  %sub = sub i32 %a, %b\n  ret i32 %sub\n}\n\ndefine i32 @sub_global_offset_large_unsigned() {\n  %a = ptrtoint ptr getelementptr (i8, ptr @global, i32 2147483648) to i32\n  %b = ptrtoint ptr @global to i32\n  %sub = sub i32 %a, %b\n  ret i32 %sub\n}\n\ndefine i32 @sub_global_offset_negative_large() {\n  %a = ptrtoint ptr @global to i32\n  %b = ptrtoint ptr getelementptr (i8, ptr @global, i32 2147483648) to i32\n  %sub = sub i32 %a, %b\n  ret i32 %sub\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -268,7 +268,7 @@ def verify_dispatch(
   type: str,
   additional_args: str,
 ):
-  if type == "backend-miscompilation":
+  if type in ("backend-miscompilation", "backend-crash"):
     tool_name = "llc"
     timeout = 60.0
   else:
@@ -326,7 +326,7 @@ def verify_dispatch(
     return (not repro, "success\n" + _decode_output(out.stderr))
   except subprocess.CalledProcessError as e:
     return (
-      repro and type == "crash",
+      repro and type in ("crash", "backend-crash"),
       str(e) + "\n" + _decode_output(e.output) + "\n" + _decode_output(e.stderr),
     )
   except subprocess.TimeoutExpired as e:

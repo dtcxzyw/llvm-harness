@@ -145,16 +145,19 @@ class FixEnv:
       res, reason = self.build()
       if not res:
         return (False, reason)
-      # If use_entire_regression_test_suite is True, run the entire regression test suite.
-      # By default, only run the tests in the specified lit_test_dir to save time.
       return llvm_ops.verify_lit(
         test_commit=self.test_commit,
-        dirs=["llvm/test/Transforms", "llvm/test/Analysis"]
-        if self.use_entire_regression_test_suite
-        else self.card.lit_test_dir,
+        dirs=self._lit_dirs(),
         max_test_jobs=self.max_build_jobs,
         test_commit_checkout_changed_files_only=self.test_commit_checkout_changed_files_only,
       )
+
+  def _lit_dirs(self):
+    if self.use_entire_regression_test_suite:
+      if self.bug_type.startswith("backend-"):
+        return ["llvm/test/CodeGen"]
+      return ["llvm/test/Transforms", "llvm/test/Analysis"]
+    return self.card.lit_test_dir
 
   # Please disable ASLR and compile LLVM with -DLLVM_ABI_BREAKING_CHECKS=FORCE_OFF
   # to ensure deterministic output.
@@ -257,9 +260,7 @@ class FixEnv:
       # By default, only run the tests in the specified lit_test_dir to save time.
       res, log = llvm_ops.verify_lit(
         test_commit=self.test_commit,
-        dirs=["llvm/test/Transforms", "llvm/test/Analysis"]
-        if self.use_entire_regression_test_suite
-        else self.card.lit_test_dir,
+        dirs=self._lit_dirs(),
         max_test_jobs=self.max_build_jobs,
         test_commit_checkout_changed_files_only=self.test_commit_checkout_changed_files_only,
       )

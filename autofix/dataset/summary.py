@@ -10,6 +10,7 @@ bug_type = {
   "miscompilation": 0,
   "crash": 0,
   "backend-miscompilation": 0,
+  "backend-crash": 0,
 }
 components = {}
 labels = {}

@@ -22,7 +22,7 @@ from harness.utils.text import write_temp_file
 class ReprodRes:
   """Result of running a reproducer."""
 
-  bug_type: str  # "crash" | "miscompilation" | "backend-miscompilation" | "hang"
+  bug_type: str  # "crash" | "miscompilation" | "backend-miscompilation" | "backend-crash" | "hang"
   file_path: Path  # path to written .ll file
   command: list[str]  # resolved opt command tokens
   raw_command: str  # original unresolved command string
@@ -367,8 +367,8 @@ class Harness:
 
     The file must embed both directives:
 
-    * ``; BUG: crash``, ``; BUG: miscompilation``, or ``; BUG: backend-miscompilation``
-    * ``; RUN: opt …``
+    * ``; BUG: crash``, ``; BUG: miscompilation``, ``; BUG: backend-miscompilation``, or ``; BUG: backend-crash``
+    * ``; RUN: opt …`` or ``; RUN: llc …``
     """
     reproducer, bug_type = parse_lit_reproducer(file)
     card = IssueCard(

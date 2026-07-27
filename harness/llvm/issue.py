@@ -33,7 +33,7 @@ class IssueCard:
   """
 
   # Required
-  bug_type: str  # "crash" | "miscompilation" | "backend-miscompilation" | "hang"
+  bug_type: str  # "crash" | "miscompilation" | "backend-miscompilation" | "backend-crash" | "hang"
   reproducers: list[Reproducer]
 
   # Optional (defaults for open issues)
@@ -52,7 +52,12 @@ class IssueCard:
 _RUN_RE = re.compile(r"^\s*;\s*RUN:\s*(.+?)\s*$")
 _BUG_RE = re.compile(r"^\s*;\s*BUG:\s*(\S+)\s*$")
 
-SUPPORTED_BUG_TYPES = {"crash", "miscompilation", "backend-miscompilation"}
+SUPPORTED_BUG_TYPES = {
+  "crash",
+  "miscompilation",
+  "backend-miscompilation",
+  "backend-crash",
+}
 
 
 def _sanitize_run_command(raw: str) -> str:
@@ -88,8 +93,8 @@ def parse_lit_reproducer(path: str | Path) -> tuple[Reproducer, str]:
 
   The file must contain:
 
-  * ``; BUG: crash``, ``; BUG: miscompilation``, or ``; BUG: backend-miscompilation``
-  * ``; RUN: opt …`` — the reproduction command (FileCheck pipelines stripped)
+   * ``; BUG: crash``, ``; BUG: miscompilation``, ``; BUG: backend-miscompilation``, or ``; BUG: backend-crash``
+   * ``; RUN: opt …`` or ``; RUN: llc …`` — the reproduction command (FileCheck pipelines stripped)
 
   Returns ``(Reproducer, bug_type)``. Raises ``ValueError`` on any failure.
   """
@@ -143,7 +148,7 @@ def parse_lit_reproducer_text(
   if not command:
     raise ValueError(f"{source}: `; RUN:` line is empty after sanitization.")
   tool = command.split()[0].rsplit("/", 1)[-1]
-  if bug_type == "backend-miscompilation":
+  if bug_type in ("backend-miscompilation", "backend-crash"):
     allowed_tools = {"llc"}
   else:
     allowed_tools = {"opt"}
