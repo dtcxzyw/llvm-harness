@@ -9,6 +9,7 @@ from typing import Optional
 import harness
 from autoreview.pr_extract import PRInfo, fetch_pr_info
 from harness.llvm import Harness
+from harness.llvm.intern import llvm as llvm_ops
 from harness.lms.agent import AgentBase, AgentConfig, AgentHooks
 from harness.lms.meter import GlobalMeter
 from harness.lms.tool import (
@@ -626,8 +627,6 @@ def _read_if_exists(path_str: str) -> str:
 
 
 def _collect_bug_if_any(stats: RunStats, name: str, args_json: str, res: str):
-  from harness.llvm.intern import llvm as llvm_ops
-
   found = False
   if name in {"llvm_verify_optim", "llvm_verify_ir"} and res.startswith(
     "Transformation is INCORRECT"
@@ -658,8 +657,6 @@ def _collect_bug_if_any(stats: RunStats, name: str, args_json: str, res: str):
 
 
 def setup_llvm_environment(pr_info: PRInfo, h: Harness):
-  from harness.llvm.intern import llvm as llvm_ops
-
   console.print(f"Checking out base commit {pr_info.base_commit} ...")
   try:
     llvm_ops.reset(pr_info.base_commit)
