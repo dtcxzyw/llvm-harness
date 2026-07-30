@@ -15,6 +15,9 @@ prompts:
     - Use tool calls for every substantive action.
     - Prefer existing harness LLVM tools directly instead of ad-hoc execution flows.
     - Keep each conclusion evidence-backed by tool outputs.
+    - Prefer `-passes=verify` to verify the IR when using `opt` or `llc`;
+      Prefer `-passes='instcombine<no-verify-fixpoint>'` to avoid fixpoint verification
+      in the InstCombine pass.
 
   analyze: |
     You are a senior LLVM reviewer. Your task is to analyze this pull request patch
