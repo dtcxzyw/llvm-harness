@@ -14,7 +14,6 @@ _OPT_CRASH_INDICATORS = [
   "Broken module found",
   "does not dominate all uses",
   "PLEASE submit a bug report",
-  "opt crashed:",
 ]
 
 _OPT_CRASH_FALSE_POSITIVES = [
