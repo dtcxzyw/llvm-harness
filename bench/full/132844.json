@@ -1,0 +1,65 @@
+{
+  "base_commit": "d46a699953210093de55baa8b3be56dae5707082",
+  "bug_id": "132844",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "combineConcatVectorOps"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          58617,
+          58626
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "6984cfea6c888965bb45d046abbb97ddb0443955"
+  },
+  "issue": {
+    "author": "Zentrik",
+    "body": "Following IR triggers an assertion on HEAD when compiling with `llc`. This is a recent regression.\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\ndefine swiftcc { ptr, i8 } @julia_try_compute_fieldidx_stmt_92847.3(<4 x ptr> %0, <4 x ptr> %1) #0 {\n  %3 = alloca [35 x ptr], i32 0, align 16\n  %4 = load <4 x ptr>, ptr null, align 8\n  %5 = getelementptr i8, ptr %3, i64 216\n  %6 = extractelement <4 x ptr> %4, i64 3\n  store ptr %6, ptr %5, align 8\n  %7 = getelementptr i8, ptr %3, i64 208\n  %8 = extractelement <4 x ptr> %0, i64 0\n  store ptr %8, ptr %7, align 8\n  %9 = getelementptr i8, ptr %3, i64 200\n  %10 = extractelement <4 x ptr> %0, i64 3\n  store ptr %10, ptr %9, align 8\n  %11 = getelementptr i8, ptr %3, i64 192\n  %12 = extractelement <4 x ptr> %1, i64 0\n  store ptr %12, ptr %11, align 8\n  ret { ptr, i8 } zeroinitializer\n}\n\nattributes #0 = { \"target-cpu\"=\"x86-64-v4\" }\n```\n\n```\nllc: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:969: void {anonymous}::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*): Assertion `(TLI.getTypeAction(*DAG.getContext(), Op.getValueType()) == TargetLowering::TypeLegal || Op.getOpcode() == ISD::TargetConstant || Op.getOpcode() == ISD::Register) && \"Unexpected illegal type!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@julia_try_compute_fieldidx_stmt_92847.3'\n #0 0x0000000003e05be8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e05be8)\n #1 0x0000000003e03574 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007963a4042520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007963a40969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007963a4042476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007963a40287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007963a402871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007963a4039e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000003a9178c (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) (.part.0) LegalizeDAG.cpp:0:0\n #9 0x0000000003a93d86 llvm::SelectionDAG::LegalizeOp(llvm::SDNode*, llvm::SmallSetVector<llvm::SDNode*, 16u>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a93d86)\n#10 0x0000000003a4829b (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#11 0x0000000003a4a53b llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a4a53b)\n#12 0x0000000003bac255 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3bac255)\n#13 0x0000000003baf3f5 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3baf3f5)\n#14 0x0000000003bb06b5 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3bb06b5)\n#15 0x0000000003ba104f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ba104f)\n#16 0x0000000002d797fa llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#17 0x000000000339720f llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x339720f)\n#18 0x00000000033975c1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x33975c1)\n#19 0x0000000003397e61 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3397e61)\n#20 0x00000000008a00e6 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#21 0x000000000078487e main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x78487e)\n#22 0x00007963a4029d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#23 0x00007963a4029e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#24 0x0000000000896d15 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x896d15)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\n\nGodbolt: https://godbolt.org/z/GfEjPq5hK",
+    "comments": [
+      {
+        "author": "Zentrik",
+        "body": "fwiw bisected to dff22a0c1173f9d1ec0830b1c039749b6c2241d6"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash"
+    ],
+    "title": "llc: Assertion `(TLI.getTypeAction(*DAG.getContext(), Op.getValueType()) == TargetLowering::TypeLegal || Op.getOpcode() == ISD::TargetConstant || Op.getOpcode() == ISD::Register) && \"Unexpected illegal type!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/132844",
+  "knowledge_cutoff": "2025-03-24T23:38:48Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 6984cfea6c888965bb45d046abbb97ddb0443955\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Tue Mar 25 08:54:45 2025 +0000\n\n    [X86] Ensure concat(blendi(),blendi()) -> vselect() uses legal select mask types\n    \n    For 256-bit selections, we could be using sub-i8/vXi8 selection condition masks - extend these to i8 and then extract the lowest mask subvector\n    \n    Fixes #132844\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex 2b5f9e995161..78b9b736c478 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -58617,10 +58617,13 @@ static SDValue combineConcatVectorOps(const SDLoc &DL, MVT VT,\n           APInt Mask = getBLENDIBlendMask(Ops[0]).zext(NumElts);\n           for (unsigned I = 1; I != NumOps; ++I)\n             Mask.insertBits(getBLENDIBlendMask(Ops[I]), I * (NumElts / NumOps));\n-          MVT MaskSVT = MVT::getIntegerVT(NumElts);\n-          MVT MaskVT = MVT::getVectorVT(MVT::i1, NumElts);\n+          unsigned NumMaskBits = NumElts >= 8 ? NumElts : 8;\n+          Mask = Mask.zextOrTrunc(NumMaskBits);\n+          MVT MaskSVT = MVT::getIntegerVT(NumMaskBits);\n+          MVT MaskVT = MVT::getVectorVT(MVT::i1, NumMaskBits);\n           SDValue Sel =\n               DAG.getBitcast(MaskVT, DAG.getConstant(Mask, DL, MaskSVT));\n+          Sel = extractSubVector(Sel, 0, DAG, DL, NumElts);\n           Concat0 = Concat0 ? Concat0 : ConcatSubOperand(VT, Ops, 0);\n           Concat1 = Concat1 ? Concat1 : ConcatSubOperand(VT, Ops, 1);\n           return DAG.getSelect(DL, VT, Sel, Concat1, Concat0);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v4"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr132844.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine  { ptr, i8 } @PR132844(<4 x ptr> %0, <4 x ptr> %1) {\n  %3 = alloca [35 x ptr], i32 0, align 16\n  %4 = load <4 x ptr>, ptr null, align 8\n  %5 = getelementptr i8, ptr %3, i64 216\n  %6 = extractelement <4 x ptr> %4, i64 3\n  store ptr %6, ptr %5, align 8\n  %7 = getelementptr i8, ptr %3, i64 208\n  %8 = extractelement <4 x ptr> %0, i64 0\n  store ptr %8, ptr %7, align 8\n  %9 = getelementptr i8, ptr %3, i64 200\n  %10 = extractelement <4 x ptr> %0, i64 3\n  store ptr %10, ptr %9, align 8\n  %11 = getelementptr i8, ptr %3, i64 192\n  %12 = extractelement <4 x ptr> %1, i64 0\n  store ptr %12, ptr %11, align 8\n  ret { ptr, i8 } zeroinitializer\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

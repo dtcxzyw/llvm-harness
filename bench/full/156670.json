@@ -1,0 +1,65 @@
+{
+  "base_commit": "69c566bf7ecda471ecc8625c50c6e4d261508ef3",
+  "bug_id": "156670",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Transforms/Scalar/LoopFuse.cpp": [
+        "reportInvalidCandidate"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Transforms/Scalar/LoopFuse.cpp": [
+        [
+          363,
+          374
+        ]
+      ]
+    },
+    "components": [
+      "LoopFuse"
+    ],
+    "fix_commit": "d3141b465382e4b10d5ed9cba6c8c480856e1092"
+  },
+  "issue": {
+    "author": "k-arrows",
+    "body": "Run opt with -passes=loop-fusion\n\nReproducer:\nhttps://godbolt.org/z/Ge6dP18WM\n\nBacktrace:\n```console\nopt: /root/llvm-project/llvm/lib/Transforms/Scalar/LoopFuse.cpp:372: bool {anonymous}::FusionCandidate::reportInvalidCandidate(llvm::Statistic&) const: Assertion `L && Preheader && \"Fusion candidate not initialized properly!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/opt -o /app/output.s -S -passes=loop-fusion <source>\n1.\tRunning pass \"function(loop-fusion)\" on module \"<source>\"\n2.\tRunning pass \"loop-fusion\" on function \"cannot_split\"\n #0 0x000000000578f178 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x578f178)\n #1 0x000000000578c024 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x000072b1dfa42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000072b1dfa969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000072b1dfa42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000072b1dfa287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x000072b1dfa2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x000072b1dfa39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x00000000044db2cc (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x44db2cc)\n #9 0x00000000044e9996 llvm::LoopFusePass::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x44e9996)\n#10 0x0000000002e24e2e llvm::detail::PassModel<llvm::Function, llvm::LoopFusePass, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x2e24e2e)\n#11 0x000000000557ad21 llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x557ad21)\n#12 0x0000000000edbafe llvm::detail::PassModel<llvm::Function, llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0xedbafe)\n#13 0x000000000557928a llvm::ModuleToFunctionPassAdaptor::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x557928a)\n#14 0x000000000096caae llvm::detail::PassModel<llvm::Module, llvm::ModuleToFunctionPassAdaptor, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x96caae)\n#15 0x0000000005578c41 llvm::PassManager<llvm::Module, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x5578c41)\n#16 0x0000000000976da8 llvm::runPassPipeline(llvm::StringRef, llvm::Module&, llvm::TargetMachine*, llvm::TargetLibraryInfoImpl*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::StringRef, llvm::ArrayRef<llvm::PassPlugin>, llvm::ArrayRef<std::function<void (llvm::PassBuilder&)>>, llvm::opt_tool::OutputKind, llvm::opt_tool::VerifierKind, bool, bool, bool, bool, bool, bool, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x976da8)\n#17 0x000000000096ae17 optMain (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x96ae17)\n#18 0x000072b1dfa29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#19 0x000072b1dfa29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#20 0x0000000000961f35 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x961f35)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "madhur13490",
+        "body": "I am looking into this."
+      }
+    ],
+    "labels": [
+      "crash",
+      "loop-fusion"
+    ],
+    "title": "crashes with assertion failure when running opt -passes=loop-fusion"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/156670",
+  "knowledge_cutoff": "2025-09-03T13:38:25Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/LoopFusion"
+  ],
+  "patch": "commit d3141b465382e4b10d5ed9cba6c8c480856e1092\nAuthor: Madhur Amilkanthwar <madhura@nvidia.com>\nDate:   Mon Apr 20 15:06:36 2026 +0530\n\n    [LoopFusion] Validate loop structure before creating LoopCandidates (#192280)\n    \n    This patch deletes the assert which required the loop to have\n    preheader. It is not guaranteed to have preheader when loops\n    are structured using `indirectbr`. Instead, we now rely on header.\n    \n    Fixes #156670.\n\ndiff --git a/llvm/lib/Transforms/Scalar/LoopFuse.cpp b/llvm/lib/Transforms/Scalar/LoopFuse.cpp\nindex b577bf658461..be543062670c 100644\n--- a/llvm/lib/Transforms/Scalar/LoopFuse.cpp\n+++ b/llvm/lib/Transforms/Scalar/LoopFuse.cpp\n@@ -363,12 +363,15 @@ private:\n \n   bool reportInvalidCandidate(Statistic &Stat) const {\n     using namespace ore;\n-    assert(L && Preheader && \"Fusion candidate not initialized properly!\");\n+    ORE.emit(OptimizationRemarkAnalysis(DEBUG_TYPE, \"InvalidCandidate\",\n+                                        L->getStartLoc(), L->getHeader())\n+             << \"Loop is not a candidate for fusion\");\n+\n #if LLVM_ENABLE_STATS\n     ++Stat;\n     ORE.emit(OptimizationRemarkAnalysis(DEBUG_TYPE, Stat.getName(),\n-                                        L->getStartLoc(), Preheader)\n-             << \"[\" << Preheader->getParent()->getName() << \"]: \"\n+                                        L->getStartLoc(), L->getHeader())\n+             << \"[\" << L->getHeader()->getParent()->getName() << \"]: \"\n              << \"Loop is not a candidate for fusion: \" << Stat.getDesc());\n #endif\n     return false;\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -S -passes=loop-fusion < %s"
+      ],
+      "file": "llvm/test/Transforms/LoopFusion/indirect-br.ll",
+      "tests": [
+        {
+          "test_body": "; Test that loop-fusion does not crash on functions with indirectbr and\n; loops that lack a preheader (or other required loop structure).\n\ndefine i32 @foo(ptr nocapture readonly %p) {\n;\nentry:\n  %tbl = alloca <2 x ptr>, align 16\n  store <2 x ptr> <ptr blockaddress(@foo, %indirect), ptr blockaddress(@foo, %exit)>, ptr %tbl, align 16\n  br label %for.cond\n\nfor.cond:                                         ; preds = %for.cond, %entry\n  %cur = phi ptr [ %p, %entry ], [ %next, %for.cond ]\n  %val = load i8, ptr %cur, align 1\n  %cmp = icmp eq i8 %val, 7\n  %next = getelementptr inbounds i8, ptr %cur, i64 1\n  br i1 %cmp, label %indirect.preheader, label %for.cond\n\nindirect.preheader:                               ; preds = %for.cond\n  %raw = load i8, ptr %next, align 1\n  %idx = sext i8 %raw to i64\n  %slot = getelementptr inbounds <2 x ptr>, ptr %tbl, i64 0, i64 %idx\n  %dest = load ptr, ptr %slot, align 8\n  br label %indirect\n\nindirect:\n  indirectbr ptr %dest, [label %indirect, label %exit]\n\nindirect2:\n  indirectbr ptr %dest, [label %indirect, label %exit]\n\nexit:\n  ret i32 0\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

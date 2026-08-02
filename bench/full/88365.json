@@ -1,0 +1,69 @@
+{
+  "base_commit": "4dd20b0728223ff20f4817edc2f89901385cb990",
+  "bug_id": "88365",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVInstrInfo.cpp": [
+        "RISCVInstrInfo::movImm"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVInstrInfo.cpp": [
+        [
+          767,
+          774
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "040efafa9fef101924d3cf67db20f6429ce1c871"
+  },
+  "issue": {
+    "author": "mablinov",
+    "body": "Hi all,\r\n \r\nWhile porting gcc test cases to llvm, I came across [`pr50092.c`](https://github.com/gcc-mirror/gcc/blob/master/gcc/testsuite/gcc.dg/torture/pr50092.c), which crashes the compiler with\r\n \r\n```\r\nfatal error: error in backend: Should only materialize 32-bit constants for RV32\r\n```\r\n\r\nSome of the backtrace:\r\n```\r\n #7 0x0000559e9511a34f llvm::RISCVInstrInfo::movImm(llvm::MachineBasicBlock&, llvm::MachineInstrBundleIterator<llvm::MachineInstr, false>, llvm::DebugLoc const&, llvm::Register, unsigned long, llvm::MachineInstr::MIFlag, bool, bool) const (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0xc4a34f)\r\n #8 0x0000559e951221bc llvm::RISCVRegisterInfo::adjustReg(llvm::MachineBasicBlock&, llvm::MachineInstrBundleIterator<llvm::MachineInstr, false>, llvm::DebugLoc const&, llvm::Register, llvm::Register, llvm::StackOffset, llvm::MachineInstr::MIFlag, llvm::MaybeAlign) const (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0xc521bc)\r\n #9 0x0000559e951a6b01 llvm::RISCVFrameLowering::emitPrologue(llvm::MachineFunction&, llvm::MachineBasicBlock&) const (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0xcd6b01)\r\n#10 0x0000559e95990424 (anonymous namespace)::PEI::runOnMachineFunction(llvm::MachineFunction&) PrologEpilogInserter.cpp:0:0\r\n#11 0x0000559e955fcdb0 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#12 0x0000559e95b8d20a llvm::FPPassManager::runOnFunction(llvm::Function&) (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0x16bd20a)\r\n#13 0x0000559e95b8d394 llvm::FPPassManager::runOnModule(llvm::Module&) (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0x16bd394)\r\n#14 0x0000559e95b8ddf4 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0x16bddf4)\r\n#15 0x0000559e962fd602 clang::EmitBackendOutput(clang::DiagnosticsEngine&, clang::HeaderSearchOptions const&, clang::CodeGenOptions const&, clang::TargetOptions const&, clang::LangOptions const&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0x1e2d602)\r\n#16 0x0000559e968b1e11 clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0x23e1e11)\r\n#17 0x0000559e982397f9 clang::ParseAST(clang::Sema&, bool, bool) (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0x3d697f9)\r\n#18 0x0000559e96b50571 clang::FrontendAction::Execute() (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0x2680571)\r\n#19 0x0000559e96ace989 clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0x25fe989)\r\n#20 0x0000559e96c16a03 clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0x2746a03)\r\n#21 0x0000559e950f8b23 cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/home/maxim/src/riscv-gnu-toolchain/opt/riscv/bin/clang+0xc28b23)\r\n```\r\n\r\n`pr50092.c`:\r\n```c\r\n/* PR target/50092 */\r\n/* { dg-do compile { target lp64 } } */\r\n \r\nvolatile int v;\r\n \r\nvoid bar (long double);\r\nvoid baz (_Complex long double *);\r\n \r\nvoid\r\nfoo (void)\r\n{\r\n  _Complex long double w[100000000];\r\n  bar ((long double) v / 2147483648.0);\r\n  baz (w);\r\n}\r\n```\r\n\r\nThe error message isn't technically accurate, since the 32-bit constant in question that's being materialized is `0xbebc1880` (`3199998080`), this value being taken right from [RISCVInstrInfo.cpp:750](https://github.com/llvm/llvm-project/blob/b2417f51dbbd7435eb3aaf203de24de6754da50e/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp#L750) where the check fails. `-mllvm -print-after-all` reports it as `3200000000`:\r\n\r\n```\r\n# *** IR Dump After Fixup Statepoint Caller Saved (fixup-statepoint-caller-saved) ***:\r\n# Machine code for function foo: NoPHIs, TracksLiveness, NoVRegs, TiedOpsRewritten\r\nFrame Objects:\r\n  fi#0: size=3200000000, align=16, at location [SP]\r\n  fi#1: size=16, align=16, at location [SP]\r\n  fi#2: size=16, align=8, at location [SP]\r\n  fi#3: size=16, align=8, at location [SP]\r\n  fi#4: size=16, align=8, at location [SP]\r\n  fi#5: size=16, align=8, at location [SP]\r\n  fi#6: size=4, align=4, at location [SP]\r\n```\r\n\r\nIt doesn't fit into a *signed* 32 bit int range, and for this reason fails the check at [RISCVInstrInfo.cpp:750](https://github.com/llvm/llvm-project/blob/b2417f51dbbd7435eb3aaf203de24de6754da50e/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp#L750).\r\n\r\nA simple workaround is to do:\r\n\r\n```diff\r\n--- a/gcc/testsuite/gcc.dg/torture/pr50092.c\r\n+++ b/gcc/testsuite/gcc.dg/torture/pr50092.c\r\n@@ -9,7 +9,8 @@ void baz (_Complex long double *);\r\n void\r\n foo (void)\r\n {\r\n-  _Complex long double w[100000000];\r\n+  unsigned long l = 100000000;\r\n+  _Complex long double w[l];\r\n   bar ((long double) v / 2147483648.0);\r\n   baz (w);\r\n }\r\n```\r\n\r\nand now this test case compiles. Viewing the disassembly:\r\n\r\n```\r\npr50092.v.o:    file format elf32-littleriscv\r\n\r\nDisassembly of section .text:\r\n\r\n00000000 <foo>:\r\n; {\r\n       0: 19 71         addi    sp, sp, -128\r\n       2: 86 de         sw      ra, 124(sp)\r\n       4: a2 dc         sw      s0, 120(sp)\r\n       6: 00 01         addi    s0, sp, 128\r\n       8: 37 e5 f5 05   lui     a0, 24414\r\n       c: 13 05 05 10   addi    a0, a0, 256\r\n;   unsigned long l = 100000000;\r\n      10: 23 2a a4 fe   sw      a0, -12(s0)\r\n;   _Complex long double w[l];\r\n      14: 03 25 44 ff   lw      a0, -12(s0)\r\n      18: 8a 85         mv      a1, sp\r\n      1a: 23 28 b4 fe   sw      a1, -16(s0)\r\n      1e: 13 16 55 00   slli    a2, a0, 5\r\n      22: 8a 85         mv      a1, sp\r\n      24: 91 8d         sub     a1, a1, a2\r\n      26: 23 26 b4 f8   sw      a1, -116(s0)\r\n      2a: 2e 81         mv      sp, a1\r\n      2c: 23 26 a4 fe   sw      a0, -20(s0)\r\n\r\n... (cut) ...\r\n```\r\n\r\nThere doesn't seem to be any fundamental issue generating unsigned 32 bit constants and subtracking the stack pointer with it. I tried looking at the git history of the logic but didn't get much from it - Is there a good reason why the frame lowering insists that the offset be signed? Does it just make the arithmetic easier?\r\n",
+    "comments": [
+      {
+        "author": "dtcxzyw",
+        "body": "IMHO we shouldn't support large arrays on RV32 :(\r\n\r\ncc @topperc @preames "
+      },
+      {
+        "author": "topperc",
+        "body": "> IMHO we shouldn't support large arrays on RV32 :(\r\n> \r\n> cc @topperc @preames\r\n\r\nWe do fail on large arrays 10x larger than this one. I didn't check the exact crossover. This case fits in a uimm32 so I think we can support it."
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash-on-valid"
+    ],
+    "title": "[RISCV] Compiler crash with \"error in backend: Should only materialize 32-bit constants for RV32\""
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/88365",
+  "knowledge_cutoff": "2024-04-11T08:21:14Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 040efafa9fef101924d3cf67db20f6429ce1c871\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Fri Apr 12 08:45:03 2024 -0700\n\n    [RISCV] Support uimm32 immediates in RISCVInstrInfo::movImm for RV32. (#88464)\n    \n    This allows us to support larger stack offsets for FrameLowering.\n    \n    Fixes #88365.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp b/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp\nindex 004a228ccc13..508f607fab20 100644\n--- a/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp\n@@ -767,8 +767,15 @@ void RISCVInstrInfo::movImm(MachineBasicBlock &MBB,\n                             bool DstIsDead) const {\n   Register SrcReg = RISCV::X0;\n \n-  if (!STI.is64Bit() && !isInt<32>(Val))\n-    report_fatal_error(\"Should only materialize 32-bit constants for RV32\");\n+  // For RV32, allow a sign or unsigned 32 bit value.\n+  if (!STI.is64Bit() && !isInt<32>(Val)) {\n+    // If have a uimm32 it will still fit in a register so we can allow it.\n+    if (!isUInt<32>(Val))\n+      report_fatal_error(\"Should only materialize 32-bit constants for RV32\");\n+\n+    // Sign extend for generateInstSeq.\n+    Val = SignExtend64<32>(Val);\n+  }\n \n   RISCVMatInt::InstSeq Seq = RISCVMatInt::generateInstSeq(Val, STI);\n   assert(!Seq.empty());\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv32"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/pr88365.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @foo() {\n  %1 = alloca [1073741818 x i32], align 4\n  call void @use(ptr %1)\n  ret void\n}\n\ndeclare void @use(ptr)",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

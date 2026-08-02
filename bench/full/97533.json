@@ -1,0 +1,120 @@
+{
+  "base_commit": "8270485af12516c159c4a2c6533fa9b149bdc63a",
+  "bug_id": "97533",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelDAGToDAG.cpp": [
+        "X86DAGToDAGISel::matchAddressRecursively"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelDAGToDAG.cpp": [
+        [
+          2745,
+          2751
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "e975ff0a223e79842b693e0ec4d3cac87963869a"
+  },
+  "issue": {
+    "author": "nikic",
+    "body": "```llvm\r\n; RUN: llc < %s\r\ntarget triple = \"x86_64-unknown-linux-gnu\"\r\n\r\ndefine ptr @test(ptr %ptr, i8 %arg, i1 %cond) {\r\nentry:\r\n  br i1 %cond, label %if, label %exit\r\n\r\nif:\r\n  %idx = zext i8 %arg to i64\r\n  %gep1 = getelementptr ptr, ptr %ptr, i64 %idx\r\n  %ptr2 = load ptr, ptr %gep1, align 8\r\n  %gep2 = getelementptr i64, ptr %ptr2, i64 %idx\r\n  br label %exit\r\n\r\nexit:\r\n  %phi = phi ptr [ %gep2, %if ], [ null, %entry ]\r\n  ret ptr %phi\r\n}\r\n```\r\n\r\nResults in:\r\n```\r\nllc: /home/npopov/repos/llvm-project/llvm/lib/CodeGen/TwoAddressInstructionPass.cpp:1461: bool (anonymous namespace)::TwoAddressInstructionPass::collectTiedOperands(MachineInstr *, TiedOperandMap &): Assertion `SrcReg && SrcMO.isUse() && \"two address instruction invalid\"' failed.\r\n```",
+    "comments": [
+      {
+        "author": "nikic",
+        "body": "The instruction in question is:\r\n```\r\n  %0:gr64 = ADD64rm $noreg(tied-def 0), killed %2:gr64, 8, killed %10:gr64_nosp, 0, $noreg, implicit-def dead $eflags :: (load (s64) from %ir.gep1)\r\n```"
+      },
+      {
+        "author": "KanRobert",
+        "body": "I will take a look."
+      },
+      {
+        "author": "KanRobert",
+        "body": "It started fail since llc 18.1 https://www.godbolt.org/z/v5KPn3G61 "
+      },
+      {
+        "author": "ivan-shrimp",
+        "body": "Look like the branch doesn't matter: https://www.godbolt.org/z/hbrfc5TKs"
+      },
+      {
+        "author": "KanRobert",
+        "body": "It seems related to the optimization about folding `shl` op in `X86DAGToDAGISel::matchAddressRecursively`.\r\n\r\nHere is a attempt\r\n\r\n```\r\nbash$ git diff\r\ndiff --git a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\r\nindex f2b3855ebc54..fedd5e2babc2 100644\r\n--- a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\r\n+++ b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\r\n@@ -2745,7 +2745,7 @@ bool X86DAGToDAGISel::matchAddressRecursively(SDValue N, X86ISelAddressMode &AM,\r\n         Src = Src.getOperand(0);\r\n       }\r\n\r\n-    if (Src.getOpcode() == ISD::SHL && Src.hasOneUse()) {\r\n+    if (Src.getOpcode() == ISD::SHL && Src.hasOneUse() && false) {\r\n       // Give up if the shift is not a valid scale factor [1,2,3].\r\n       SDValue ShlSrc = Src.getOperand(0);\r\n       SDValue ShlAmt = Src.getOperand(1);\r\n```\r\n\r\n\r\nor\r\n\r\n```\r\ndiff --git a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\r\nindex f2b3855ebc54..89df407cf739 100644\r\n--- a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\r\n+++ b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\r\n@@ -2784,7 +2784,7 @@ bool X86DAGToDAGISel::matchAddressRecursively(SDValue N, X86ISelAddressMode &AM,\r\n       SDValue NewShl = CurDAG->getNode(ISD::SHL, DL, VT, Zext, ShlAmt);\r\n       insertDAGNode(*CurDAG, N, NewShl);\r\n       CurDAG->ReplaceAllUsesWith(N, NewShl);\r\n-      CurDAG->RemoveDeadNode(N.getNode());\r\n+      //CurDAG->RemoveDeadNode(N.getNode());\r\n```\r\n\r\ncan make the test pass.\r\n\r\n\r\n"
+      },
+      {
+        "author": "KanRobert",
+        "body": "@RKSimon Do you have interest to take a look? I see you touched this code in 7428739ea81e1508b8da92e1561574216857a897"
+      },
+      {
+        "author": "RKSimon",
+        "body": "Commenting out this code seems to fix it - I'm trying to work out why.\r\nhttps://github.com/llvm/llvm-project/blob/687531fbed080b86c31144bf66c29f4a30e10e84/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp#L5994-L5998\r\n**EDIT** Only works for the original test case - not the branchless reduction"
+      },
+      {
+        "author": "RKSimon",
+        "body": "I have a workaround while I work on the underlying issue (we're deleting nodes that the DAG has already recorded in code selection)"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "llvm:crash"
+    ],
+    "title": "Assertion failure in TwoAddressInstructionPass"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/97533",
+  "knowledge_cutoff": "2024-07-03T07:16:50Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit e975ff0a223e79842b693e0ec4d3cac87963869a\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Thu Jul 4 20:54:43 2024 +0100\n\n    [X86] matchAddressRecursively - don't fold zext(shl(x,c)) -> shl(zext(x),c)) if the pattern has multiple uses\n    \n    Fixes #97533 crash where we hit a case where the root node had referenced the original zext node, which we then deleted - hopefully I can come up with a better solution, but the codegen changes don't look too bad atm (pulls out a shift from some complex LEA nodes that shared the scaled index).\n\ndiff --git a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\nindex f2b3855ebc54..c91bd576dc9f 100644\n--- a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\n+++ b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\n@@ -2745,7 +2745,7 @@ bool X86DAGToDAGISel::matchAddressRecursively(SDValue N, X86ISelAddressMode &AM,\n         Src = Src.getOperand(0);\n       }\n \n-    if (Src.getOpcode() == ISD::SHL && Src.hasOneUse()) {\n+    if (Src.getOpcode() == ISD::SHL && Src.hasOneUse() && N->hasOneUse()) {\n       // Give up if the shift is not a valid scale factor [1,2,3].\n       SDValue ShlSrc = Src.getOperand(0);\n       SDValue ShlAmt = Src.getOperand(1);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=i686-unknown",
+        "llc < %s -mtriple=x86_64-unknown"
+      ],
+      "file": "llvm/test/CodeGen/X86/addr-mode-matcher-3.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine i64 @add_shl_zext(ptr %ptr, i8 %arg) #0 {\n  %idx = zext i8 %arg to i64\n  %gep = getelementptr ptr, ptr %ptr, i64 %idx\n  %val = load i64, ptr %gep, align 8\n  %shl = shl i64 %idx, 3\n  %sum = add i64 %val, %shl\n  ret i64 %sum\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "add_shl_zext"
+        },
+        {
+          "test_body": "define i32 @mask_offset_scale_zext_i32_i64(ptr %base, i32 %i) {\n  %mask = and i32 %i, 65280\n  %offset = or i32 %mask, 6\n  %scale = shl i32 %offset, 1\n  %idxprom = zext i32 %scale to i64\n  %arrayidx = getelementptr inbounds i32, ptr %base, i64 %idxprom\n  %load = load i32, ptr %arrayidx, align 4\n  ret i32 %load\n}\n",
+          "test_name": "mask_offset_scale_zext_i32_i64"
+        }
+      ]
+    },
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+sse3",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+ssse3",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+sse4.1",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+xop",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx2",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx512f",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx512bw",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx512vbmi",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx512bw,+avx512vl",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx512bw,+avx512vl,+avx512vbmi"
+      ],
+      "file": "llvm/test/CodeGen/X86/var-permute-128.ll",
+      "tests": [
+        {
+          "test_body": "define void @indices_convert() {\nbb:\n  %0 = load <4 x i64>, ptr undef, align 32\n  %1 = bitcast <4 x i64> %0 to <8 x i32>\n  %2 = shufflevector <8 x i32> %1, <8 x i32> undef, <2 x i32> <i32 2, i32 12>\n  %3 = and <2 x i32> %2, splat (i32 7)\n  %4 = extractelement <2 x i32> %3, i32 0\n  %vecext.i8.1 = extractelement <4 x i64> %0, i32 %4\n  %5 = extractelement <2 x i32> %3, i32 1\n  %vecext.i8.2 = extractelement <4 x i64> %0, i32 %5\n  %6 = insertelement <2 x i64> poison, i64 %vecext.i8.1, i32 0\n  %7 = insertelement <2 x i64> %6, i64 %vecext.i8.2, i32 1\n  %8 = select <2 x i1> undef, <2 x i64> undef, <2 x i64> %7\n  store <2 x i64> %8, ptr undef, align 8\n  ret void\n}\n",
+          "test_name": "indices_convert"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

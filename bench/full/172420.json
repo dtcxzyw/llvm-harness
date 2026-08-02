@@ -1,0 +1,61 @@
+{
+  "base_commit": "6edfda169302df704b541b4d5b5c9996cb4adacd",
+  "bug_id": "172420",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "AArch64TargetLowering::LowerFormalArguments"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          8671,
+          8679
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "657e8d08f04b1d0bc07b05c17e8749ecf77f884d"
+  },
+  "issue": {
+    "author": "k-arrows",
+    "body": "Reproducer:\nhttps://godbolt.org/z/r9f949PE6\n\nBacktrace:\n```console\nllc: /root/llvm-project/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:8746: virtual llvm::SDValue llvm::AArch64TargetLowering::LowerFormalArguments(llvm::SDValue, llvm::CallingConv::ID, bool, const llvm::SmallVectorImpl<llvm::ISD::InputArg>&, const llvm::SDLoc&, llvm::SelectionDAG&, llvm::SmallVectorImpl<llvm::SDValue>&) const: Assertion `(VA.getValVT().isScalableVector() || Subtarget->isWindowsArm64EC()) && \"Indirect arguments should be scalable on most subtargets\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@foo'\n #0 0x000000000421fb68 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x421fb68)\n #1 0x000000000421ca14 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007684f8e42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007684f8e969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007684f8e42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007684f8e287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007684f8e2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007684f8e39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000000d77e03 llvm::AArch64TargetLowering::LowerFormalArguments(llvm::SDValue, unsigned int, bool, llvm::SmallVectorImpl<llvm::ISD::InputArg> const&, llvm::SDLoc const&, llvm::SelectionDAG&, llvm::SmallVectorImpl<llvm::SDValue>&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xd77e03)\n #9 0x0000000003eea794 llvm::SelectionDAGISel::LowerArguments(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3eea794)\n#10 0x0000000003fb8ef5 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fb8ef5)\n#11 0x0000000003fbb03c llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fbb03c)\n#12 0x0000000003fa683f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fa683f)\n#13 0x00000000030f5fd9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#14 0x0000000003750ab6 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3750ab6)\n#15 0x0000000003750e61 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3750e61)\n#16 0x00000000037516cf llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37516cf)\n#17 0x00000000008fe384 compileModule(char**, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#18 0x00000000007c88f9 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c88f9)\n#19 0x00007684f8e29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#20 0x00007684f8e29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#21 0x00000000008f3585 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8f3585)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\n\nThis comes from the following C reproducer:\n```c\n#include <arm_sve.h>\n\nsvcount_t foo(svcount_t p0, svcount_t p1, svcount_t p2, svcount_t p3, int x0,\n              int x1, int x2, int x3, int x4, int x5, int x6, int x7,\n              svcount_t p4) {\n  return p0;\n}\n```",
+    "comments": [],
+    "labels": [
+      "backend:AArch64",
+      "SVE",
+      "crash"
+    ],
+    "title": "[AArch64][SVE] Assertion `(VA.getValVT().isScalableVector() || Subtarget->isWindowsArm64EC()) && \"Indirect arguments should be scalable on most subtargets\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/172420",
+  "knowledge_cutoff": "2025-12-16T05:07:38Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 657e8d08f04b1d0bc07b05c17e8749ecf77f884d\nAuthor: Paul Walker <paul.walker@arm.com>\nDate:   Wed Dec 24 11:01:36 2025 +0000\n\n    [LLVM][CodeGen][SVE] Fix CCValAssign::Indirect assert to allow all scalable types. (#173372)\n    \n    Fixes https://github.com/llvm/llvm-project/issues/172420\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex fa6ddab8eca0..30e2a7b890c6 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -8671,9 +8671,9 @@ SDValue AArch64TargetLowering::LowerFormalArguments(\n         MemVT = VA.getLocVT();\n         break;\n       case CCValAssign::Indirect:\n-        assert((VA.getValVT().isScalableVector() ||\n-                Subtarget->isWindowsArm64EC()) &&\n-               \"Indirect arguments should be scalable on most subtargets\");\n+        assert(\n+            (VA.getValVT().isScalableVT() || Subtarget->isWindowsArm64EC()) &&\n+            \"Indirect arguments should be scalable on most subtargets\");\n         MemVT = VA.getLocVT();\n         break;\n       case CCValAssign::SExt:\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple aarch64-linux-gnu -mattr=+sve"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/sve-calling-convention-mixed.ll",
+      "tests": [
+        {
+          "test_body": "target datalayout = \"e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine dso_local target(\"aarch64.svcount\") @func_svcount_passed_via_indrect_memory(target(\"aarch64.svcount\") %p0, target(\"aarch64.svcount\") %p1, target(\"aarch64.svcount\") %p2, target(\"aarch64.svcount\") %p3, i32 noundef %x0, i32 noundef %x1, i32 noundef %x2, i32 noundef %x3, i32 noundef %x4, i32 noundef %x5, i32 noundef %x6, i32 noundef %x7, target(\"aarch64.svcount\") %p4) {\n  ret target(\"aarch64.svcount\") %p4\n}\n",
+          "test_name": "func_svcount_passed_via_indrect_memory"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

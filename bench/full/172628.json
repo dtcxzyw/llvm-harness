@@ -1,0 +1,60 @@
+{
+  "base_commit": "8e648380a173b77234284357e5a324803aa57468",
+  "bug_id": "172628",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "RISCVTargetLowering::PerformDAGCombine"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          21891,
+          21900
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "50ea2d8551552daf07ec580a75cfdeebc8b6b3cd"
+  },
+  "issue": {
+    "author": "ams-x9v2b7kq",
+    "body": "## [RISC-V] Clang crashes when running pass 'Post-RA pseudo instruction expansion pass' on function '@_Z1dv'\n\n### code link: https://godbolt.org/z/8rEznGKf4\n```\n#include <riscv_vector.h>\nuint8_t a[1]; int32_t b[1]; int32_t c[1];\nvoid d() {\n  for (size_t e = 0;;) {\n    size_t f(5);\n    vuint8mf8_t g = __riscv_vle8_v_u8mf8(&a[e], f);\n    vbool64_t i = __riscv_vmseq_vx_u8mf8_b64(g, 1, f);\n    vint32mf2x5_t j = __riscv_vlseg5e32_v_i32mf2x5_mu(\n        i,\n        __riscv_vcreate_v_i32mf2x5(\n            __riscv_vmv_v_x_i32mf2(0, __riscv_vsetvlmax_e16mf4()),\n            __riscv_vmv_v_x_i32mf2(0, __riscv_vsetvlmax_e16mf4()),\n            __riscv_vmv_v_x_i32mf2(0, __riscv_vsetvlmax_e16mf4()),\n            __riscv_vmv_v_x_i32mf2(0, __riscv_vsetvlmax_e16mf4()),\n            __riscv_vmv_v_x_i32mf2(0, __riscv_vsetvlmax_e16mf4())),\n        &b[e], f);\n    vint32mf2_t k = __riscv_vget_v_i32mf2x5_i32mf2(j, 0);\n    vuint32mf2_t l = __riscv_vsll_vx_u32mf2(__riscv_vid_v_u32mf2(f), 2, f);\n    __riscv_vsuxei32(&c[e], l, k, f);\n  }\n}\n```\n\n```\n$ clang++ -O3 -march=rv64gcv_zvfh -mabi=lp64d test.cpp -o a.out\n```\n\n### crash backtrace\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\n```\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-trunk/bin/clang++ -g -o /app/output.s -fno-verbose-asm -S -target riscv64-unknown-linux-gnu -march=rv64gc -mabi=lp64d --gcc-toolchain=/opt/compiler-explorer/riscv64/gcc-14.2.0/riscv64-unknown-linux-gnu --sysroot=/opt/compiler-explorer/riscv64/gcc-14.2.0/riscv64-unknown-linux-gnu/riscv64-unknown-linux-gnu/sysroot -fcolor-diagnostics -fno-crash-diagnostics -O3 -march=rv64gcv_zvfh <source>\n1.\t<eof> parser at end of file\n2.\tCode generation\n3.\tRunning pass 'Function Pass Manager' on module '<source>'.\n4.\tRunning pass 'Post-RA pseudo instruction expansion pass' on function '@_Z1dv'\n #0 0x0000000003d10978 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3d10978)\n #1 0x0000000003d0e34c llvm::sys::CleanupOnSignal(unsigned long) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3d0e34c)\n #2 0x0000000003c552d8 CrashRecoverySignalHandler(int) CrashRecoveryContext.cpp:0:0\n #3 0x00007fda72042520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #4 0x00000000021fcfbd llvm::RISCVInstrInfo::copyPhysRegVector(llvm::MachineBasicBlock&, llvm::MachineInstrBundleIterator<llvm::MachineInstr, false>, llvm::DebugLoc const&, llvm::MCRegister, llvm::MCRegister, bool, llvm::TargetRegisterClass const*) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x21fcfbd)\n #5 0x00000000021fe86a llvm::RISCVInstrInfo::copyPhysReg(llvm::MachineBasicBlock&, llvm::MachineInstrBundleIterator<llvm::MachineInstr, false>, llvm::DebugLoc const&, llvm::Register, llvm::Register, bool, bool, bool) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x21fe86a)\n #6 0x0000000003385e86 llvm::TargetInstrInfo::lowerCopy(llvm::MachineInstr*, llvm::TargetRegisterInfo const*) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3385e86)\n #7 0x0000000002ff1988 (anonymous namespace)::ExpandPostRA::run(llvm::MachineFunction&) (.constprop.0) ExpandPostRAPseudos.cpp:0:0\n #8 0x0000000002ff1ba4 (anonymous namespace)::ExpandPostRALegacy::runOnMachineFunction(llvm::MachineFunction&) ExpandPostRAPseudos.cpp:0:0\n #9 0x000000000310bbcd llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x310bbcd)\n#10 0x000000000366dfc2 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x366dfc2)\n#11 0x000000000366e251 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x366e251)\n#12 0x000000000366fac7 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x366fac7)\n#13 0x0000000003fa69bb clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3fa69bb)\n#14 0x00000000045d9b2b clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x45d9b2b)\n#15 0x00000000062235bc clang::ParseAST(clang::Sema&, bool, bool) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x62235bc)\n#16 0x00000000045da685 clang::CodeGenAction::ExecuteAction() (/opt/compiler-explorer/clang-trunk/bin/clang+++0x45da685)\n#17 0x00000000048ea59a clang::FrontendAction::Execute() (/opt/compiler-explorer/clang-trunk/bin/clang+++0x48ea59a)\n#18 0x00000000048684eb clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x48684eb)\n#19 0x00000000049e071b clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x49e071b)\n#20 0x0000000000dccd85 cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/opt/compiler-explorer/clang-trunk/bin/clang+++0xdccd85)\n#21 0x0000000000dc4b7b ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>) driver.cpp:0:0\n#22 0x0000000000dc4c1d int llvm::function_ref<int (llvm::SmallVectorImpl<char const*>&)>::callback_fn<clang_main(int, char**, llvm::ToolContext const&)::'lambda'(llvm::SmallVectorImpl<char const*>&)>(long, llvm::SmallVectorImpl<char const*>&) driver.cpp:0:0\n#23 0x0000000004654e19 void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::'lambda'()>(long) Job.cpp:0:0\n#24 0x0000000003c556f3 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3c556f3)\n#25 0x0000000004655039 clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (.part.0) Job.cpp:0:0\n#26 0x0000000004617ae2 clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x4617ae2)\n#27 0x00000000046189c1 clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x46189c1)\n#28 0x00000000046214ac clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x46214ac)\n#29 0x0000000000dc9649 clang_main(int, char**, llvm::ToolContext const&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0xdc9649)\n#30 0x0000000000c7ac34 main (/opt/compiler-explorer/clang-trunk/bin/clang+++0xc7ac34)\n#31 0x00007fda72029d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#32 0x00007fda72029e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#33 0x0000000000dc4615 _start (/opt/compiler-explorer/clang-trunk/bin/clang+++0xdc4615)\nclang++: error: clang frontend command failed with exit code 139 (use -v to see invocation)\nCompiler returned: 139\n```\n\n```\n$ clang-22 --version\nclang version 22.0.0git (https://github.com/llvm/llvm-project.git d502ff094937ff9e532a675df11d55bb0b134066)\nTarget: riscv64-unknown-unknown-elf\nThread model: posix\nInstalledDir: /home/2025-compiler/gcc-16-20251214/bin\n```",
+    "comments": [],
+    "labels": [
+      "backend:RISC-V",
+      "crash"
+    ],
+    "title": "[RISC-V] Clang crashes when running pass 'Post-RA pseudo instruction expansion pass' on function '@_Z1dv'"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/172628",
+  "knowledge_cutoff": "2025-12-17T10:44:38Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 50ea2d8551552daf07ec580a75cfdeebc8b6b3cd\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Wed Dec 17 22:45:47 2025 -0800\n\n    [RISCV] Extract vector from passthru when combining tuple_extract+vlseg. (#172743)\n    \n    The passthru operand is a tuple. We need to extract the correct field\n    vector from it.\n    \n    Existing tests only handled the undef passthru case which accidentally\n    worked. Possibly due to IMPLICIT_DEF being converted to noreg.\n    \n    Fixes #172628.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 1004e467d2d1..b2a9b4748404 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -21891,10 +21891,17 @@ SDValue RISCVTargetLowering::PerformDAGCombine(SDNode *N,\n     unsigned Stride = SEW / 8 * NF;\n     unsigned Offset = SEW / 8 * Idx;\n \n+    SDValue Passthru = Tuple.getOperand(2);\n+    if (Passthru.isUndef())\n+      Passthru = DAG.getUNDEF(VT);\n+    else\n+      Passthru = DAG.getNode(RISCVISD::TUPLE_EXTRACT, DL, VT, Passthru,\n+                             N->getOperand(1));\n+\n     SDValue Ops[] = {\n         /*Chain=*/Tuple.getOperand(0),\n         /*IntID=*/DAG.getTargetConstant(Intrinsic::riscv_vlse_mask, DL, XLenVT),\n-        /*Passthru=*/Tuple.getOperand(2),\n+        /*Passthru=*/Passthru,\n         /*Ptr=*/\n         DAG.getNode(ISD::ADD, DL, XLenVT, Tuple.getOperand(3),\n                     DAG.getConstant(Offset, DL, XLenVT)),\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64 -mattr=+v"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/tuple-extract-vlseg.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <vscale x 1 x i8> @test_vlseg3_mask_nxv16i8_triscv.vector.tuple_nxv1i8_3t(ptr %base, i64 %vl, <vscale x 1 x i1> %mask, target(\"riscv.vector.tuple\", <vscale x 1 x i8>, 3) %passthru) {\nentry:\n  %0 = tail call target(\"riscv.vector.tuple\", <vscale x 1 x i8>, 3) @llvm.riscv.vlseg3.mask.triscv.vector.tuple_nxv1i8_3t.nxv16i1(target(\"riscv.vector.tuple\", <vscale x 1 x i8>, 3) %passthru, ptr %base, <vscale x 1 x i1> %mask, i64 %vl, i64 1, i64 3)\n  %1 = call <vscale x 1 x i8> @llvm.riscv.tuple.extract.nxv1i8.triscv.vector.tuple_nxv1i8_3t(target(\"riscv.vector.tuple\", <vscale x 1 x i8>, 3) %0, i32 1)\n  ret <vscale x 1 x i8> %1\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

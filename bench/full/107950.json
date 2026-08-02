@@ -1,0 +1,78 @@
+{
+  "base_commit": "b71d88ca5bf42533b822be782ed9066e68011e95",
+  "bug_id": "107950",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVVectorPeephole.cpp": [
+        "RISCVVectorPeephole::ensureDominates",
+        "RISCVVectorPeephole::tryToReduceVL"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVVectorPeephole.cpp": [
+        [
+          61,
+          67
+        ],
+        [
+          73,
+          79
+        ],
+        [
+          116,
+          122
+        ],
+        [
+          526,
+          543
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "7ba6768df8181bc270763333969d4a1d6cc2e160"
+  },
+  "issue": {
+    "author": "patrick-rivos",
+    "body": "LLVM IR:\r\n```llvm ir\r\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\r\ntarget triple = \"riscv64-unknown-linux-gnu\"\r\n\r\ndefine void @m(<vscale x 4 x i1> %0) #0 {\r\nentry:\r\n  %broadcast.splatinsert184 = insertelement <vscale x 4 x ptr> zeroinitializer, ptr null, i64 0\r\n  %broadcast.splat185 = shufflevector <vscale x 4 x ptr> %broadcast.splatinsert184, <vscale x 4 x ptr> zeroinitializer, <vscale x 4 x i32> zeroinitializer\r\n  %wide.masked.gather186 = tail call <vscale x 4 x i32> @llvm.masked.gather.nxv4i32.nxv4p0(<vscale x 4 x ptr> %broadcast.splat185, i32 4, <vscale x 4 x i1> %0, <vscale x 4 x i32> zeroinitializer)\r\n  %predphi187 = select <vscale x 4 x i1> %0, <vscale x 4 x i32> %wide.masked.gather186, <vscale x 4 x i32> zeroinitializer\r\n  %1 = extractelement <vscale x 4 x i32> %predphi187, i32 0\r\n  store i32 %1, ptr null, align 4\r\n  ret void\r\n}\r\n\r\n; Function Attrs: nocallback nofree nosync nounwind willreturn memory(read)\r\ndeclare <vscale x 4 x i32> @llvm.masked.gather.nxv4i32.nxv4p0(<vscale x 4 x ptr>, i32 immarg, <vscale x 4 x i1>, <vscale x 4 x i32>) #1\r\n\r\nattributes #0 = { \"target-features\"=\"+64bit,+d,+f,+relax,+v,+xsifivecdiscarddlone,+zicsr,+zve32f,+zve32x,+zve64d,+zve64f,+zve64x,+zvl128b,+zvl32b,+zvl64b,-a,-b,-c,-e,-experimental-smctr,-experimental-smmpm,-experimental-smnpm,-experimental-ssctr,-experimental-ssnpm,-experimental-sspm,-experimental-supm,-experimental-zacas,-experimental-zalasr,-experimental-zicfilp,-experimental-zicfiss,-experimental-zvbc32e,-experimental-zvkgs,-h,-m,-shcounterenw,-shgatpa,-shtvala,-shvsatpa,-shvstvala,-shvstvecd,-smaia,-smcdeleg,-smcsrind,-smepmp,-smstateen,-ssaia,-ssccfg,-ssccptr,-sscofpmf,-sscounterenw,-sscsrind,-ssqosid,-ssstateen,-ssstrict,-sstc,-sstvala,-sstvecd,-ssu64xl,-svade,-svadu,-svbare,-svinval,-svnapot,-svpbmt,-xcvalu,-xcvbi,-xcvbitmanip,-xcvelw,-xcvmac,-xcvmem,-xcvsimd,-xsfcease,-xsfvcp,-xsfvfnrclipxfqf,-xsfvfwmaccqqq,-xsfvqmaccdod,-xsfvqmaccqoq,-xsifivecflushdlone,-xtheadba,-xtheadbb,-xtheadbs,-xtheadcmo,-xtheadcondmov,-xtheadfmemidx,-xtheadmac,-xtheadmemidx,-xtheadmempair,-xtheadsync,-xtheadvdot,-xventanacondops,-xwchc,-za128rs,-za64rs,-zaamo,-zabha,-zalrsc,-zama16b,-zawrs,-zba,-zbb,-zbc,-zbkb,-zbkc,-zbkx,-zbs,-zca,-zcb,-zcd,-zce,-zcf,-zcmop,-zcmp,-zcmt,-zdinx,-zfa,-zfbfmin,-zfh,-zfhmin,-zfinx,-zhinx,-zhinxmin,-zic64b,-zicbom,-zicbop,-zicboz,-ziccamoa,-ziccif,-zicclsm,-ziccrse,-zicntr,-zicond,-zifencei,-zihintntl,-zihintpause,-zihpm,-zimop,-zk,-zkn,-zknd,-zkne,-zknh,-zkr,-zks,-zksed,-zksh,-zkt,-zmmul,-ztso,-zvbb,-zvbc,-zvfbfmin,-zvfbfwma,-zvfh,-zvfhmin,-zvkb,-zvkg,-zvkn,-zvknc,-zvkned,-zvkng,-zvknha,-zvknhb,-zvks,-zvksc,-zvksed,-zvksg,-zvksh,-zvkt,-zvl1024b,-zvl16384b,-zvl2048b,-zvl256b,-zvl32768b,-zvl4096b,-zvl512b,-zvl65536b,-zvl8192b\" }\r\nattributes #1 = { nocallback nofree nosync nounwind willreturn memory(read) }\r\n```\r\n\r\nBacktrace:\r\n```\r\n> /scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc reduced.ll\r\nllc: /scratch/tc-testing/tc-compiler-fuzz-trunk/llvm/llvm/lib/Target/RISCV/RISCVVectorPeephole.cpp:410: bool {anonymous}::RISCVVectorPeephole::convertSameMaskVMergeToVMv(llvm::MachineInstr&): Assertion `TrueV0Def && TrueV0Def->isCopy() && MIV0Def && MIV0Def->isCopy()' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.      Program arguments: /scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc reduced.ll\r\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\r\n2.      Running pass 'RISC-V Vector Peephole Optimization' on function '@m'\r\n #0 0x00005f64a118b090 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1e94090)\r\n #1 0x00005f64a118849f llvm::sys::RunSignalHandlers() (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1e9149f)\r\n #2 0x00005f64a11885f5 SignalHandler(int) Signals.cpp:0:0\r\n #3 0x000073cfabc42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #4 0x000073cfabc969fc __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\r\n #5 0x000073cfabc969fc __pthread_kill_internal ./nptl/pthread_kill.c:78:10\r\n #6 0x000073cfabc969fc pthread_kill ./nptl/pthread_kill.c:89:10\r\n #7 0x000073cfabc42476 gsignal ./signal/../sysdeps/posix/raise.c:27:6\r\n #8 0x000073cfabc287f3 abort ./stdlib/abort.c:81:7\r\n #9 0x000073cfabc2871b _nl_load_domain ./intl/loadmsgcat.c:1177:9\r\n#10 0x000073cfabc39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n#11 0x00005f649fa0162e (anonymous namespace)::RISCVVectorPeephole::convertSameMaskVMergeToVMv(llvm::MachineInstr&) RISCVVectorPeephole.cpp:0:0\r\n#12 0x00005f649fa022b3 (anonymous namespace)::RISCVVectorPeephole::runOnMachineFunction(llvm::MachineFunction&) RISCVVectorPeephole.cpp:0:0\r\n#13 0x00005f64a0084297 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#14 0x00005f64a06aba77 llvm::FPPassManager::runOnFunction(llvm::Function&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x13b4a77)\r\n#15 0x00005f64a06abec9 llvm::FPPassManager::runOnModule(llvm::Module&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x13b4ec9)\r\n#16 0x00005f64a06ac881 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x13b5881)\r\n#17 0x00005f649f9829c6 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#18 0x00005f649f8c7bd6 main (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x5d0bd6)\r\n#19 0x000073cfabc29d90 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16\r\n#20 0x000073cfabc29e40 call_init ./csu/../csu/libc-start.c:128:20\r\n#21 0x000073cfabc29e40 __libc_start_main ./csu/../csu/libc-start.c:379:5\r\n#22 0x00005f649f9797e5 _start (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x6827e5)\r\nzsh: IOT instruction (core dumped)  /scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc\r\n```\r\n\r\nGodbolt: https://godbolt.org/z/TGzsjT7P3\r\n\r\nTested using d9a996020394a8181d17e4f0a0fc89d59371f9af\r\n\r\n`-opt-bisect-limit` points to `RISC-V Vector Peephole Optimization`\r\n\r\nFound via fuzzer.",
+    "comments": [
+      {
+        "author": "lukel97",
+        "body": "It turns out that the FIXME that ce3648094d44e8c098396a353b215acecb363cda set out to wasn't actually an issue at all. I had forgotten that we don't store a V0Def on every instruction, just the ones that use V0, so it ended up sometimes clearing V0Defs on instructions that do use V0. I've reverted said commit and added the test case for this. \r\n\r\nAnd whilst fixing that, a separate -verify-machineinstrs failure fell out so that was also fixed in b71d88ca5bf42533b822be782ed9066e68011e95"
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash"
+    ],
+    "title": "[RISC-V] Assertion `TrueV0Def && TrueV0Def->isCopy() && MIV0Def && MIV0Def->isCopy()' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/107950",
+  "knowledge_cutoff": "2024-09-10T02:10:52Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 7ba6768df8181bc270763333969d4a1d6cc2e160\nAuthor: Luke Lau <luke@igalia.com>\nDate:   Tue Sep 10 13:14:13 2024 +0800\n\n    Revert \"[RISCV] Update V0Defs after moving Src in peepholes (#107359)\"\n    \n    This fixes #107950 and adds a test case for it. The issue was due to\n    us incorrectly assuming that we stored a V0Defs entry for every single\n    instruction.\n    \n    We actually only store them for instructions that use V0, so when we\n    updated the V0Def after moving we sometimes ended up copying nullptr\n    over from an instruction that doesn't use V0 and clearing the V0Def\n    entry inadvertently.\n    \n    Because we don't have V0Defs on instructions that don't use V0, the\n    FIXME was never actually needed in the first place since the\n    bookkeeping wasn't out of sync to begin with.\n    \n    That commit also mentioned that a future unmasked to masked pseudo\n    peephole might need unmasked pseudos to have V0Defs entries, but after\n    working on this locally it turns out we don't.\n    \n    This reverts commit ce3648094d44e8c098396a353b215acecb363cda.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVVectorPeephole.cpp b/llvm/lib/Target/RISCV/RISCVVectorPeephole.cpp\nindex 384eb9d7b946..298f3317bf61 100644\n--- a/llvm/lib/Target/RISCV/RISCVVectorPeephole.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVVectorPeephole.cpp\n@@ -61,7 +61,7 @@ public:\n   }\n \n private:\n-  bool tryToReduceVL(MachineInstr &MI);\n+  bool tryToReduceVL(MachineInstr &MI) const;\n   bool convertToVLMAX(MachineInstr &MI) const;\n   bool convertToWholeRegister(MachineInstr &MI) const;\n   bool convertToUnmasked(MachineInstr &MI) const;\n@@ -73,7 +73,7 @@ private:\n   bool hasSameEEW(const MachineInstr &User, const MachineInstr &Src) const;\n   bool isAllOnesMask(const MachineInstr *MaskDef) const;\n   std::optional<unsigned> getConstant(const MachineOperand &VL) const;\n-  bool ensureDominates(const MachineOperand &Use, MachineInstr &Src);\n+  bool ensureDominates(const MachineOperand &Use, MachineInstr &Src) const;\n \n   /// Maps uses of V0 to the corresponding def of V0.\n   DenseMap<const MachineInstr *, const MachineInstr *> V0Defs;\n@@ -116,7 +116,7 @@ bool RISCVVectorPeephole::hasSameEEW(const MachineInstr &User,\n // Attempt to reduce the VL of an instruction whose sole use is feeding a\n // instruction with a narrower VL.  This currently works backwards from the\n // user instruction (which might have a smaller VL).\n-bool RISCVVectorPeephole::tryToReduceVL(MachineInstr &MI) {\n+bool RISCVVectorPeephole::tryToReduceVL(MachineInstr &MI) const {\n   // Note that the goal here is a bit multifaceted.\n   // 1) For store's reducing the VL of the value being stored may help to\n   //    reduce VL toggles.  This is somewhat of an artifact of the fact we\n@@ -526,18 +526,16 @@ static bool dominates(MachineBasicBlock::const_iterator A,\n /// does. Returns false if doesn't dominate and we can't move. \\p MO must be in\n /// the same basic block as \\Src.\n bool RISCVVectorPeephole::ensureDominates(const MachineOperand &MO,\n-                                          MachineInstr &Src) {\n+                                          MachineInstr &Src) const {\n   assert(MO.getParent()->getParent() == Src.getParent());\n   if (!MO.isReg() || MO.getReg() == RISCV::NoRegister)\n     return true;\n \n   MachineInstr *Def = MRI->getVRegDef(MO.getReg());\n   if (Def->getParent() == Src.getParent() && !dominates(Def, Src)) {\n-    MachineInstr *AfterDef = Def->getNextNode();\n-    if (!isSafeToMove(Src, *AfterDef))\n+    if (!isSafeToMove(Src, *Def->getNextNode()))\n       return false;\n-    V0Defs[&Src] = V0Defs[AfterDef];\n-    Src.moveBefore(AfterDef);\n+    Src.moveBefore(Def->getNextNode());\n   }\n \n   return true;\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -verify-machineinstrs"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/pr107950.ll",
+      "tests": [
+        {
+          "test_body": "\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"riscv64-unknown-linux-gnu\"\n\ndefine void @m(<vscale x 4 x i1> %0) #0 {\nentry:\n  %broadcast.splatinsert184 = insertelement <vscale x 4 x ptr> zeroinitializer, ptr null, i64 0\n  %broadcast.splat185 = shufflevector <vscale x 4 x ptr> %broadcast.splatinsert184, <vscale x 4 x ptr> zeroinitializer, <vscale x 4 x i32> zeroinitializer\n  %wide.masked.gather186 = tail call <vscale x 4 x i32> @llvm.masked.gather.nxv4i32.nxv4p0(<vscale x 4 x ptr> %broadcast.splat185, i32 4, <vscale x 4 x i1> %0, <vscale x 4 x i32> zeroinitializer)\n  %predphi187 = select <vscale x 4 x i1> %0, <vscale x 4 x i32> %wide.masked.gather186, <vscale x 4 x i32> zeroinitializer\n  %1 = extractelement <vscale x 4 x i32> %predphi187, i32 0\n  store i32 %1, ptr null, align 4\n  ret void\n}\n\n; Function Attrs: nocallback nofree nosync nounwind willreturn memory(read)\ndeclare <vscale x 4 x i32> @llvm.masked.gather.nxv4i32.nxv4p0(<vscale x 4 x ptr>, i32 immarg, <vscale x 4 x i1>, <vscale x 4 x i32>) #1\n\nattributes #0 = { \"target-features\"=\"+64bit,+d,+f,+relax,+v,+xsifivecdiscarddlone,+zicsr,+zve32f,+zve32x,+zve64d,+zve64f,+zve64x,+zvl128b,+zvl32b,+zvl64b,-a,-b,-c,-e,-experimental-smctr,-experimental-smmpm,-experimental-smnpm,-experimental-ssctr,-experimental-ssnpm,-experimental-sspm,-experimental-supm,-experimental-zacas,-experimental-zalasr,-experimental-zicfilp,-experimental-zicfiss,-experimental-zvbc32e,-experimental-zvkgs,-h,-m,-shcounterenw,-shgatpa,-shtvala,-shvsatpa,-shvstvala,-shvstvecd,-smaia,-smcdeleg,-smcsrind,-smepmp,-smstateen,-ssaia,-ssccfg,-ssccptr,-sscofpmf,-sscounterenw,-sscsrind,-ssqosid,-ssstateen,-ssstrict,-sstc,-sstvala,-sstvecd,-ssu64xl,-svade,-svadu,-svbare,-svinval,-svnapot,-svpbmt,-xcvalu,-xcvbi,-xcvbitmanip,-xcvelw,-xcvmac,-xcvmem,-xcvsimd,-xsfcease,-xsfvcp,-xsfvfnrclipxfqf,-xsfvfwmaccqqq,-xsfvqmaccdod,-xsfvqmaccqoq,-xsifivecflushdlone,-xtheadba,-xtheadbb,-xtheadbs,-xtheadcmo,-xtheadcondmov,-xtheadfmemidx,-xtheadmac,-xtheadmemidx,-xtheadmempair,-xtheadsync,-xtheadvdot,-xventanacondops,-xwchc,-za128rs,-za64rs,-zaamo,-zabha,-zalrsc,-zama16b,-zawrs,-zba,-zbb,-zbc,-zbkb,-zbkc,-zbkx,-zbs,-zca,-zcb,-zcd,-zce,-zcf,-zcmop,-zcmp,-zcmt,-zdinx,-zfa,-zfbfmin,-zfh,-zfhmin,-zfinx,-zhinx,-zhinxmin,-zic64b,-zicbom,-zicbop,-zicboz,-ziccamoa,-ziccif,-zicclsm,-ziccrse,-zicntr,-zicond,-zifencei,-zihintntl,-zihintpause,-zihpm,-zimop,-zk,-zkn,-zknd,-zkne,-zknh,-zkr,-zks,-zksed,-zksh,-zkt,-zmmul,-ztso,-zvbb,-zvbc,-zvfbfmin,-zvfbfwma,-zvfh,-zvfhmin,-zvkb,-zvkg,-zvkn,-zvknc,-zvkned,-zvkng,-zvknha,-zvknhb,-zvks,-zvksc,-zvksed,-zvksg,-zvksh,-zvkt,-zvl1024b,-zvl16384b,-zvl2048b,-zvl256b,-zvl32768b,-zvl4096b,-zvl512b,-zvl65536b,-zvl8192b\" }\nattributes #1 = { nocallback nofree nosync nounwind willreturn memory(read) }",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

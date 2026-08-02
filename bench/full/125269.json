@@ -1,0 +1,74 @@
+{
+  "base_commit": "e3abe940d8fc356bf46a6b71da44df0f4652df1c",
+  "bug_id": "125269",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "lowerShuffleViaVRegSplitting"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          5214,
+          5230
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "23b6a05ec9c2220844748487612761d1e09166b7"
+  },
+  "issue": {
+    "author": "ewlu",
+    "body": "Testcase:\n```llvm ir\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"riscv64-unknown-linux-gnu\"\n\n; Function Attrs: vscale_range(4,4)\ndefine i32 @main() #0 {\nentry:\n  %0 = shufflevector <32 x i64> zeroinitializer, <32 x i64> splat (i64 1), <32 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15, i32 16, i32 34, i32 35, i32 36, i32 37, i32 38, i32 39, i32 poison, i32 poison, i32 33, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>\n  %1 = icmp slt <32 x i64> zeroinitializer, %0\n  %2 = bitcast <32 x i1> %1 to i32\n  %3 = trunc i32 %2 to i8\n  store i8 %3, ptr null, align 1\n  ret i32 0\n}\n\nattributes #0 = { vscale_range(4,4) \"target-features\"=\"+64bit,+a,+c,+d,+f,+m,+relax,+v,+zaamo,+zalrsc,+zicsr,+zifencei,+zmmul,+zve32f,+zve32x,+zve64d,+zve64f,+zve64x,+zvl128b,+zvl256b,+zvl32b,+zvl64b,-b,-e,-experimental-sdext,-experimental-sdtrig,-experimental-smctr,-experimental-ssctr,-experimental-svukte,-experimental-xqcia,-experimental-xqciac,-experimental-xqcicli,-experimental-xqcicm,-experimental-xqcics,-experimental-xqcicsr,-experimental-xqciint,-experimental-xqcilo,-experimental-xqcilsm,-experimental-xqcisls,-experimental-zalasr,-experimental-zicfilp,-experimental-zicfiss,-experimental-zvbc32e,-experimental-zvkgs,-h,-sha,-shcounterenw,-shgatpa,-shtvala,-shvsatpa,-shvstvala,-shvstvecd,-smaia,-smcdeleg,-smcsrind,-smdbltrp,-smepmp,-smmpm,-smnpm,-smrnmi,-smstateen,-ssaia,-ssccfg,-ssccptr,-sscofpmf,-sscounterenw,-sscsrind,-ssdbltrp,-ssnpm,-sspm,-ssqosid,-ssstateen,-ssstrict,-sstc,-sstvala,-sstvecd,-ssu64xl,-supm,-svade,-svadu,-svbare,-svinval,-svnapot,-svpbmt,-svvptc,-xcvalu,-xcvbi,-xcvbitmanip,-xcvelw,-xcvmac,-xcvmem,-xcvsimd,-xmipscmove,-xmipslsp,-xsfcease,-xsfvcp,-xsfvfnrclipxfqf,-xsfvfwmaccqqq,-xsfvqmaccdod,-xsfvqmaccqoq,-xsifivecdiscarddlone,-xsifivecflushdlone,-xtheadba,-xtheadbb,-xtheadbs,-xtheadcmo,-xtheadcondmov,-xtheadfmemidx,-xtheadmac,-xtheadmemidx,-xtheadmempair,-xtheadsync,-xtheadvdot,-xventanacondops,-xwchc,-za128rs,-za64rs,-zabha,-zacas,-zama16b,-zawrs,-zba,-zbb,-zbc,-zbkb,-zbkc,-zbkx,-zbs,-zca,-zcb,-zcd,-zce,-zcf,-zcmop,-zcmp,-zcmt,-zdinx,-zfa,-zfbfmin,-zfh,-zfhmin,-zfinx,-zhinx,-zhinxmin,-zic64b,-zicbom,-zicbop,-zicboz,-ziccamoa,-ziccif,-zicclsm,-ziccrse,-zicntr,-zicond,-zihintntl,-zihintpause,-zihpm,-zimop,-zk,-zkn,-zknd,-zkne,-zknh,-zkr,-zks,-zksed,-zksh,-zkt,-ztso,-zvbb,-zvbc,-zvfbfmin,-zvfbfwma,-zvfh,-zvfhmin,-zvkb,-zvkg,-zvkn,-zvknc,-zvkned,-zvkng,-zvknha,-zvknhb,-zvks,-zvksc,-zvksed,-zvksg,-zvksh,-zvkt,-zvl1024b,-zvl16384b,-zvl2048b,-zvl32768b,-zvl4096b,-zvl512b,-zvl65536b,-zvl8192b\" }\n```\nCommand/backtrace\n```\n$  /scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc reduced.ll\nllc: /scratch/ewlu/daily-upstream-build/llvm/llvm/lib/Target/RISCV/RISCVISelLowering.cpp:5216: llvm::SDValue lowerShuffleViaVRegSplitting(llvm::ShuffleVectorSDNode*, llvm::SelectionDAG&, const llvm::RISCVSubtarget&): Assertion `Idx2 != UINT_MAX && Values.contains(Idx2) && \"Expected both indices to be extracted already.\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.      Program arguments: /scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc reduced.ll\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\n2.      Running pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@main'\n #0 0x00005a29ac913672 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x2092672)\n #1 0x00005a29ac9106bf llvm::sys::RunSignalHandlers() (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x208f6bf)\n #2 0x00005a29ac9107fc SignalHandler(int) Signals.cpp:0:0\n #3 0x0000729162a45320 (/lib/x86_64-linux-gnu/libc.so.6+0x45320)\n #4 0x0000729162a9eb1c __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x0000729162a9eb1c __pthread_kill_internal ./nptl/pthread_kill.c:78:10\n #6 0x0000729162a9eb1c pthread_kill ./nptl/pthread_kill.c:89:10\n #7 0x0000729162a4526e raise ./signal/../sysdeps/posix/raise.c:27:6\n #8 0x0000729162a288ff abort ./stdlib/abort.c:81:7\n #9 0x0000729162a2881b _nl_load_domain ./intl/loadmsgcat.c:1177:9\n#10 0x0000729162a3b507 (/lib/x86_64-linux-gnu/libc.so.6+0x3b507)\n#11 0x00005a29ab1b043d lowerVECTOR_SHUFFLE(llvm::SDValue, llvm::SelectionDAG&, llvm::RISCVSubtarget const&) RISCVISelLowering.cpp:0:0\n#12 0x00005a29ac551da9 (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) LegalizeDAG.cpp:0:0\n#13 0x00005a29ac554a80 llvm::SelectionDAG::Legalize() (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1cd3a80)\n#14 0x00005a29ac6897de llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1e087de)\n#15 0x00005a29ac68c849 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1e0b849)\n#16 0x00005a29ac68df5a llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1e0cf5a)\n#17 0x00005a29ac6788d7 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1df78d7)\n#18 0x00005a29ab72efab llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#19 0x00005a29abd9b181 llvm::FPPassManager::runOnFunction(llvm::Function&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x151a181)\n#20 0x00005a29abd9b5d1 llvm::FPPassManager::runOnModule(llvm::Module&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x151a5d1)\n#21 0x00005a29abd9bf64 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x151af64)\n#22 0x00005a29aafc0942 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#23 0x00005a29aaed9827 main (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x658827)\n#24 0x0000729162a2a1ca __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#25 0x0000729162a2a28b call_init ./csu/../csu/libc-start.c:128:20\n#26 0x0000729162a2a28b __libc_start_main ./csu/../csu/libc-start.c:347:5\n#27 0x00005a29aafb5cc5 _start (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x734cc5)\nAborted (core dumped)\n```\ngodbolt link: https://godbolt.org/z/bf4q3TTzW\nFound via fuzzer (C program before reduction)\n\n",
+    "comments": [
+      {
+        "author": "topperc",
+        "body": "CC @preames @lukel97 "
+      },
+      {
+        "author": "topperc",
+        "body": "@alexey-bataev this might be yours it's in `lowerShuffleViaVRegSplitting` which uses `processShuffleMasks`"
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash"
+    ],
+    "title": "[RISC-V]  Assertion `Idx2 != UINT_MAX && Values.contains(Idx2) && \"Expected both indices to be extracted already.\"' failed"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/125269",
+  "knowledge_cutoff": "2025-01-31T19:02:05Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 23b6a05ec9c2220844748487612761d1e09166b7\nAuthor: Alexey Bataev <a.bataev@outlook.com>\nDate:   Wed Feb 5 07:13:33 2025 -0500\n\n    [CG][RISCV]Fix shuffling of odd number of input vectors\n    \n    If the input contains odd number of shuffled vectors, the 2 last\n    shuffles are shuffled with the same first vector. Need to correctly\n    process such situation: when the first vector is requested for the first\n    time - extract it from the source vector, when it is requested the\n    second time - reuse previous result. The second vector should be\n    extracted in both cases.\n    \n    Fixes #125269\n    \n    Reviewers: topperc, preames\n    \n    Reviewed By: preames\n    \n    Pull Request: https://github.com/llvm/llvm-project/pull/125693\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 6a0a5aa4ba41..ddda8448b309 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -5214,17 +5214,21 @@ static SDValue lowerShuffleViaVRegSplitting(ShuffleVectorSDNode *SVN,\n     SmallDenseMap<unsigned, SDValue, 4> Values;\n     for (unsigned I : seq<unsigned>(Data.size())) {\n       const auto &[Idx1, Idx2, _] = Data[I];\n-      if (Values.contains(Idx1)) {\n-        assert(Idx2 != UINT_MAX && Values.contains(Idx2) &&\n-               \"Expected both indices to be extracted already.\");\n-        break;\n+      // If the shuffle contains permutation of odd number of elements,\n+      // Idx1 might be used already in the first iteration.\n+      //\n+      // Idx1 = shuffle Idx1, Idx2\n+      // Idx1 = shuffle Idx1, Idx3\n+      SDValue &V = Values.try_emplace(Idx1).first->getSecond();\n+      if (!V)\n+        V = ExtractValue(Idx1 >= NumOfSrcRegs ? V2 : V1,\n+                         (Idx1 % NumOfSrcRegs) * NumOpElts);\n+      if (Idx2 != UINT_MAX) {\n+        SDValue &V = Values.try_emplace(Idx2).first->getSecond();\n+        if (!V)\n+          V = ExtractValue(Idx2 >= NumOfSrcRegs ? V2 : V1,\n+                           (Idx2 % NumOfSrcRegs) * NumOpElts);\n       }\n-      SDValue V = ExtractValue(Idx1 >= NumOfSrcRegs ? V2 : V1,\n-                               (Idx1 % NumOfSrcRegs) * NumOpElts);\n-      Values[Idx1] = V;\n-      if (Idx2 != UINT_MAX)\n-        Values[Idx2] = ExtractValue(Idx2 >= NumOfSrcRegs ? V2 : V1,\n-                                    (Idx2 % NumOfSrcRegs) * NumOpElts);\n     }\n     SDValue V;\n     for (const auto &[Idx1, Idx2, Mask] : Data) {\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=riscv32 -mattr=+v -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -mattr=+v -verify-machineinstrs < %s"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/fixed-vectors-shuffle-exact-vlen.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: vscale_range(4,4)\ndefine void @shuffle_3_input_vectors() #0 {\n  %1 = shufflevector <32 x i64> zeroinitializer, <32 x i64> splat (i64 1), <32 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15, i32 16, i32 34, i32 35, i32 36, i32 37, i32 38, i32 39, i32 poison, i32 poison, i32 33, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>\n  %2 = icmp slt <32 x i64> zeroinitializer, %1\n  %3 = bitcast <32 x i1> %2 to i32\n  %4 = trunc i32 %3 to i8\n  store i8 %4, ptr null, align 1\n  ret void\n}\n\nattributes #0 = { vscale_range(4,4) }\n",
+          "test_name": "shuffle_3_input_vectors"
+        },
+        {
+          "test_body": "; Function Attrs: vscale_range(2,2)\ndefine void @shuffle_i256_ldst(ptr %p) #0 {\n  %a = load <4 x i256>, ptr %p, align 128\n  %res = shufflevector <4 x i256> %a, <4 x i256> poison, <4 x i32> <i32 0, i32 0, i32 3, i32 2>\n  store <4 x i256> %res, ptr %p, align 128\n  ret void\n}\n\nattributes #0 = { vscale_range(2,2) }\n",
+          "test_name": "shuffle_i256_ldst"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

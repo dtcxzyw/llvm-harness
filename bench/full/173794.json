@@ -1,0 +1,63 @@
+{
+  "base_commit": "7da282fd3820126183e2bfcaa9ea5c45096397ce",
+  "bug_id": "173794",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "combineSelect"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          48471,
+          48478
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "6274b6ba29cd05f386da90fb1f26d64a4c30958f"
+  },
+  "issue": {
+    "author": "alexey-bataev",
+    "body": "lib/CodeGen/SelectionDAG/SelectionDAG.cpp:1673: SDValue llvm::SelectionDAG::getConstant(const ConstantInt &, const SDLoc &, EVT, bool, bool): Assertion `VT.isInteger() && \"Cannot create FP integer constant!\"' failed.\n\nhttps://godbolt.org/z/6oTM4z37j",
+    "comments": [],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid"
+    ],
+    "title": "SelectionDAG crash"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/173794",
+  "knowledge_cutoff": "2025-12-28T19:16:08Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 6274b6ba29cd05f386da90fb1f26d64a4c30958f\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Tue Dec 30 13:14:56 2025 +0000\n\n    [X86] Ensure we fold pow2 masks with the mask type, not the result type (#173984)\n    \n    This was missed in #173366 when we relaxed the constraint on the types to just be the same element width\n    \n    Fixes #173794\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex a12582afa7c3..7c6aeca4078d 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -48471,8 +48471,9 @@ static SDValue combineSelect(SDNode *N, SelectionDAG &DAG,\n                           MaskVal->getAPIntValue().exactLogBase2());\n       }\n       // vsel ((X & C) == 0), LHS, RHS --> vsel ((shl X, C') < 0), RHS, LHS\n-      SDValue ShlAmt = getConstVector(ShlVals, VT.getSimpleVT(), DAG, DL);\n-      SDValue Shl = DAG.getNode(ISD::SHL, DL, VT, And.getOperand(0), ShlAmt);\n+      MVT MskVT = Mask.getSimpleValueType();\n+      SDValue ShlAmt = getConstVector(ShlVals, MskVT, DAG, DL);\n+      SDValue Shl = DAG.getNode(ISD::SHL, DL, MskVT, And.getOperand(0), ShlAmt);\n       SDValue NewCond =\n           DAG.getSetCC(DL, CondVT, Shl, Cond.getOperand(1), ISD::SETLT);\n       return DAG.getSelect(DL, VT, NewCond, RHS, LHS);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v2",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v3",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v4"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr173794.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <2 x double> @PR173794(<2 x i64> %a0) {\n; SSE2-LABEL: PR173794:\n; SSE2:       # %bb.0:\n; SSE2-NEXT:    pshufd {{.*#+}} xmm1 = xmm0[1,0,3,2]\n; SSE2-NEXT:    pand {{\\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm1\n; SSE2-NEXT:    pxor %xmm0, %xmm0\n; SSE2-NEXT:    pcmpeqd %xmm1, %xmm0\n; SSE2-NEXT:    pand {{\\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0\n; SSE2-NEXT:    retq\n;\n; SSE42-LABEL: PR173794:\n; SSE42:       # %bb.0:\n; SSE42-NEXT:    pand {{\\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0\n; SSE42-NEXT:    pxor %xmm1, %xmm1\n; SSE42-NEXT:    pcmpeqq %xmm1, %xmm0\n; SSE42-NEXT:    pand {{\\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0\n; SSE42-NEXT:    retq\n;\n; AVX2-LABEL: PR173794:\n; AVX2:       # %bb.0:\n; AVX2-NEXT:    vpsllvq {{\\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0, %xmm0\n; AVX2-NEXT:    vpxor %xmm1, %xmm1, %xmm1\n; AVX2-NEXT:    vpcmpgtq %xmm0, %xmm1, %xmm0\n; AVX2-NEXT:    vpandn {{\\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0, %xmm0\n; AVX2-NEXT:    retq\n;\n; AVX512-LABEL: PR173794:\n; AVX512:       # %bb.0:\n; AVX512-NEXT:    vptestnmq {{\\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0, %k1\n; AVX512-NEXT:    vmovddup {{.*#+}} xmm0 {%k1} {z} = [1.0E+0,1.0E+0]\n; AVX512-NEXT:    # xmm0 {%k1} {z} = mem[0,0]\n; AVX512-NEXT:    retq\n  %m = and <2 x i64> %a0, <i64 1, i64 2>\n  %c = icmp eq <2 x i64> %m, zeroinitializer\n  %r = select <2 x i1> %c, <2 x double> splat (double 1.000000e+00), <2 x double> zeroinitializer\n  ret <2 x double> %r\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

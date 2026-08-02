@@ -1,0 +1,93 @@
+{
+  "base_commit": "8f189940090375821bebbc8ae88c4dd5a6aea1ec",
+  "bug_id": "173761",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp": [
+        "VPWidenGEPRecipe::execute"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp": [
+        [
+          2486,
+          2495
+        ]
+      ]
+    },
+    "components": [
+      "LoopVectorize"
+    ],
+    "fix_commit": "bdc7681d6347822bb1ed20f63ccd7cfa2a1b3394"
+  },
+  "issue": {
+    "author": "ams-x9v2b7kq",
+    "body": "## [RISC-V] Clang crashes when running pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@_Z1yv'\n\n### code link: https://godbolt.org/z/4E35bd6do\nThe test case is reduced by C-Reduce.\n\n```c++\nint a, j, k, m, o, p, q, r;\nchar l;\nshort n, u;\nint s[24][6];\nextern int t[], v[];\nextern bool w[][4][4][4];\nchar x[36];\nvoid y() {\n  for (short b = 0; b < 31; b += 2) {\n    for (char c = 0; c < j; c = 3)\n      ;\n    for (bool d = 0; d < 1; d = r ?: t[b]) {\n      for (int e(k); e; e += n)\n        for (int f(a); f; f += 4)\n          o = v[b];\n#pragma clang loop vectorize_predicate(enable)\n      for (short g = 0; g < m; g++) {\n        p = q <= w[g][g][b][b];\n        for (int h = 0; h < 24; h += 4)\n          ;\n        for (int i = 0; i < 24; i += 4) {\n          u = k ?: s[i][i];\n          x[i] = w[b][d][g][i] ? w[b][b][b][i] : l;\n        }\n      }\n    }\n  }\n}\n```\n\n```\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.\tProgram arguments: /home/2025-compiler/gcc-16-20251221/bin/clang++ --gcc-toolchain=/home/2025-compiler/gcc-16-20251221 -O3 -march=rv64gcv_zvfh -Werror=uninitialized -Werror=implicitly-unsigned-literal -Wno-pass-failed -c func.cpp -o func.o\n1.\t<eof> parser at end of file\n2.\tCode generation\n3.\tRunning pass 'Function Pass Manager' on module 'func.cpp'.\n4.\tRunning pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@_Z1yv'\n #0 0x0000556adac9d852 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x1de9852)\n #1 0x0000556adac9b2fc llvm::sys::CleanupOnSignal(unsigned long) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x1de72fc)\n #2 0x0000556adabdb988 CrashRecoverySignalHandler(int) CrashRecoveryContext.cpp:0:0\n #3 0x00007f1e6d335330 (/lib/x86_64-linux-gnu/libc.so.6+0x45330)\n #4 0x0000556ada2d6578 llvm::EVT::getExtendedSizeInBits() const (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x1422578)\n #5 0x0000556ad9c836aa legalizeScatterGatherIndexType(llvm::SDLoc, llvm::SDValue&, llvm::ISD::MemIndexType&, llvm::TargetLowering::DAGCombinerInfo&) (.isra.0) RISCVISelLowering.cpp:0:0\n #6 0x0000556ad9cf3f7c llvm::RISCVTargetLowering::PerformDAGCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&) const (/home/2025-compiler/gcc-16-20251221/bin/clang+++0xe3ff7c)\n #7 0x0000556adbef6b89 (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n #8 0x0000556adbef8126 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n #9 0x0000556adbefb466 llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x3047466)\n#10 0x0000556adc01a389 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x3166389)\n#11 0x0000556adc01d00d llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x316900d)\n#12 0x0000556adc01ebe5 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x316abe5)\n#13 0x0000556adc00d7a9 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x31597a9)\n#14 0x0000556ada0f6ac0 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x1242ac0)\n#15 0x0000556ada6eb849 llvm::FPPassManager::runOnFunction(llvm::Function&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x1837849)\n#16 0x0000556ada6eb9f4 llvm::FPPassManager::runOnModule(llvm::Module&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x18379f4)\n#17 0x0000556ada6ead77 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x1836d77)\n#18 0x0000556adaf2337b clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x206f37b)\n#19 0x0000556adb5030a9 clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x264f0a9)\n#20 0x0000556adcf4908c clang::ParseAST(clang::Sema&, bool, bool) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x409508c)\n#21 0x0000556adb83ed8e clang::FrontendAction::Execute() (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x298ad8e)\n#22 0x0000556adb7c06d3 clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x290c6d3)\n#23 0x0000556adb9225af clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x2a6e5af)\n#24 0x0000556ad9b24a7d cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0xc70a7d)\n#25 0x0000556ad9b1c25a ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>) driver.cpp:0:0\n#26 0x0000556ad9b1c2b5 int llvm::function_ref<int (llvm::SmallVectorImpl<char const*>&)>::callback_fn<clang_main(int, char**, llvm::ToolContext const&)::'lambda'(llvm::SmallVectorImpl<char const*>&)>(long, llvm::SmallVectorImpl<char const*>&) driver.cpp:0:0\n#27 0x0000556adb57f5bd void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::'lambda'()>(long) Job.cpp:0:0\n#28 0x0000556adabdbdb7 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x1d27db7)\n#29 0x0000556adb57fcb1 clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (.part.0) Job.cpp:0:0\n#30 0x0000556adb542ed6 clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x268eed6)\n#31 0x0000556adb543f39 clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x268ff39)\n#32 0x0000556adb55584c clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0x26a184c)\n#33 0x0000556ad9b21111 clang_main(int, char**, llvm::ToolContext const&) (/home/2025-compiler/gcc-16-20251221/bin/clang+++0xc6d111)\n#34 0x0000556ad9a231da main (/home/2025-compiler/gcc-16-20251221/bin/clang+++0xb6f1da)\n#35 0x00007f1e6d31a1ca (/lib/x86_64-linux-gnu/libc.so.6+0x2a1ca)\n#36 0x00007f1e6d31a28b __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x2a28b)\n#37 0x0000556ad9b1bc85 _start (/home/2025-compiler/gcc-16-20251221/bin/clang+++0xc67c85)\nclang++: error: clang frontend command failed with exit code 139 (use -v to see invocation)\nclang version 22.0.0git\nTarget: riscv64-unknown-unknown-elf\nThread model: posix\nInstalledDir: /home/2025-compiler/gcc-16-20251221/bin\nclang++: note: diagnostic msg:\n********************\n\nPLEASE ATTACH THE FOLLOWING FILES TO THE BUG REPORT:\nPreprocessed source(s) and associated run script(s) are located at:\nclang++: note: diagnostic msg: /tmp/func-90a260.cpp\nclang++: note: diagnostic msg: /tmp/func-90a260.sh\nclang++: note: diagnostic msg:\n\n********************\n```",
+    "comments": [
+      {
+        "author": "XChy",
+        "body": "It seems not to be a RISC-V backend problem, as illegal IR appears:\n```llvm\n%72 = select <vscale x 4 x i1> %68, ptr %26, <vscale x 4 x ptr> shufflevector (<vscale x 4 x ptr> insertelement (<vscale x 4 x ptr> poison, ptr @l, i64 0), <vscale x 4 x ptr> poison, <vscale x 4 x i32> zeroinitializer)\n```"
+      },
+      {
+        "author": "topperc",
+        "body": "The IR is invalid. Using an assertions build fails in the vectorizer. https://godbolt.org/z/bvEozPqd6"
+      },
+      {
+        "author": "ElvisWang123",
+        "body": "Seems relate to #167880 (#166740). \n\nThe  VPlan before narrowToSingleSclaar().\n```\n<x1> vector loop: {\n  vector.body:\n    EMIT vp<%6> = CANONICAL-INDUCTION ir<0>, vp<%index.next>\n    ir<%g.0137> = WIDEN-INDUCTION ir<0>, ir<1>, vp<%0>\n    EMIT vp<%7> = WIDEN-CANONICAL-INDUCTION vp<%6>\n    EMIT vp<%8> = icmp ule vp<%7>, vp<%3>\n    WIDEN-CAST ir<%idxprom29> = sext ir<%g.0137> to i64\n    WIDEN-GEP Inv[Var] ir<%arrayidx30> = getelementptr inbounds ir<@w>, ir<%idxprom29>\n    WIDEN-GEP Var[Var] ir<%arrayidx32> = getelementptr inbounds ir<%arrayidx30>, ir<%idxprom29>\n    WIDEN-GEP Var[Inv] ir<%arrayidx34> = getelementptr inbounds nuw ir<%arrayidx32>, ir<%indvars.iv>\n    WIDEN-GEP Var[Inv] ir<%arrayidx36> = getelementptr inbounds nuw ir<%arrayidx34>, ir<%indvars.iv>\n    WIDEN ir<%8> = load ir<%arrayidx36>, vp<%8> (!tbaa !12)\n    WIDEN-GEP Inv[Var] ir<%arrayidx64> = getelementptr inbounds ir<%arrayidx59>, ir<%idxprom29>\n    WIDEN ir<%9> = load ir<%arrayidx64>, vp<%8> (!tbaa !12)\n    WIDEN-CAST ir<%loadedv67.us> = trunc nuw ir<%9> to i1\n    WIDEN-SELECT ir<%cond82.in.in.us> = select ir<%loadedv67.us>, ir<%arrayidx74>, ir<@l>\n    WIDEN ir<%cond82.in.us> = load ir<%cond82.in.in.us>, vp<%8> (!tbaa !16)\n    WIDEN store ir<@x>, ir<%cond82.in.us>, vp<%8> (!tbaa !16)\n    WIDEN-GEP Var[Inv] ir<%arrayidx66.us.1> = getelementptr inbounds nuw ir<%arrayidx64>, ir<4>\n    WIDEN ir<%10> = load ir<%arrayidx66.us.1>, vp<%8> (!tbaa !12)\n    WIDEN-CAST ir<%loadedv67.us.1> = trunc nuw ir<%10> to i1\n    WIDEN-GEP Var[Inv] ir<%arrayidx66.us.2> = getelementptr inbounds nuw ir<%arrayidx64>, ir<8>\n    WIDEN-GEP Var[Inv] ir<%arrayidx66.us.3> = getelementptr inbounds nuw ir<%arrayidx64>, ir<12>\n    WIDEN-GEP Var[Inv] ir<%arrayidx66.us.4> = getelementptr inbounds nuw ir<%arrayidx64>, ir<16>\n =>   WIDEN-GEP Inv[Inv] ir<%arrayidx76.us.1.arrayidx76.1> = getelementptr inbounds nuw ir<%arrayidx74>, ir<4>.  <= assertion hit\n =>   WIDEN-GEP Inv[Inv] ir<%arrayidx76.us.2.arrayidx76.2> = getelementptr inbounds nuw ir<%arrayidx74>, ir<8>.  <= assertion hit\n =>   WIDEN-GEP Inv[Inv] ir<%arrayidx76.us.3.arrayidx76.3> = getelementptr inbounds nuw ir<%arrayidx74>, ir<12>   <= assertion hit\n =>   WIDEN-GEP Inv[Inv] ir<%arrayidx76.us.4.arrayidx76.4> = getelementptr inbounds nuw ir<%arrayidx74>, ir<16>   <= assertion hit\n    ...\n```\nIt seems that the code prevents extra broadcast also prevent these WIden-GEP converted to scalar geps.\nThe operand `%arrayidx74` has multiple use, so it won't narrow this widen-gep to scalar gep.\nhttps://github.com/llvm/llvm-project/blob/44e32ccf0343e5df6bb0afa7121fdd50979b696e/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp#L1652-L1674\n\nCC. @artagnon @fhahn "
+      },
+      {
+        "author": "artagnon",
+        "body": "Thanks, will take a look first thing on Monday."
+      },
+      {
+        "author": "fhahn",
+        "body": "May be best to releax the assertion for now?"
+      },
+      {
+        "author": "topperc",
+        "body": "> May be best to releax the assertion for now?\n\nThe initial report was due to invalid IR being generated. Relaxing the assert won't fix the invalid IR right?"
+      },
+      {
+        "author": "fhahn",
+        "body": "I meant relaxing the assertion by instead checking if it holds, and if not handle the additional case."
+      },
+      {
+        "author": "artagnon",
+        "body": "I don't think we have a choice but to restore the logic (https://github.com/llvm/llvm-project/pull/174416), as this particular case does indeed introduce extra broadcasts, which would be counter to the narrowToSingleScalars objective."
+      }
+    ],
+    "labels": [
+      "vectorizers",
+      "crash"
+    ],
+    "title": "[LV] Invariance assertion hit in WidenGEP"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/173761",
+  "knowledge_cutoff": "2025-12-28T07:17:51Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/LoopVectorize"
+  ],
+  "patch": "commit bdc7681d6347822bb1ed20f63ccd7cfa2a1b3394\nAuthor: Ramkumar Ramachandra <ramkumar.ramachandra@codasip.com>\nDate:   Tue Jan 6 13:05:37 2026 +0000\n\n    [VPlan] Restore all-operands-inv WidenGEP logic (#174416)\n    \n    Restore the all-operands-invariant handling in WidenGEP::execute prior\n    to 37f7b31 (Reland [VPlan] Handle WidenGEP in narrowToSingleScalars), as\n    crashes have been reported.\n    \n    Fixes #173761.\n\ndiff --git a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp\nindex 6efa83d3ae58..ea082170c4dd 100644\n--- a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp\n+++ b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp\n@@ -2486,10 +2486,28 @@ void VPWidenGEPRecipe::execute(VPTransformState &State) {\n   // is vector-typed. Thus, to keep the representation compact, we only use\n   // vector-typed operands for loop-varying values.\n \n-  assert(\n-      any_of(operands(),\n-             [](VPValue *Op) { return !Op->isDefinedOutsideLoopRegions(); }) &&\n-      \"Expected at least one loop-variant operand\");\n+  bool AllOperandsAreInvariant = all_of(operands(), [](VPValue *Op) {\n+    return Op->isDefinedOutsideLoopRegions();\n+  });\n+  if (AllOperandsAreInvariant) {\n+    // If we are vectorizing, but the GEP has only loop-invariant operands,\n+    // the GEP we build (by only using vector-typed operands for\n+    // loop-varying values) would be a scalar pointer. Thus, to ensure we\n+    // produce a vector of pointers, we need to either arbitrarily pick an\n+    // operand to broadcast, or broadcast a clone of the original GEP.\n+    // Here, we broadcast a clone of the original.\n+\n+    SmallVector<Value *> Ops;\n+    for (unsigned I = 0, E = getNumOperands(); I != E; I++)\n+      Ops.push_back(State.get(getOperand(I), VPLane(0)));\n+\n+    auto *NewGEP =\n+        State.Builder.CreateGEP(getSourceElementType(), Ops[0], drop_begin(Ops),\n+                                \"\", getGEPNoWrapFlags());\n+    Value *Splat = State.Builder.CreateVectorSplat(State.VF, NewGEP);\n+    State.set(this, Splat);\n+    return;\n+  }\n \n   // If the GEP has at least one loop-varying operand, we are sure to\n   // produce a vector of pointers unless VF is scalar.\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -passes=loop-vectorize -force-vector-width=4 -force-vector-interleave=1 -S %s"
+      ],
+      "file": "llvm/test/Transforms/LoopVectorize/widen-gep-all-indices-invariant.ll",
+      "tests": [
+        {
+          "test_body": "define void @pr173761(i8 %c, ptr %p, ptr noalias %q, ptr noalias %r) {\nentry:\n  br label %loop\n\nloop:                                             ; preds = %loop, %entry\n  %iv = phi i16 [ 0, %entry ], [ %iv.next, %loop ]\n  %ld.p = load i8, ptr %p, align 1\n  store i8 %ld.p, ptr %r, align 1\n  %gep.inv = getelementptr inbounds nuw i8, ptr %p, i64 16\n  %c.trunc = trunc i8 %c to i1\n  %sel.inv = select i1 %c.trunc, ptr %gep.inv, ptr %p\n  %ld.sel.inv = load i8, ptr %sel.inv, align 1\n  store i8 %ld.sel.inv, ptr %q, align 1\n  %iv.next = add i16 %iv, 1\n  %ec = icmp ne i16 %iv.next, 1024\n  br i1 %ec, label %loop, label %exit\n\nexit:                                             ; preds = %loop\n  ret void\n}\n",
+          "test_name": "pr173761"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

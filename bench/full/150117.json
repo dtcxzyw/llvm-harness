@@ -1,0 +1,72 @@
+{
+  "base_commit": "a7edc95c799c46665ecf4465a4dc7ff4bee3ced0",
+  "bug_id": "150117",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "getTargetConstantBitsFromNode"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          5001,
+          5009
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "33455825428f9e1b7998a66e228da7f6d483acf8"
+  },
+  "issue": {
+    "author": "alexrp",
+    "body": "```console\n\u276f llc --version | head -n2\nLLVM (http://llvm.org/):\n  LLVM version 21.1.0-rc1\n\u276f llc -O3 reduced.ll\nllc: /home/alexrp/Source/llvm-project/llvm/lib/Target/X86/X86ISelLowering.cpp:5000: bool getTargetConstantBitsFromNode(llvm::SDValue, unsigned int, llvm::APInt&, llvm::SmallVectorImpl<llvm::APInt>&, bool, bool): Assertion `(SizeInBits % EltSizeInBits) == 0 && \"Can't split constant!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: llc -O3 reduced.ll\n1.\tRunning pass 'Function Pass Manager' on module 'reduced.ll'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@\"crypto.25519.curve25519.test.small order check\"'\n #0 0x0000703da39917f0 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) /home/alexrp/Source/llvm-project/llvm/lib/Support/Unix/Signals.inc:838:3\n #1 0x0000703da398e6b4 llvm::sys::RunSignalHandlers() /home/alexrp/Source/llvm-project/llvm/lib/Support/Signals.cpp:104:20\n #2 0x0000703da398eee9 SignalHandler(int, siginfo_t*, void*) /home/alexrp/Source/llvm-project/llvm/lib/Support/Unix/Signals.inc:426:14\n #3 0x0000703da22458d0 (/lib/x86_64-linux-gnu/libc.so.6+0x458d0)\n #4 0x0000703da22a49bc __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x0000703da22a49bc __pthread_kill_internal ./nptl/pthread_kill.c:89:10\n #6 0x0000703da22a49bc pthread_kill ./nptl/pthread_kill.c:100:10\n #7 0x0000703da224579e raise ./signal/../sysdeps/posix/raise.c:27:6\n #8 0x0000703da22288cd internal_signal_block_all ./stdlib/../sysdeps/unix/sysv/linux/internal-signals.h:81:3\n #9 0x0000703da22288cd __abort_lock_wrlock ./stdlib/abort.c:58:3\n#10 0x0000703da22288cd abort ./stdlib/abort.c:81:3\n#11 0x0000703da2228830 __assert_perror_fail ./assert/assert-perr.c:31:1\n#12 0x0000703da3632016 llvm::APInt::operator==(llvm::APInt const&) const (/opt/llvm-21/bin/../lib/libLLVM.so.21.1-rc1+0xc32016)\n#13 0x0000703da3632016 llvm::APInt::operator!=(llvm::APInt const&) const /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/APInt.h:1087:62\n#14 0x0000703da3632016 llvm::X86::isConstantSplat(llvm::SDValue, llvm::APInt&, bool) (.cold) /home/alexrp/Source/llvm-project/llvm/lib/Target/X86/X86ISelLowering.cpp:5330:0\n#15 0x0000703da805b309 getTargetConstantBitsFromNode(llvm::SDValue, unsigned int, llvm::APInt&, llvm::SmallVectorImpl<llvm::APInt>&, bool, bool) /home/alexrp/Source/llvm-project/llvm/lib/Target/X86/X86ISelLowering.cpp:5252:0\n#16 0x0000703da807e274 combineExtractVectorElt(llvm::SDNode*, llvm::SelectionDAG&, llvm::TargetLowering::DAGCombinerInfo&, llvm::X86Subtarget const&) /home/alexrp/Source/llvm-project/llvm/lib/Target/X86/X86ISelLowering.cpp:47031:0\n#17 0x0000703da43697e8 combine /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp:2087:10\n#18 0x0000703da43697e8 (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp:2067:9\n#19 0x0000703da436b463 Run /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp:1841:5\n#20 0x0000703da436b463 llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp:29815:44\n#21 0x0000703da4588ff2 llvm::TimeRegion::~TimeRegion() /home/alexrp/Source/llvm-project/llvm/include/llvm/Support/Timer.h:162:9\n#22 0x0000703da4588ff2 llvm::NamedRegionTimer::~NamedRegionTimer() /home/alexrp/Source/llvm-project/llvm/include/llvm/Support/Timer.h:170:8\n#23 0x0000703da4588ff2 llvm::SelectionDAGISel::CodeGenAndEmitDAG() /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:948:3\n#24 0x0000703da458c8ec llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1891:33\n#25 0x0000703da458e019 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:605:22\n#26 0x0000703da4584d77 llvm::OptLevelChanger::~OptLevelChanger() /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:267:11\n#27 0x0000703da4584d77 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:373:1\n#28 0x0000703da4584d77 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:345:6\n#29 0x0000703da3ed90bb llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/MachineFunctionPass.cpp:108:30\n#30 0x0000703da3b4ca34 llvm::FPPassManager::runOnFunction(llvm::Function&) /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1408:7\n#31 0x0000703da3b4cc45 llvm::ilist_detail::node_base_prevnext<llvm::ilist_node_base<true, void>, true>::getNext() const /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/ilist_node_base.h:42:38\n#32 0x0000703da3b4cc45 llvm::ilist_node_impl<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false, void>>::getNext() /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/ilist_node.h:119:66\n#33 0x0000703da3b4cc45 llvm::ilist_iterator<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false, void>, false, false>::operator++() /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/ilist_iterator.h:187:25\n#34 0x0000703da3b4cc45 llvm::FPPassManager::runOnModule(llvm::Module&) /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1443:22\n#35 0x0000703da3b4d45b runOnModule /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1520:7\n#36 0x0000703da3b4d45b llvm::legacy::PassManagerImpl::run(llvm::Module&) /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:531:55\n#37 0x00005ad306ace16d compileModule(char**, llvm::LLVMContext&) /home/alexrp/Source/llvm-project/llvm/tools/llc/llc.cpp:761:34\n#38 0x00005ad306ac24cf main /home/alexrp/Source/llvm-project/llvm/tools/llc/llc.cpp:404:35\n#39 0x0000703da222a578 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#40 0x0000703da222a63b call_init ./csu/../csu/libc-start.c:128:20\n#41 0x0000703da222a63b __libc_start_main ./csu/../csu/libc-start.c:347:5\n#42 0x00005ad306ac3aa5 _start (/opt/llvm-21/bin/llc+0x14aa5)\n```\n\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux6.14.0-gnu2.41.0\"\n\ndefine fastcc i64 @\"crypto.25519.curve25519.test.small order check\"(<31 x i8> %.sroa.0.0.copyload) {\nEntry:\n  %.sroa.0.6.vec.extract.extract = shufflevector <31 x i8> %.sroa.0.0.copyload, <31 x i8> zeroinitializer, <32 x i32> <i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>\n  %.sroa.0.6.vec.extract.bc = bitcast <32 x i8> %.sroa.0.6.vec.extract.extract to <4 x i64>\n  %.sroa.0.6.vec.extract.extract259 = extractelement <4 x i64> %.sroa.0.6.vec.extract.bc, i64 0\n  ret i64 %.sroa.0.6.vec.extract.extract259\n}\n```",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "I'll wait a day or so and get this cherry picked into 21.x"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "release:backport",
+      "crash-on-valid",
+      "regression:21"
+    ],
+    "title": "[x86] Assertion `(SizeInBits % EltSizeInBits) == 0 && \"Can't split constant!\"` failed in LLVM 21"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/150117",
+  "knowledge_cutoff": "2025-07-22T21:41:25Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 33455825428f9e1b7998a66e228da7f6d483acf8\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Wed Jul 23 11:22:38 2025 +0100\n\n    [X86] getTargetConstantBitsFromNode - early-out if the element bitsize doesn't align with the source bitsize (#150184)\n    \n    As we use getTargetConstantBitsFromNode in a wider variety of places we can't guarantee that all the sources match (or are legal) anymore - better to early out than assert.\n    \n    Fixes #150117\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex 568a8c4cfed7..11ab8dc685ea 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -5001,9 +5001,12 @@ static bool getTargetConstantBitsFromNode(SDValue Op, unsigned EltSizeInBits,\n \n   EVT VT = Op.getValueType();\n   unsigned SizeInBits = VT.getSizeInBits();\n-  assert((SizeInBits % EltSizeInBits) == 0 && \"Can't split constant!\");\n   unsigned NumElts = SizeInBits / EltSizeInBits;\n \n+  // Can't split constant.\n+  if ((SizeInBits % EltSizeInBits) != 0)\n+    return false;\n+\n   // Bitcast a source array of element bits to the target size.\n   auto CastBitData = [&](APInt &UndefSrcElts, ArrayRef<APInt> SrcEltBits) {\n     unsigned NumSrcElts = UndefSrcElts.getBitWidth();\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=i686-unknown-linux-gnu -mattr=+sse2,-sse4.1",
+        "llc < %s -mtriple=x86_64-unknown-linux-gnu -mattr=+sse2,-sse4.1"
+      ],
+      "file": "llvm/test/CodeGen/X86/vec_extract.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine i64 @pr150117(<31 x i8> %a0) #0 {\n  %shuffle = shufflevector <31 x i8> %a0, <31 x i8> zeroinitializer, <32 x i32> <i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>\n  %bitcast = bitcast <32 x i8> %shuffle to <4 x i64>\n  %elt = extractelement <4 x i64> %bitcast, i64 0\n  ret i64 %elt\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "pr150117"
+        },
+        {
+          "test_body": "define <4 x i32> @ossfuzz15662(ptr %in) {\n  %C10 = icmp ule i1 false, false\n  %C3 = icmp ule i1 true, undef\n  %B = sdiv i1 %C10, %C3\n  %I = insertelement <4 x i32> zeroinitializer, i32 0, i1 %B\n  store <4 x i32> %I, ptr undef, align 16\n  ret <4 x i32> zeroinitializer\n}\n",
+          "test_name": "ossfuzz15662"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

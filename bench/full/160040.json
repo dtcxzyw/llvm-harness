@@ -1,0 +1,69 @@
+{
+  "base_commit": "89d79b65f7957687a6e076ec0b7893fd1264d170",
+  "bug_id": "160040",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/PowerPC/PPCISelLowering.cpp": [
+        "PPCTargetLowering::DAGCombineExtBoolTrunc"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/PowerPC/PPCISelLowering.cpp": [
+        [
+          15411,
+          15416
+        ],
+        [
+          15434,
+          15443
+        ]
+      ]
+    },
+    "components": [
+      "PowerPC"
+    ],
+    "fix_commit": "8b824f3b3eb8a75cc6dcbd1bff9ef34d1a359743"
+  },
+  "issue": {
+    "author": "nikic",
+    "body": "```llvm\ntarget triple = \"powerpc64le-unknown-linux-gnu\"\n\ndefine i32 @test(i32 %arg) {\n  %icmp = icmp sgt i32 %arg, -1\n  %select = select i1 %icmp, i16 1, i16 0\n  %select1 = select i1 %icmp, i16 16384, i16 0\n  %lshr = lshr i16 %select1, 1\n  %zext = zext i16 %lshr to i32\n  %lshr2 = lshr i32 %zext, 1\n  %shl = shl i16 %select, 1\n  %zext3 = zext i16 %shl to i32\n  %or = or i32 %lshr2, %zext3\n  ret i32 %or\n}\n```\n\n```\nllc: /home/npopov/repos/llvm-project/llvm/include/llvm/CodeGen/SelectionDAGNodes.h:1035: const SDValue &llvm::SDNode::getOperand(unsigned int) const: Assertion `Num < NumOperands && \"Invalid child # of SDNode!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: build/bin/llc\n1.\tRunning pass 'Function Pass Manager' on module '<stdin>'.\n2.\tRunning pass 'PowerPC DAG->DAG Pattern Instruction Selection' on function '@test'\n #0 0x000000000794da28 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (build/bin/llc+0x794da28)\n #1 0x000000000794b115 llvm::sys::RunSignalHandlers() (build/bin/llc+0x794b115)\n #2 0x000000000794e7d1 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #3 0x00007f8258828bb0 __restore_rt (/lib64/libc.so.6+0x19bb0)\n #4 0x00007f825888209c __pthread_kill_implementation (/lib64/libc.so.6+0x7309c)\n #5 0x00007f8258828a7e gsignal (/lib64/libc.so.6+0x19a7e)\n #6 0x00007f82588106d0 abort (/lib64/libc.so.6+0x16d0)\n #7 0x00007f8258810639 __assert_perror_fail (/lib64/libc.so.6+0x1639)\n #8 0x000000000595cd14 llvm::PPCTargetLowering::DAGCombineExtBoolTrunc(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&) const PPCISelLowering.cpp:0:0\n #9 0x0000000005960e43 llvm::PPCTargetLowering::PerformDAGCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&) const PPCISelLowering.cpp:0:0\n#10 0x0000000007527da2 (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#11 0x0000000007526ae6 llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (build/bin/llc+0x7526ae6)\n#12 0x000000000772cb76 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (build/bin/llc+0x772cb76)\n#13 0x000000000772b8c1 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (build/bin/llc+0x772b8c1)\n#14 0x0000000007728cf0 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (build/bin/llc+0x7728cf0)\n#15 0x0000000005971b4e (anonymous namespace)::PPCDAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) PPCISelDAGToDAG.cpp:0:0\n```",
+    "comments": [
+      {
+        "author": "nikic",
+        "body": "Crashing invocation is on:\n```\nt48: i32 = zero_extend t46\n  t46: i1 = xor t31, Constant:i1<-1>\n    t31: i1 = truncate t30\n      t30: i32 = srl t3, Constant:i32<31>\n        t3: i32 = truncate t2\n          t2: i64,ch = CopyFromReg t0, Register:i64 %0\n            t0: ch,glue = EntryToken\n```\n\nIn https://github.com/llvm/llvm-project/blob/8323ff0c59739e4735fd896fad4be05e54432815/llvm/lib/Target/PowerPC/PPCISelLowering.cpp#L15201 we end up operating on a deleted node."
+      }
+    ],
+    "labels": [
+      "backend:PowerPC",
+      "crash"
+    ],
+    "title": "[PowerPC] Assertion failure in DAGCombineExtBoolTrunc"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/160040",
+  "knowledge_cutoff": "2025-09-22T07:23:02Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/PowerPC"
+  ],
+  "patch": "commit 8b824f3b3eb8a75cc6dcbd1bff9ef34d1a359743\nAuthor: Nikita Popov <npopov@redhat.com>\nDate:   Mon Sep 22 21:37:13 2025 +0200\n\n    [PowerPC] Avoid working on deleted node in ext bool trunc combine (#160050)\n    \n    This code was already creating HandleSDNodes to handle the case where a\n    node gets replaced with an equivalent node. However, the code before the\n    handles are created also performs RAUW operations, which can end up\n    CSEing and deleting nodes.\n    \n    Fix this issue by moving the handle creation earlier.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/160040.\n\ndiff --git a/llvm/lib/Target/PowerPC/PPCISelLowering.cpp b/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\nindex 2907303874de..f69218056fc4 100644\n--- a/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\n+++ b/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\n@@ -15411,6 +15411,12 @@ SDValue PPCTargetLowering::DAGCombineExtBoolTrunc(SDNode *N,\n     }\n   }\n \n+  // Convert PromOps to handles before doing any RAUW operations, as these\n+  // may CSE with existing nodes, deleting the originals.\n+  std::list<HandleSDNode> PromOpHandles;\n+  for (auto &PromOp : PromOps)\n+    PromOpHandles.emplace_back(PromOp);\n+\n   // Replace all inputs, either with the truncation operand, or a\n   // truncation or extension to the final output type.\n   for (unsigned i = 0, ie = Inputs.size(); i != ie; ++i) {\n@@ -15434,10 +15440,6 @@ SDValue PPCTargetLowering::DAGCombineExtBoolTrunc(SDNode *N,\n         DAG.getAnyExtOrTrunc(InSrc, dl, N->getValueType(0)));\n   }\n \n-  std::list<HandleSDNode> PromOpHandles;\n-  for (auto &PromOp : PromOps)\n-    PromOpHandles.emplace_back(PromOp);\n-\n   // Replace all operations (these are all the same, but have a different\n   // (promoted) return type). DAG.getNode will validate that the types of\n   // a binary operator match, so go through the list in reverse so that\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=powerpc64le-unknown-linux-gnu < %s"
+      ],
+      "file": "llvm/test/CodeGen/PowerPC/pr160040.ll",
+      "tests": [
+        {
+          "test_body": "\n; Make sure this does not crash.\ndefine i32 @test(i32 %arg) {\n  %icmp = icmp sgt i32 %arg, -1\n  %select = select i1 %icmp, i16 1, i16 0\n  %select1 = select i1 %icmp, i16 16384, i16 0\n  %lshr = lshr i16 %select1, 1\n  %zext = zext i16 %lshr to i32\n  %lshr2 = lshr i32 %zext, 1\n  %shl = shl i16 %select, 1\n  %zext3 = zext i16 %shl to i32\n  %or = or i32 %lshr2, %zext3\n  ret i32 %or\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

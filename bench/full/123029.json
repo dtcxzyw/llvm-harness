@@ -1,0 +1,73 @@
+{
+  "base_commit": "3c42a774569ee06fb02ce00e2d2d2ce517c894f3",
+  "bug_id": "123029",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "AArch64TargetLowering::targetShrinkDemandedConstant"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          2373,
+          2380
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "c8ba551da17c48e00c0eeb572e7667ffa5109f6f"
+  },
+  "issue": {
+    "author": "WillFroom",
+    "body": "I am emitting machine code using half precision for arm but I am hitting the following [assert](/github.com/llvm/llvm-project/blob/main/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp#L2376): \n```cpp\nassert((Size == 32 || Size == 64) &&\n         \"i32 or i64 is expected after legalization.\");\n```\n\nI have create a reproducible example: https://godbolt.org/z/d5aa5cxrK\n\n<details>\n  <summary>IR & Back trace for posterity</summary>\n## IR:\n\n```llvm\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine noalias noundef ptr @fn(ptr nocapture readonly %in, ptr nocapture readonly %out) local_unnamed_addr {\nfn:\n  %1 = load <4 x half>, ptr %in, align 16\n  %2 = fcmp one <4 x half> %1, zeroinitializer\n  %3 = uitofp <4 x i1> %2 to <4 x half>\n  store <4 x half> %3, ptr %out, align 16\n\n  %23 = getelementptr inbounds nuw i8, ptr %in, i64 8\n  %24 = load half, ptr %23, align 4\n  %25 = fcmp one half %24, 0xH0000\n  %26 = uitofp i1 %25 to half\n  %27 = call half @llvm.copysign.f16(half %26, half %24)\n  %30 = getelementptr inbounds nuw i8, ptr %out, i64 8\n  store half %27, ptr %30, align 8\n  ret ptr null\n}\n```\n\n## Backtrace:\n\n```sh\nllc: /root/llvm-project/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:2376: virtual bool llvm::AArch64TargetLowering::targetShrinkDemandedConstant(llvm::SDValue, const llvm::APInt&, const llvm::APInt&, llvm::TargetLowering::TargetLoweringOpt&) const: Assertion `(Size == 32 || Size == 64) && \"i32 or i64 is expected after legalization.\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@fn'\n #0 0x0000000003cb2f68 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3cb2f68)\n #1 0x0000000003cb096c SignalHandler(int) Signals.cpp:0:0\n #2 0x00007419e5442520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007419e54969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007419e5442476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007419e54287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007419e542871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007419e5439e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000000ca1cf7 llvm::AArch64TargetLowering::targetShrinkDemandedConstant(llvm::SDValue, llvm::APInt const&, llvm::APInt const&, llvm::TargetLowering::TargetLoweringOpt&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xca1cf7)\n #9 0x0000000003a84eca llvm::TargetLowering::ShrinkDemandedConstant(llvm::SDValue, llvm::APInt const&, llvm::APInt const&, llvm::TargetLowering::TargetLoweringOpt&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a84eca)\n#10 0x0000000003ac6e34 llvm::TargetLowering::SimplifyDemandedBits(llvm::SDValue, llvm::APInt const&, llvm::APInt const&, llvm::KnownBits&, llvm::TargetLowering::TargetLoweringOpt&, unsigned int, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ac6e34)\n#11 0x0000000003880beb (anonymous namespace)::DAGCombiner::SimplifyDemandedBits(llvm::SDValue, llvm::APInt const&) DAGCombiner.cpp:0:0\n#12 0x0000000003881527 (anonymous namespace)::DAGCombiner::visitFCOPYSIGN(llvm::SDNode*) DAGCombiner.cpp:0:0\n#13 0x00000000038fd99d (anonymous namespace)::DAGCombiner::visit(llvm::SDNode*) DAGCombiner.cpp:0:0\n#14 0x00000000038ffc4c (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#15 0x0000000003901538 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#16 0x0000000003903e4b llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::AAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3903e4b)\n#17 0x0000000003a661b5 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a661b5)\n#18 0x0000000003a699d9 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a699d9)\n#19 0x0000000003a6ac90 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a6ac90)\n#20 0x0000000003a5b5ef llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a5b5ef)\n#21 0x0000000002be6b09 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#22 0x00000000031f259f llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x31f259f)\n#23 0x00000000031f2951 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x31f2951)\n#24 0x00000000031f31f1 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x31f31f1)\n#25 0x00000000008a0c90 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#26 0x00000000007898be main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7898be)\n#27 0x00007419e5429d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#28 0x00007419e5429e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#29 0x0000000000897565 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x897565)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\n\n\n</details>\n\nI think it is possible that the assert is wrong, I believe it may just be there to check the following logic is correct:\n\n```cpp\n  unsigned NewOpc;\n  switch (Op.getOpcode()) {\n  default:\n    return false;\n  case ISD::AND:\n    NewOpc = Size == 32 ? AArch64::ANDWri : AArch64::ANDXri;\n    break;\n  case ISD::OR:\n    NewOpc = Size == 32 ? AArch64::ORRWri : AArch64::ORRXri;\n    break;\n  case ISD::XOR:\n    NewOpc = Size == 32 ? AArch64::EORWri : AArch64::EORXri;\n    break;\n  }\n```\n\nwhich could be updated to check for `Size <= 32`: use `W` registers else use the `X` registers (maybe sign-extending if necessary?), I can create a PR for this change if someone can confirm I am correct, thanks!",
+    "comments": [
+      {
+        "author": "davemgreen",
+        "body": "It may be better to just return false if the type is not 32/64bits, as a fp operation might end up using different instructions than the integer ones."
+      },
+      {
+        "author": "WillFroom",
+        "body": "@davemgreen I've created a PR with your suggestion: https://github.com/llvm/llvm-project/pull/123084 let me know what you think, thanks."
+      },
+      {
+        "author": "davemgreen",
+        "body": "Fixed in c8ba551da17c48e00c0eeb572e7667ffa5109f6f."
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "crash"
+    ],
+    "title": "Assert triggered in AArch64ISelLowering::targetShrinkDemandedConstant when using half precision"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/123029",
+  "knowledge_cutoff": "2025-01-15T09:25:30Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit c8ba551da17c48e00c0eeb572e7667ffa5109f6f\nAuthor: Will Froom <willfroom@google.com>\nDate:   Fri Jan 17 08:41:33 2025 +0000\n\n    [AArch64] Return early rather than asserting when Size of value passed to targetShrinkDemandedConstant is not 32 or 64 (#123084)\n    \n    See https://github.com/llvm/llvm-project/issues/123029 for details.\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex d4a114c275fb..7d3ca46204b6 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -2373,8 +2373,9 @@ bool AArch64TargetLowering::targetShrinkDemandedConstant(\n     return false;\n \n   unsigned Size = VT.getSizeInBits();\n-  assert((Size == 32 || Size == 64) &&\n-         \"i32 or i64 is expected after legalization.\");\n+\n+  if (Size != 32 && Size != 64)\n+    return false;\n \n   // Exit early if we demand all bits.\n   if (DemandedBits.popcount() == Size)\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc --mtriple=aarch64-unknown-linux-gnu < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/half-precision-signof-no-assert.ll",
+      "tests": [
+        {
+          "test_body": "\n; Check that the following does not crash\n; See https://github.com/llvm/llvm-project/issues/123029 for details\n\ndefine ptr @fn(ptr %in, ptr %out) {\nfn:\n  %1 = load <4 x half>, ptr %in\n  %2 = fcmp one <4 x half> %1, zeroinitializer\n  %3 = uitofp <4 x i1> %2 to <4 x half>\n  store <4 x half> %3, ptr %out\n\n  %4 = getelementptr inbounds nuw i8, ptr %in, i64 8\n  %5 = load half, ptr %4\n  %6 = fcmp one half %5, 0xH0000\n  %7 = uitofp i1 %6 to half\n  %8 = call half @llvm.copysign.f16(half %7, half %5)\n  %9 = getelementptr inbounds nuw i8, ptr %out, i64 8\n  store half %8, ptr %9\n  ret ptr null\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

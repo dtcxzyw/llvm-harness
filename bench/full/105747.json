@@ -1,0 +1,93 @@
+{
+  "base_commit": "37d0841547e8f2bc06104541a97bbfd4282abc23",
+  "bug_id": "105747",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "X86TargetLowering::X86TargetLowering"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          614,
+          619
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "ecd9e0bc901766fc22403cdf70ab2054a174b3ac"
+  },
+  "issue": {
+    "author": "tgross35",
+    "body": "Source code:\r\n\r\n```llvm\r\ntarget triple = \"x86_64-unknown-linux-gnu\"\r\n\r\ndefine half @test_half_powi(half %self, i32 %n) {\r\nstart:\r\n  %v = call half @llvm.powi.f16.i32(half %self, i32 %n)\r\n  ret half %v\r\n}\r\n```\r\n\r\nCrash (assertions required):\r\n\r\n```text\r\nllc: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:4708: void {anonymous}::SelectionDAGLegalize::ConvertNodeToLibcall(llvm::SDNode*): Assertion `LC != RTLIB::UNKNOWN_LIBCALL && \"Unexpected fpowi.\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@test_half_powi'\r\n #0 0x0000000003ae7028 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ae7028)\r\n #1 0x0000000003ae479c SignalHandler(int) Signals.cpp:0:0\r\n #2 0x00007b9927e42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x00007b9927e969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x00007b9927e42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x00007b9927e287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x00007b9927e2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\r\n #7 0x00007b9927e39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n #8 0x000000000376d745 (anonymous namespace)::SelectionDAGLegalize::ConvertNodeToLibcall(llvm::SDNode*) LegalizeDAG.cpp:0:0\r\n #9 0x000000000377f1a6 (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) (.part.0) LegalizeDAG.cpp:0:0\r\n#10 0x0000000003782883 llvm::SelectionDAG::Legalize() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3782883)\r\n#11 0x0000000003899fb7 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3899fb7)\r\n#12 0x000000000389d1fa llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x389d1fa)\r\n#13 0x000000000389e550 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x389e550)\r\n#14 0x000000000388f3ef llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x388f3ef)\r\n#15 0x0000000002a848e9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#16 0x0000000003073ded llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3073ded)\r\n#17 0x0000000003074181 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3074181)\r\n#18 0x000000000307347c llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x307347c)\r\n#19 0x000000000084693c compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#20 0x0000000000737a66 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x737a66)\r\n#21 0x00007b9927e29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#22 0x00007b9927e29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#23 0x000000000083d92e _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x83d92e)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```\r\n\r\nLink: https://llvm.godbolt.org/z/zhb1bxWK8",
+    "comments": [
+      {
+        "author": "tgross35",
+        "body": "It seems like it is able to do the correct thing if assertions are disabled, this seems to produce the correct result in https://play.rust-lang.org/?version=nightly&mode=debug&edition=2021&gist=1abe8952ee9d287a4f2b31c812e00743."
+      },
+      {
+        "author": "tgross35",
+        "body": "^ to affirm the labels, this does not seem to crash on aarch64."
+      },
+      {
+        "author": "v01dXYZ",
+        "body": "`RTLIB::getFPLibCall` doesn't support `f16`. The problem could arise with many other targets/Opcodes."
+      },
+      {
+        "author": "tgross35",
+        "body": "What is `getFPLibCall` expected to do in these cases? I don't think there are any platforms that would actually have external `f16` functions."
+      },
+      {
+        "author": "tgross35",
+        "body": "Testing some other arches. At least the following seem to work without crash, even though I know some of them have f16 ABI issues:\r\n\r\n- `--mtriple=aarch64-pc-windows-msvc`\r\n- `--mtriple=aarch64-unknown-linux-gnu`\r\n- `--mtriple=arm-unknown-linux-gnueabi`\r\n- `--mtriple=armv7-unknown-linux-gnueabihf`\r\n- `--mtriple=i586-unknown-linux-gnu`\r\n- `--mtriple=i586-unknown-linux-musl`\r\n- `--mtriple=i686-unknown-linux-gnu`\r\n- `--mtriple=loongarch64-unknown-linux-gnu`\r\n- `--mtriple=riscv64-unknown-linux-gnu`\r\n- `--mtriple=powerpc-unknown-linux-gnu`\r\n- `--mtriple=powerpc64-unknown-linux-gnu`\r\n- `--mtriple=powerpc64le-unknown-linux-gnu`"
+      },
+      {
+        "author": "v01dXYZ",
+        "body": "## SUCCESS\r\n### `aarch64`\r\n```\r\nLegalizing: t5: f16 = fpowi t2, t4\r\nTrying to promote node\r\nCreating new node: t9: f32 = fp_extend t2\r\nCreating new node: t10: f32 = fpowi t9, t4\r\nCreating constant: t11: i64 = TargetConstant<0>\r\nCreating new node: t12: f16 = fp_round t10, TargetConstant:i64<0>\r\nSuccessfully promoted node\r\n ... replacing: t5: f16 = fpowi t2, t4\r\n     with:      t12: f16 = fp_round t10, TargetConstant:i64<0>\r\n```\r\n### `aarch64-pc-windows-msvc`\r\n```\r\nLegalizing: t5: f16 = fpowi t2, t4\r\nTrying to promote node\r\nCreating new node: t9: f32 = fp_extend t2\r\nCreating new node: t10: f32 = fpowi t9, t4\r\nCreating constant: t11: i64 = TargetConstant<0>\r\nCreating new node: t12: f16 = fp_round t10, TargetConstant:i64<0>\r\nSuccessfully promoted node\r\n ... replacing: t5: f16 = fpowi t2, t4\r\n     with:      t12: f16 = fp_round t10, TargetConstant:i64<0>\r\n```\r\n### `aarch64-unknown-linux-gnu`\r\n```\r\nLegalizing: t5: f16 = fpowi t2, t4\r\nTrying to promote node\r\nCreating new node: t9: f32 = fp_extend t2\r\nCreating new node: t10: f32 = fpowi t9, t4\r\nCreating constant: t11: i64 = TargetConstant<0>\r\nCreating new node: t12: f16 = fp_round t10, TargetConstant:i64<0>\r\nSuccessfully promoted node\r\n ... replacing: t5: f16 = fpowi t2, t4\r\n     with:      t12: f16 = fp_round t10, TargetConstant:i64<0>\r\n```\r\n### `i586-unknown-linux-gnu`\r\n```\r\nLegalizing node: t7: f16 = fpowi t13, t5\r\nAnalyzing result type: f16\r\nSoft promote half result 0: t7: f16 = fpowi t13, t5\r\nCreating new node: t15: f32 = fp16_to_fp t14\r\nCreating new node: t16: f32 = fpowi t15, t5\r\nCreating new node: t17: i16 = fp_to_fp16 t16\r\n```\r\n### `i586-unknown-linux-musl`\r\n```\r\nLegalizing node: t7: f16 = fpowi t13, t5\r\nAnalyzing result type: f16\r\nSoft promote half result 0: t7: f16 = fpowi t13, t5\r\nCreating new node: t15: f32 = fp16_to_fp t14\r\nCreating new node: t16: f32 = fpowi t15, t5\r\nCreating new node: t17: i16 = fp_to_fp16 t16\r\n```\r\n### `i686-unknown-linux-gnu`\r\n```\r\nLegalizing node: t7: f16 = fpowi t13, t5\r\nAnalyzing result type: f16\r\nSoft promote half result 0: t7: f16 = fpowi t13, t5\r\nCreating new node: t15: f32 = fp16_to_fp t14\r\nCreating new node: t16: f32 = fpowi t15, t5\r\nCreating new node: t17: i16 = fp_to_fp16 t16\r\n```\r\n### `loongarch64-unknown-linux-gnu`\r\n```\r\nLegalizing node: t8: f16 = fpowi t6, t7\r\nAnalyzing result type: f16\r\nPromote float result 0: t8: f16 = fpowi t6, t7\r\nCreating new node: t28: f32 = fpowi t14, t7\r\n```\r\n### `riscv64-unknown-linux-gnu`\r\n```\r\nLegalizing node: t8: f16 = fpowi t6, t7\r\nAnalyzing result type: f16\r\nSoft promote half result 0: t8: f16 = fpowi t6, t7\r\nCreating new node: t14: f32 = fp16_to_fp t5\r\nCreating new node: t15: f32 = fpowi t14, t7\r\nCreating new node: t16: i16 = fp_to_fp16 t15\r\n```\r\n## FAIL\r\n### `x86_64`\r\n```\r\nAssertion failed: LC != RTLIB::UNKNOWN_LIBCALL && \"Unexpected fpowi.\" (/home/v01dxyz/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp: ConvertNodeToLibcall: 4708)\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /home/v01dxyz/llvm-project/build.indvars_simplify/bin/llc faulty.ll --mtriple=x86_64 -debug -o=/dev/null\r\n1.\tRunning pass 'Function Pass Manager' on module 'faulty.ll'.\r\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@test_half_powi'\r\n#0 0x00007f1acfcec809 PrintStackTraceSignalHandler(void*) /home/v01dxyz/llvm-project/llvm/lib/Support/Unix/Signals.inc:798:1\r\n#1 0x00007f1acfce9a7f llvm::sys::RunSignalHandlers() /home/v01dxyz/llvm-project/llvm/lib/Support/Signals.cpp:105:20\r\n#2 0x00007f1acfcebe31 SignalHandler(int) /home/v01dxyz/llvm-project/llvm/lib/Support/Unix/Signals.inc:413:1\r\n#3 0x00007f1adb7789be __restore_rt /builddir/musl-1.1.24/src/signal/x86_64/restore.s:6:0\r\n```\r\n```\r\nLegalizing: t5: f16 = fpowi t2, t4\r\nTrying to expand node\r\nCannot expand node\r\nTrying to convert node to libcall\r\n```\r\n\r\n## DEBUG-TIMEOUT\r\n\r\nThe following timeout ones with `-debug`. I don't know the reason. Nevertheless it's sucessful at legalisation.\r\n\r\n### `arm-unknown-linux-gnueabi`\r\n```\r\nLegalizing: t5: f16 = fpowi t2, t4\r\nTrying to promote node\r\nCreating new node: t9: f32 = fp_extend t2\r\nCreating new node: t10: f32 = fpowi t9, t4\r\nCreating constant: t11: i64 = TargetConstant<0>\r\nCreating new node: t12: f16 = fp_round t10, TargetConstant:i64<0>\r\nSuccessfully promoted node\r\n ... replacing: t5: f16 = fpowi t2, t4\r\n     with:      t12: f16 = fp_round t10, TargetConstant:i64<0>\r\n```\r\n### `armv7-unknown-linux-gnueabihf`\r\n```\r\nLegalizing: t5: f16 = fpowi t2, t4\r\nTrying to promote node\r\nCreating new node: t9: f32 = fp_extend t2\r\nCreating new node: t10: f32 = fpowi t9, t4\r\nCreating constant: t11: i64 = TargetConstant<0>\r\nCreating new node: t12: f16 = fp_round t10, TargetConstant:i64<0>\r\nSuccessfully promoted node\r\n ... replacing: t5: f16 = fpowi t2, t4\r\n     with:      t12: f16 = fp_round t10, TargetConstant:i64<0>\r\n```\r\n"
+      },
+      {
+        "author": "v01dXYZ",
+        "body": "Normally, `f16` is promoted by default if `f16` is not a legal type (cf `TargetLoweringBase::computeRegisterProperties`). A target with `f16` being legal should set an operation action for `FPOWI`.\r\n\r\n`X86` with `SSE2` makes `f16` legal without doing the latter.\r\n\r\nif you try your example `llc -mattr=-sse2`, it works (just to prove my point)."
+      },
+      {
+        "author": "phoebewang",
+        "body": "`f16` without `SSE2` has ABI issue, so it's not a valiad case. We have error out this in frontend https://godbolt.org/z/6K3j9n4G4"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash"
+    ],
+    "title": "`SelectionDAGLegalize` crash with assertions on `powi.f16`/`powi.f16.i32`"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/105747",
+  "knowledge_cutoff": "2024-08-22T23:20:00Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit ecd9e0bc901766fc22403cdf70ab2054a174b3ac\nAuthor: v01dXYZ <14996868+v01dXYZ@users.noreply.github.com>\nDate:   Wed Aug 28 18:02:31 2024 +0200\n\n    [X86][LegalizeDAG] FPOWI: promote f16 operand (#105775)\n    \n    Fixes #105747\n    \n    ---------\n    \n    Co-authored-by: v01dxyz <v01dxyz@v01d.xyz>\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex 1a6be4eb5af1..f011249d2950 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -614,6 +614,7 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,\n     setOperationAction(ISD::FTAN, VT, Action);\n     setOperationAction(ISD::FSQRT, VT, Action);\n     setOperationAction(ISD::FPOW, VT, Action);\n+    setOperationAction(ISD::FPOWI, VT, Action);\n     setOperationAction(ISD::FLOG, VT, Action);\n     setOperationAction(ISD::FLOG2, VT, Action);\n     setOperationAction(ISD::FLOG10, VT, Action);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-unknown-linux-gnu"
+      ],
+      "file": "<issue-body>",
+      "tests": [
+        {
+          "test_body": "target triple = \"x86_64-unknown-linux-gnu\"\r\n\r\ndefine half @test_half_powi(half %self, i32 %n) {\r\nstart:\r\n  %v = call half @llvm.powi.f16.i32(half %self, i32 %n)\r\n  ret half %v\r\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

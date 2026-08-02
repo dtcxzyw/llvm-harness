@@ -1,0 +1,93 @@
+{
+  "base_commit": "863a4e410b0ac1c734291b79ddb84cbe19936220",
+  "bug_id": "167326",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp": [
+        "LegalizerHelper::narrowScalar"
+      ],
+      "llvm/lib/Target/X86/GISel/X86LegalizerInfo.cpp": [
+        "X86LegalizerInfo::X86LegalizerInfo"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp": [
+        [
+          1930,
+          1936
+        ]
+      ],
+      "llvm/lib/Target/X86/GISel/X86LegalizerInfo.cpp": [
+        [
+          269,
+          274
+        ]
+      ]
+    },
+    "components": [
+      "GlobalISel",
+      "X86"
+    ],
+    "fix_commit": "7ecc9ee9198931ceabbd85cc4a39c5f07a5437a2"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/Ebece6co7\nTestcase:\n```c\n#include <stdint.h>\n#define BS_VEC(type, num) type __attribute__((vector_size(num * sizeof(type))))\nint16_t backsmith_pure_2(uint64_t BS_ARG_1, uint16_t BS_ARG_5) {\n  uint16_t BS_VAR_2;\n  BS_VEC(int32_t, 16)\n  BS_VAR_3 = __builtin_convertvector(\n      (BS_VEC(uint64_t, 16)){BS_ARG_1, BS_ARG_1, BS_ARG_1, BS_ARG_1, BS_ARG_1,\n                             BS_ARG_1, BS_ARG_1},\n      BS_VEC(int32_t, 16));\n  BS_VAR_2 = BS_ARG_5 >= (_BitInt(75))BS_VAR_3[6];\n  return BS_VAR_2;\n}\n```\n\nclang output:\n```\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/clang -g -o /app/output.s -mllvm --x86-asm-syntax=intel -fno-verbose-asm -S --gcc-toolchain=/opt/compiler-explorer/gcc-snapshot -fcolor-diagnostics -fno-crash-diagnostics -O1 -mllvm -global-isel -mllvm -global-isel-abort=2 <source>\n1.\t<eof> parser at end of file\n2.\tCode generation\n3.\tRunning pass 'Function Pass Manager' on module '<source>'.\n4.\tRunning pass 'Legalizer' on function '@backsmith_pure_2'\n #0 0x000000000424f278 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x424f278)\n #1 0x000000000424c6a4 llvm::sys::CleanupOnSignal(unsigned long) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x424c6a4)\n #2 0x0000000004190908 CrashRecoverySignalHandler(int) CrashRecoveryContext.cpp:0:0\n #3 0x00007ac900e42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #4 0x00000000055e6f7b llvm::LegalizationArtifactCombiner::tryCombineTrunc(llvm::MachineInstr&, llvm::SmallVectorImpl<llvm::MachineInstr*>&, llvm::SmallVectorImpl<llvm::Register>&, llvm::GISelObserverWrapper&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x55e6f7b)\n #5 0x00000000055ea558 llvm::Legalizer::legalizeMachineFunction(llvm::MachineFunction&, llvm::LegalizerInfo const&, llvm::ArrayRef<llvm::GISelChangeObserver*>, llvm::LostDebugLocObserver&, llvm::MachineIRBuilder&, llvm::GISelValueTracking*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x55ea558)\n #6 0x00000000055ebe0e llvm::Legalizer::runOnMachineFunction(llvm::MachineFunction&) (.part.0) Legalizer.cpp:0:0\n #7 0x00000000034fff99 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n #8 0x0000000003b49e26 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x3b49e26)\n #9 0x0000000003b4a1d1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x3b4a1d1)\n#10 0x0000000003b4aa3f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x3b4aa3f)\n#11 0x0000000004510a36 clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x4510a36)\n#12 0x0000000004b9b8d7 clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x4b9b8d7)\n#13 0x000000000694c15c clang::ParseAST(clang::Sema&, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x694c15c)\n#14 0x0000000004b9bd38 clang::CodeGenAction::ExecuteAction() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x4b9bd38)\n#15 0x0000000004e8a285 clang::FrontendAction::Execute() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x4e8a285)\n#16 0x0000000004e0b08e clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x4e0b08e)\n#17 0x0000000004f8242d clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x4f8242d)\n#18 0x0000000000dd3d00 cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0xdd3d00)\n#19 0x0000000000dca87a ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>) driver.cpp:0:0\n#20 0x0000000000dca9fd int llvm::function_ref<int (llvm::SmallVectorImpl<char const*>&)>::callback_fn<clang_main(int, char**, llvm::ToolContext const&)::'lambda'(llvm::SmallVectorImpl<char const*>&)>(long, llvm::SmallVectorImpl<char const*>&) driver.cpp:0:0\n#21 0x0000000004c05bb9 void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::'lambda'()>(long) Job.cpp:0:0\n#22 0x0000000004190da4 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x4190da4)\n#23 0x0000000004c061cf clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (.part.0) Job.cpp:0:0\n#24 0x0000000004bc6c22 clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x4bc6c22)\n#25 0x0000000004bc7bce clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x4bc7bce)\n#26 0x0000000004bcf325 clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0x4bcf325)\n#27 0x0000000000dd0221 clang_main(int, char**, llvm::ToolContext const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0xdd0221)\n#28 0x0000000000c7e7b4 main (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0xc7e7b4)\n#29 0x00007ac900e29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#30 0x00007ac900e29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#31 0x0000000000dca315 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+0xdca315)\nclang: error: clang frontend command failed with exit code 139 (use -v to see invocation)\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "```ll\ndefine signext range(i16 0, 2) i16 @backsmith_pure_2(i64 noundef %BS_ARG_1, i16 noundef zeroext %BS_ARG_5) {\nentry:\n  %conv16 = zext i16 %BS_ARG_5 to i75\n  %vecext = trunc i64 %BS_ARG_1 to i32\n  %conv17 = sext i32 %vecext to i75\n  %cmp = icmp sge i75 %conv16, %conv17\n  %conv18 = zext i1 %cmp to i16\n  ret i16 %conv18\n}\n```"
+      },
+      {
+        "author": "e-kud",
+        "body": "Yeah, good catch! I've met this issue as well but haven't reduced the reproducer. Basically the problem is in\n```\n bool tryCombineTrunc(MachineInstr &MI,\n                      SmallVectorImpl<MachineInstr *> &DeadInsts,\n                      SmallVectorImpl<Register> &UpdatedDefs,\n                      GISelObserverWrapper &Observer) {\n   using namespace llvm::MIPatternMatch;\n   assert(MI.getOpcode() == TargetOpcode::G_TRUNC);\n\n   Builder.setInstr(MI);\n   Register DstReg = MI.getOperand(0).getReg();\n   const LLT DstTy = MRI.getType(DstReg);\n   Register SrcReg = lookThroughCopyInstrs(MI.getOperand(1).getReg());\n\n   // Try to fold trunc(g_constant) when the smaller constant type is legal.\n   auto *SrcMI = MRI.getVRegDef(SrcReg);\n   if (SrcMI->getOpcode() == TargetOpcode::G_CONSTANT) {\n```\nWhen we look through copy we reach a hardware register and we can't get `VRegDef` for it. I hot fixed it with\n```\nif (!SrcMI)\n  return false;\n```\nBut I'm not sure if it is a good fix.\n\nUPD: I'm looking at other `tryCombine*` they all `lookThroughCopyInstrs` and dereference the `getVRegDef` result. So, the significant part of the combiner is affected."
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "llvm:globalisel",
+      "crash-on-valid"
+    ],
+    "title": "[X86][GlobalISel] clang crashed at -O1/O2/O3"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/167326",
+  "knowledge_cutoff": "2025-11-10T15:30:24Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 7ecc9ee9198931ceabbd85cc4a39c5f07a5437a2\nAuthor: Evgenii Kudriashov <evgenii.kudriashov@intel.com>\nDate:   Mon Dec 8 21:08:24 2025 +0100\n\n    [X86][GlobalISel] Set Dst register correctly when narrowing G_ICMP (#169947)\n    \n    Due to untested branch in #119335\n    \n    Fixes #167326\n\ndiff --git a/llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp b/llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp\nindex 1aa1d465d8da..251ea4b1e019 100644\n--- a/llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp\n+++ b/llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp\n@@ -1930,7 +1930,7 @@ LegalizerHelper::LegalizeResult LegalizerHelper::narrowScalar(MachineInstr &MI,\n         Register CmpOut;\n         CmpInst::Predicate PartPred;\n \n-        if (I == E - 1 && LHSLeftoverRegs.empty()) {\n+        if (I == E - 1) {\n           PartPred = Pred;\n           CmpOut = Dst;\n         } else {\ndiff --git a/llvm/lib/Target/X86/GISel/X86LegalizerInfo.cpp b/llvm/lib/Target/X86/GISel/X86LegalizerInfo.cpp\nindex e792b1bce3c5..812fa85ef315 100644\n--- a/llvm/lib/Target/X86/GISel/X86LegalizerInfo.cpp\n+++ b/llvm/lib/Target/X86/GISel/X86LegalizerInfo.cpp\n@@ -269,6 +269,7 @@ X86LegalizerInfo::X86LegalizerInfo(const X86Subtarget &STI,\n   getActionDefinitionsBuilder(G_ICMP)\n       .legalForCartesianProduct({s8}, Is64Bit ? IntTypes64 : IntTypes32)\n       .clampScalar(0, s8, s8)\n+      .widenScalarToNextPow2(1, /*Min=*/8)\n       .clampScalar(1, s8, sMaxScalar);\n \n   // bswap\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s                                   -mtriple=x86_64-apple-darwin10",
+        "llc < %s -fast-isel                        -mtriple=x86_64-apple-darwin10",
+        "llc < %s -global-isel -global-isel-abort=1 -mtriple=x86_64-apple-darwin10",
+        "llc < %s                                   -mtriple=i686-apple-darwin10",
+        "llc < %s -fast-isel                        -mtriple=i686-apple-darwin10",
+        "llc < %s -global-isel -global-isel-abort=1 -mtriple=i686-apple-darwin10"
+      ],
+      "file": "llvm/test/CodeGen/X86/isel-icmp.ll",
+      "tests": [
+        {
+          "test_body": "define i32 @test_icmp_eq_i8(i8 %a, i8 %b) {\n  %r = icmp eq i8 %a, %b\n  %res = zext i1 %r to i32\n  ret i32 %res\n}\n",
+          "test_name": "test_icmp_eq_i8"
+        },
+        {
+          "test_body": "define i32 @test_icmp_sle_i32(i32 %a, i32 %b) {\n  %r = icmp sle i32 %a, %b\n  %res = zext i1 %r to i32\n  ret i32 %res\n}\n",
+          "test_name": "test_icmp_sle_i32"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine i32 @test_icmp_sge_i96(i96 %a, i96 %b) #0 {\n  %r = icmp sge i96 %a, %b\n  %res = zext i1 %r to i32\n  ret i32 %res\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_icmp_sge_i96"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

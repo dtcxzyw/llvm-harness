@@ -1,0 +1,65 @@
+{
+  "base_commit": "606cf887416ba2f136f3104ac12469fc81f73968",
+  "bug_id": "124255",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp": [
+        "DAGTypeLegalizer::WidenVecOp_EXTRACT_SUBVECTOR",
+        "DAGTypeLegalizer::WidenVecOp_INSERT_SUBVECTOR"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp": [
+        [
+          7040,
+          7045
+        ],
+        [
+          7064,
+          7077
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "015aed18ee357ee6db4e72cba2e65aeaafa333c9"
+  },
+  "issue": {
+    "author": "abhishek-kaushik22",
+    "body": "```llvm\ndefine <8 x i32> @foo(<8 x i32> %a, <2 x i32> %b) {\n  %result = tail call <8 x i32> @llvm.vector.insert.v8i32.v2i32(<8 x i32> %a, <2 x i32> %b, i64 0)\n  ret <8 x i32> %result\n}\n```\n\nhttps://godbolt.org/z/x6qnfPM7W\n\nWe get a fatal error in `DAGTypeLegalizer::WidenVecOp_INSERT_SUBVECTOR` for this seemingly simple code.\nI'm not sure how this could be fixed. Can we just replace the `INSERT_SUBVECTOR` with a series of `INSERT_VECTOR_ELT` nodes?\n\nThere's also #102016 for AArch that also looks like the same problem as this one.",
+    "comments": [],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "LLVM ERROR: Don't know how to widen the operands for `INSERT_SUBVECTOR`"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/124255",
+  "knowledge_cutoff": "2025-01-24T10:50:26Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 015aed18ee357ee6db4e72cba2e65aeaafa333c9\nAuthor: abhishek-kaushik22 <abhishek.kaushik@intel.com>\nDate:   Tue Jan 28 05:24:49 2025 -0800\n\n    [SelectionDAG] WidenVecOp_INSERT_SUBVECTOR - Replace `INSERT_SUBVECTOR` with series of `INSERT_VECTOR_ELT` (#124420)\n    \n    If the operands to `INSERT_SUBVECTOR` can't be widened legally, just\n    replace the `INSERT_SUBVECTOR` with a series of `INSERT_VECTOR_ELT`.\n    \n    Closes #124255 (and possibly #102016)\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\nindex f39d9ca15496..1000235ab406 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\n@@ -7040,6 +7040,7 @@ SDValue DAGTypeLegalizer::WidenVecOp_INSERT_SUBVECTOR(SDNode *N) {\n   SDValue SubVec = N->getOperand(1);\n   SDValue InVec = N->getOperand(0);\n \n+  EVT OrigVT = SubVec.getValueType();\n   if (getTypeAction(SubVec.getValueType()) == TargetLowering::TypeWidenVector)\n     SubVec = GetWidenedVector(SubVec);\n \n@@ -7064,14 +7065,34 @@ SDValue DAGTypeLegalizer::WidenVecOp_INSERT_SUBVECTOR(SDNode *N) {\n     }\n   }\n \n+  SDLoc DL(N);\n+\n   // We need to make sure that the indices are still valid, otherwise we might\n   // widen what was previously well-defined to something undefined.\n   if (IndicesValid && InVec.isUndef() && N->getConstantOperandVal(2) == 0)\n-    return DAG.getNode(ISD::INSERT_SUBVECTOR, SDLoc(N), VT, InVec, SubVec,\n+    return DAG.getNode(ISD::INSERT_SUBVECTOR, DL, VT, InVec, SubVec,\n                        N->getOperand(2));\n \n-  report_fatal_error(\"Don't know how to widen the operands for \"\n-                     \"INSERT_SUBVECTOR\");\n+  if (!IndicesValid || OrigVT.isScalableVector())\n+    report_fatal_error(\n+        \"Don't know how to widen the operands for INSERT_SUBVECTOR\");\n+\n+  // If the operands can't be widened legally, just replace the INSERT_SUBVECTOR\n+  // with a series of INSERT_VECTOR_ELT\n+  unsigned Idx = N->getConstantOperandVal(2);\n+\n+  SDValue InsertElt = InVec;\n+  EVT VectorIdxTy = TLI.getVectorIdxTy(DAG.getDataLayout());\n+  for (unsigned I = 0, E = OrigVT.getVectorNumElements(); I != E; ++I) {\n+    SDValue ExtractElt =\n+        DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL, VT.getVectorElementType(),\n+                    SubVec, DAG.getConstant(I, DL, VectorIdxTy));\n+    InsertElt =\n+        DAG.getNode(ISD::INSERT_VECTOR_ELT, DL, VT, InsertElt, ExtractElt,\n+                    DAG.getConstant(I + Idx, DL, VectorIdxTy));\n+  }\n+\n+  return InsertElt;\n }\n \n SDValue DAGTypeLegalizer::WidenVecOp_EXTRACT_SUBVECTOR(SDNode *N) {\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64--"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr124255.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <4 x i32> @insert_v2i32_in_v4i32_at_0(<4 x i32> %a, <2 x i32> %b) {\n  %result = tail call <4 x i32> @llvm.vector.insert.v4i32.v2i32(<4 x i32> %a, <2 x i32> %b, i64 0)\n  ret <4 x i32> %result\n}\n\ndefine <4 x i32> @insert_v2i32_in_v4i32_at_2(<4 x i32> %a, <2 x i32> %b) {\n  %result = tail call <4 x i32> @llvm.vector.insert.v4i32.v2i32(<4 x i32> %a, <2 x i32> %b, i64 2)\n  ret <4 x i32> %result\n}\n\ndefine <4 x float> @insert_v2f32_in_v4f32_at_0(<4 x float> %a, <2 x float> %b) {\n  %result = tail call <4 x float> @llvm.vector.insert.v4float.v2float(<4 x float> %a, <2 x float> %b, i64 0)\n  ret <4 x float> %result\n}\n\ndefine <8 x i32> @insert_v2i32_in_v8i32_at_0(<8 x i32> %a, <2 x i32> %b) {\n  %result = tail call <8 x i32> @llvm.vector.insert.v8i32.v2i32(<8 x i32> %a, <2 x i32> %b, i64 0)\n  ret <8 x i32> %result\n}\n\ndefine <8 x i32> @insert_v2i32_in_v8i32_at_6(<8 x i32> %a, <2 x i32> %b) {\n  %result = tail call <8 x i32> @llvm.vector.insert.v8i32.v2i32(<8 x i32> %a, <2 x i32> %b, i64 6)\n  ret <8 x i32> %result\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,176 @@
+{
+  "base_commit": "7439072289f41d46d563763509d5d0d0cb62f3a0",
+  "bug_id": "93587",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVInsertVSETVLI.cpp": [
+        "RISCVInsertVSETVLI::coalesceVSETVLIs",
+        "RISCVInsertVSETVLI::doPRE",
+        "RISCVInsertVSETVLI::emitVSETVLIs",
+        "RISCVInsertVSETVLI::insertReadVL",
+        "RISCVInsertVSETVLI::insertVSETVLI",
+        "RISCVInsertVSETVLI::needVSETVLIPHI",
+        "RISCVInsertVSETVLI::runOnMachineFunction",
+        "RISCVInsertVSETVLI::transferAfter",
+        "getAVLDefMI",
+        "getAnalysisUsage",
+        "getVNInfoFromReg",
+        "hasEquallyZeroAVL",
+        "hasSameAVL",
+        "operator==",
+        "setAVLRegDef",
+        "setVTYPE"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVInsertVSETVLI.cpp": [
+        [
+          48,
+          57
+        ],
+        [
+          512,
+          518
+        ],
+        [
+          526,
+          532
+        ],
+        [
+          552,
+          558
+        ],
+        [
+          582,
+          590
+        ],
+        [
+          628,
+          637
+        ],
+        [
+          642,
+          647
+        ],
+        [
+          741,
+          747
+        ],
+        [
+          863,
+          871
+        ],
+        [
+          1061,
+          1067
+        ],
+        [
+          1078,
+          1084
+        ],
+        [
+          1090,
+          1096
+        ],
+        [
+          1100,
+          1107
+        ],
+        [
+          1111,
+          1122
+        ],
+        [
+          1230,
+          1239
+        ],
+        [
+          1327,
+          1332
+        ],
+        [
+          1402,
+          1428
+        ],
+        [
+          1479,
+          1484
+        ],
+        [
+          1625,
+          1631
+        ],
+        [
+          1654,
+          1666
+        ],
+        [
+          1676,
+          1682
+        ],
+        [
+          1691,
+          1702
+        ],
+        [
+          1714,
+          1720
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "111507ed4ce49bbb8cfbf36a3e143bb25f0f13c0"
+  },
+  "issue": {
+    "author": "patrick-rivos",
+    "body": "Reduced LLVM IR:\r\n```\r\ndefine i16 @f() {\r\nBB:\r\n  br label %BB1\r\n\r\nBB1:                                              ; preds = %BB1, %BB\r\n  %A = or i16 0, 0\r\n  %B = fcmp true float 0.000000e+00, 0.000000e+00\r\n  %C = or i1 %B, false\r\n  br i1 %C, label %BB1, label %BB2\r\n\r\nBB2:                                              ; preds = %BB1\r\n  ret i16 %A\r\n}\r\n```\r\nGodbolt: https://godbolt.org/z/7GGzqs5c6\r\n\r\nBB state before the LiveIntervalAnalysis pass from debug log:\r\n```\r\nBB.0    BB.3 (unreachable)\r\n |     /    \\\r\nBB.1(loops)  BB.2 -> ret\r\n```\r\n\r\nSince BB.1 defines %0 and BB.2 reads it, LiveIntervalAnalysis complains about\r\nthe undefined value in the unreachable codepath.\r\n\r\nFirst visibly bad commit:\r\naf82d01fbbce7808605f3a8b22dd1ca7fdec7886 [RISCV] Separate doLocalPostpass into new pass...\r\n\r\nI think this is just because LiveIntervalAnalysis isn't run before this commit.\r\n\r\nOne step further back is the commit that causes bb to be split into bb.3.\r\n2c185709bca195f3d5e062819bba5dd828330548 [RISCV] Remove setJumpIsExpensive()\r\n\r\nCan be mitigated by `-mllvm -jump-is-expensive=true`",
+    "comments": [
+      {
+        "author": "topperc",
+        "body": "CC @BeMg @lukel97 "
+      },
+      {
+        "author": "lukel97",
+        "body": "On >=O1 those dead blocks are removed before LiveIntervalAnalysis. But I think the correct thing to do here is to teach RISCVInsertVSETVLI to work without LiveIntervals at O0. That way we can keep debug builds fast."
+      },
+      {
+        "author": "preames",
+        "body": "Should be fixed by previously referenced commit."
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash-on-valid"
+    ],
+    "title": "[RISC-V] Use of %0 does not have a corresponding definition on every path with `-O0`"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/93587",
+  "knowledge_cutoff": "2024-05-28T17:42:47Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 111507ed4ce49bbb8cfbf36a3e143bb25f0f13c0\nAuthor: Philip Reames <preames@rivosinc.com>\nDate:   Mon Jun 17 12:01:51 2024 -0700\n\n    [RISCV] Teach RISCVInsertVSETVLI to work without LiveIntervals (#94686)\n    \n    Stacked on https://github.com/llvm/llvm-project/pull/94658.\n    \n    We recently moved RISCVInsertVSETVLI from before vector register\n    allocation to after vector register allocation. When doing so, we added\n    an unconditional dependency on LiveIntervals - even at O0 where\n    LiveIntevals hadn't previously run. As reported in #93587, this was\n    apparently not safe to do.\n    \n    This change makes LiveIntervals optional, and adjusts all the update\n    code to only run wen live intervals is present. The only real tricky\n    part of this change is the abstract state tracking in the dataflow. We\n    need to represent a \"register w/unknown definition\" state - but only\n    when we don't have LiveIntervals.\n    \n    This adjust the abstract state definition so that the AVLIsReg state can\n    represent either a register + valno, or a register + unknown definition.\n    With LiveIntervals, we have an exact definition for each AVL use.\n    Without LiveIntervals, we treat the definition of a register AVL as\n    being unknown.\n    \n    The key semantic change is that we now have a state in the lattice for\n    which something is known about the AVL value, but for which two\n    identical lattice elements do *not* necessarily represent the same AVL\n    value at runtime. Previously, the only case which could result in such\n    an unknown AVL was the fully unknown state (where VTYPE is also fully\n    unknown). This requires a small adjustment to hasSameAVL and lattice\n    state equality to draw this important distinction.\n    \n    The net effect of this patch is that we remove the LiveIntervals\n    dependency at O0, and O0 code quality will regress for cases involving\n    register AVL values.\n    \n    This patch is an alternative to\n    https://github.com/llvm/llvm-project/pull/93796 and\n    https://github.com/llvm/llvm-project/pull/94340. It is very directly\n    inspired by review conversation around them, and thus should be\n    considered coauthored by Luke.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVInsertVSETVLI.cpp b/llvm/lib/Target/RISCV/RISCVInsertVSETVLI.cpp\nindex 151a7821f835..b7dad160a7f6 100644\n--- a/llvm/lib/Target/RISCV/RISCVInsertVSETVLI.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVInsertVSETVLI.cpp\n@@ -48,10 +48,13 @@ static cl::opt<bool> DisableInsertVSETVLPHIOpt(\n namespace {\n \n /// Given a virtual register \\p Reg, return the corresponding VNInfo for it.\n-/// This will return nullptr if the virtual register is an implicit_def.\n+/// This will return nullptr if the virtual register is an implicit_def or\n+/// if LiveIntervals is not available.\n static VNInfo *getVNInfoFromReg(Register Reg, const MachineInstr &MI,\n                                 const LiveIntervals *LIS) {\n   assert(Reg.isVirtual());\n+  if (!LIS)\n+    return nullptr;\n   auto &LI = LIS->getInterval(Reg);\n   SlotIndex SI = LIS->getSlotIndexes()->getInstructionIndex(MI);\n   return LI.getVNInfoBefore(SI);\n@@ -512,7 +515,8 @@ DemandedFields getDemanded(const MachineInstr &MI, const RISCVSubtarget *ST) {\n /// values of the VL and VTYPE registers after insertion.\n class VSETVLIInfo {\n   struct AVLDef {\n-    // Every AVLDef should have a VNInfo.\n+    // Every AVLDef should have a VNInfo, unless we're running without\n+    // LiveIntervals in which case this will be nullptr.\n     const VNInfo *ValNo;\n     Register DefReg;\n   };\n@@ -526,7 +530,7 @@ class VSETVLIInfo {\n     AVLIsReg,\n     AVLIsImm,\n     AVLIsVLMAX,\n-    Unknown,\n+    Unknown, // AVL and VTYPE are fully unknown\n   } State = Uninitialized;\n \n   // Fields from VTYPE.\n@@ -552,7 +556,7 @@ public:\n   bool isUnknown() const { return State == Unknown; }\n \n   void setAVLRegDef(const VNInfo *VNInfo, Register AVLReg) {\n-    assert(VNInfo && AVLReg.isVirtual());\n+    assert(AVLReg.isVirtual());\n     AVLRegDef.ValNo = VNInfo;\n     AVLRegDef.DefReg = AVLReg;\n     State = AVLIsReg;\n@@ -582,9 +586,11 @@ public:\n   }\n   // Most AVLIsReg infos will have a single defining MachineInstr, unless it was\n   // a PHI node. In that case getAVLVNInfo()->def will point to the block\n-  // boundary slot.\n+  // boundary slot.  If LiveIntervals isn't available, then nullptr is returned.\n   const MachineInstr *getAVLDefMI(const LiveIntervals *LIS) const {\n     assert(hasAVLReg());\n+    if (!LIS)\n+      return nullptr;\n     auto *MI = LIS->getInstructionFromIndex(getAVLVNInfo()->def);\n     assert(!(getAVLVNInfo()->isPHIDef() && MI));\n     return MI;\n@@ -628,10 +634,15 @@ public:\n     return (hasNonZeroAVL(LIS) && Other.hasNonZeroAVL(LIS));\n   }\n \n-  bool hasSameAVL(const VSETVLIInfo &Other) const {\n-    if (hasAVLReg() && Other.hasAVLReg())\n+  bool hasSameAVLLatticeValue(const VSETVLIInfo &Other) const {\n+    if (hasAVLReg() && Other.hasAVLReg()) {\n+      assert(!getAVLVNInfo() == !Other.getAVLVNInfo() &&\n+             \"we either have intervals or we don't\");\n+      if (!getAVLVNInfo())\n+        return getAVLReg() == Other.getAVLReg();\n       return getAVLVNInfo()->id == Other.getAVLVNInfo()->id &&\n              getAVLReg() == Other.getAVLReg();\n+    }\n \n     if (hasAVLImm() && Other.hasAVLImm())\n       return getAVLImm() == Other.getAVLImm();\n@@ -642,6 +653,21 @@ public:\n     return false;\n   }\n \n+  // Return true if the two lattice values are guaranteed to have\n+  // the same AVL value at runtime.\n+  bool hasSameAVL(const VSETVLIInfo &Other) const {\n+    // Without LiveIntervals, we don't know which instruction defines a\n+    // register.  Since a register may be redefined, this means all AVLIsReg\n+    // states must be treated as possibly distinct.\n+    if (hasAVLReg() && Other.hasAVLReg()) {\n+      assert(!getAVLVNInfo() == !Other.getAVLVNInfo() &&\n+             \"we either have intervals or we don't\");\n+      if (!getAVLVNInfo())\n+        return false;\n+    }\n+    return hasSameAVLLatticeValue(Other);\n+  }\n+\n   void setVTYPE(unsigned VType) {\n     assert(isValid() && !isUnknown() &&\n            \"Can't set VTYPE for uninitialized or unknown\");\n@@ -741,7 +767,7 @@ public:\n     if (Other.isUnknown())\n       return isUnknown();\n \n-    if (!hasSameAVL(Other))\n+    if (!hasSameAVLLatticeValue(Other))\n       return false;\n \n     // If the SEWLMULRatioOnly bits are different, then they aren't equal.\n@@ -849,6 +875,7 @@ class RISCVInsertVSETVLI : public MachineFunctionPass {\n   const RISCVSubtarget *ST;\n   const TargetInstrInfo *TII;\n   MachineRegisterInfo *MRI;\n+  // Possibly null!\n   LiveIntervals *LIS;\n \n   std::vector<BlockData> BlockInfo;\n@@ -863,9 +890,9 @@ public:\n   void getAnalysisUsage(AnalysisUsage &AU) const override {\n     AU.setPreservesCFG();\n \n-    AU.addRequired<LiveIntervals>();\n+    AU.addUsedIfAvailable<LiveIntervals>();\n     AU.addPreserved<LiveIntervals>();\n-    AU.addRequired<SlotIndexes>();\n+    AU.addUsedIfAvailable<SlotIndexes>();\n     AU.addPreserved<SlotIndexes>();\n     AU.addPreserved<LiveDebugVariables>();\n     AU.addPreserved<LiveStacks>();\n@@ -1061,7 +1088,8 @@ void RISCVInsertVSETVLI::insertVSETVLI(MachineBasicBlock &MBB,\n                     .addReg(RISCV::X0, RegState::Kill)\n                     .addImm(Info.encodeVTYPE())\n                     .addReg(RISCV::VL, RegState::Implicit);\n-      LIS->InsertMachineInstrInMaps(*MI);\n+      if (LIS)\n+        LIS->InsertMachineInstrInMaps(*MI);\n       return;\n     }\n \n@@ -1078,7 +1106,8 @@ void RISCVInsertVSETVLI::insertVSETVLI(MachineBasicBlock &MBB,\n                         .addReg(RISCV::X0, RegState::Kill)\n                         .addImm(Info.encodeVTYPE())\n                         .addReg(RISCV::VL, RegState::Implicit);\n-          LIS->InsertMachineInstrInMaps(*MI);\n+          if (LIS)\n+            LIS->InsertMachineInstrInMaps(*MI);\n           return;\n         }\n       }\n@@ -1090,7 +1119,8 @@ void RISCVInsertVSETVLI::insertVSETVLI(MachineBasicBlock &MBB,\n                   .addReg(RISCV::X0, RegState::Define | RegState::Dead)\n                   .addImm(Info.getAVLImm())\n                   .addImm(Info.encodeVTYPE());\n-    LIS->InsertMachineInstrInMaps(*MI);\n+    if (LIS)\n+      LIS->InsertMachineInstrInMaps(*MI);\n     return;\n   }\n \n@@ -1100,8 +1130,10 @@ void RISCVInsertVSETVLI::insertVSETVLI(MachineBasicBlock &MBB,\n                   .addReg(DestReg, RegState::Define | RegState::Dead)\n                   .addReg(RISCV::X0, RegState::Kill)\n                   .addImm(Info.encodeVTYPE());\n-    LIS->InsertMachineInstrInMaps(*MI);\n-    LIS->createAndComputeVirtRegInterval(DestReg);\n+    if (LIS) {\n+      LIS->InsertMachineInstrInMaps(*MI);\n+      LIS->createAndComputeVirtRegInterval(DestReg);\n+    }\n     return;\n   }\n \n@@ -1111,12 +1143,14 @@ void RISCVInsertVSETVLI::insertVSETVLI(MachineBasicBlock &MBB,\n                 .addReg(RISCV::X0, RegState::Define | RegState::Dead)\n                 .addReg(AVLReg)\n                 .addImm(Info.encodeVTYPE());\n-  LIS->InsertMachineInstrInMaps(*MI);\n-  // Normally the AVL's live range will already extend past the inserted vsetvli\n-  // because the pseudos below will already use the AVL. But this isn't always\n-  // the case, e.g. PseudoVMV_X_S doesn't have an AVL operand.\n-  LIS->getInterval(AVLReg).extendInBlock(\n-      LIS->getMBBStartIdx(&MBB), LIS->getInstructionIndex(*MI).getRegSlot());\n+  if (LIS) {\n+    LIS->InsertMachineInstrInMaps(*MI);\n+    // Normally the AVL's live range will already extend past the inserted\n+    // vsetvli because the pseudos below will already use the AVL. But this\n+    // isn't always the case, e.g. PseudoVMV_X_S doesn't have an AVL operand.\n+    LIS->getInterval(AVLReg).extendInBlock(\n+        LIS->getMBBStartIdx(&MBB), LIS->getInstructionIndex(*MI).getRegSlot());\n+  }\n }\n \n /// Return true if a VSETVLI is required to transition from CurInfo to Require\n@@ -1230,10 +1264,14 @@ void RISCVInsertVSETVLI::transferAfter(VSETVLIInfo &Info,\n   if (RISCV::isFaultFirstLoad(MI)) {\n     // Update AVL to vl-output of the fault first load.\n     assert(MI.getOperand(1).getReg().isVirtual());\n-    auto &LI = LIS->getInterval(MI.getOperand(1).getReg());\n-    SlotIndex SI = LIS->getSlotIndexes()->getInstructionIndex(MI).getRegSlot();\n-    VNInfo *VNI = LI.getVNInfoAt(SI);\n-    Info.setAVLRegDef(VNI, MI.getOperand(1).getReg());\n+    if (LIS) {\n+      auto &LI = LIS->getInterval(MI.getOperand(1).getReg());\n+      SlotIndex SI =\n+          LIS->getSlotIndexes()->getInstructionIndex(MI).getRegSlot();\n+      VNInfo *VNI = LI.getVNInfoAt(SI);\n+      Info.setAVLRegDef(VNI, MI.getOperand(1).getReg());\n+    } else\n+      Info.setAVLRegDef(nullptr, MI.getOperand(1).getReg());\n     return;\n   }\n \n@@ -1327,6 +1365,9 @@ bool RISCVInsertVSETVLI::needVSETVLIPHI(const VSETVLIInfo &Require,\n   if (!Require.hasAVLReg())\n     return true;\n \n+  if (!LIS)\n+    return true;\n+\n   // We need the AVL to have been produced by a PHI node in this basic block.\n   const VNInfo *Valno = Require.getAVLVNInfo();\n   if (!Valno->isPHIDef() || LIS->getMBBFromIndex(Valno->def) != &MBB)\n@@ -1402,27 +1443,29 @@ void RISCVInsertVSETVLI::emitVSETVLIs(MachineBasicBlock &MBB) {\n         MachineOperand &VLOp = MI.getOperand(getVLOpNum(MI));\n         if (VLOp.isReg()) {\n           Register Reg = VLOp.getReg();\n-          LiveInterval &LI = LIS->getInterval(Reg);\n \n           // Erase the AVL operand from the instruction.\n           VLOp.setReg(RISCV::NoRegister);\n           VLOp.setIsKill(false);\n-          SmallVector<MachineInstr *> DeadMIs;\n-          LIS->shrinkToUses(&LI, &DeadMIs);\n-          // We might have separate components that need split due to\n-          // needVSETVLIPHI causing us to skip inserting a new VL def.\n-          SmallVector<LiveInterval *> SplitLIs;\n-          LIS->splitSeparateComponents(LI, SplitLIs);\n-\n-          // If the AVL was an immediate > 31, then it would have been emitted\n-          // as an ADDI. However, the ADDI might not have been used in the\n-          // vsetvli, or a vsetvli might not have been emitted, so it may be\n-          // dead now.\n-          for (MachineInstr *DeadMI : DeadMIs) {\n-            if (!TII->isAddImmediate(*DeadMI, Reg))\n-              continue;\n-            LIS->RemoveMachineInstrFromMaps(*DeadMI);\n-            DeadMI->eraseFromParent();\n+          if (LIS) {\n+            LiveInterval &LI = LIS->getInterval(Reg);\n+            SmallVector<MachineInstr *> DeadMIs;\n+            LIS->shrinkToUses(&LI, &DeadMIs);\n+            // We might have separate components that need split due to\n+            // needVSETVLIPHI causing us to skip inserting a new VL def.\n+            SmallVector<LiveInterval *> SplitLIs;\n+            LIS->splitSeparateComponents(LI, SplitLIs);\n+\n+            // If the AVL was an immediate > 31, then it would have been emitted\n+            // as an ADDI. However, the ADDI might not have been used in the\n+            // vsetvli, or a vsetvli might not have been emitted, so it may be\n+            // dead now.\n+            for (MachineInstr *DeadMI : DeadMIs) {\n+              if (!TII->isAddImmediate(*DeadMI, Reg))\n+                continue;\n+              LIS->RemoveMachineInstrFromMaps(*DeadMI);\n+              DeadMI->eraseFromParent();\n+            }\n           }\n         }\n         MI.addOperand(MachineOperand::CreateReg(RISCV::VL, /*isDef*/ false,\n@@ -1479,6 +1522,9 @@ void RISCVInsertVSETVLI::doPRE(MachineBasicBlock &MBB) {\n   if (!UnavailablePred || !AvailableInfo.isValid())\n     return;\n \n+  if (!LIS)\n+    return;\n+\n   // If we don't know the exact VTYPE, we can't copy the vsetvli to the exit of\n   // the unavailable pred.\n   if (AvailableInfo.hasSEWLMULRatioOnly())\n@@ -1625,7 +1671,7 @@ void RISCVInsertVSETVLI::coalesceVSETVLIs(MachineBasicBlock &MBB) const {\n \n           // The def of DefReg moved to MI, so extend the LiveInterval up to\n           // it.\n-          if (DefReg.isVirtual()) {\n+          if (DefReg.isVirtual() && LIS) {\n             LiveInterval &DefLI = LIS->getInterval(DefReg);\n             SlotIndex MISlot = LIS->getInstructionIndex(MI).getRegSlot();\n             VNInfo *DefVNI = DefLI.getVNInfoAt(DefLI.beginIndex());\n@@ -1654,13 +1700,15 @@ void RISCVInsertVSETVLI::coalesceVSETVLIs(MachineBasicBlock &MBB) const {\n \n           if (OldVLReg && OldVLReg.isVirtual()) {\n             // NextMI no longer uses OldVLReg so shrink its LiveInterval.\n-            LIS->shrinkToUses(&LIS->getInterval(OldVLReg));\n+            if (LIS)\n+              LIS->shrinkToUses(&LIS->getInterval(OldVLReg));\n \n             MachineInstr *VLOpDef = MRI->getUniqueVRegDef(OldVLReg);\n             if (VLOpDef && TII->isAddImmediate(*VLOpDef, OldVLReg) &&\n                 MRI->use_nodbg_empty(OldVLReg)) {\n               VLOpDef->eraseFromParent();\n-              LIS->removeInterval(OldVLReg);\n+              if (LIS)\n+                LIS->removeInterval(OldVLReg);\n             }\n           }\n           MI.setDesc(NextMI->getDesc());\n@@ -1676,7 +1724,8 @@ void RISCVInsertVSETVLI::coalesceVSETVLIs(MachineBasicBlock &MBB) const {\n \n   NumCoalescedVSETVL += ToDelete.size();\n   for (auto *MI : ToDelete) {\n-    LIS->RemoveMachineInstrFromMaps(*MI);\n+    if (LIS)\n+      LIS->RemoveMachineInstrFromMaps(*MI);\n     MI->eraseFromParent();\n   }\n }\n@@ -1691,12 +1740,14 @@ void RISCVInsertVSETVLI::insertReadVL(MachineBasicBlock &MBB) {\n         auto ReadVLMI = BuildMI(MBB, I, MI.getDebugLoc(),\n                                 TII->get(RISCV::PseudoReadVL), VLOutput);\n         // Move the LiveInterval's definition down to PseudoReadVL.\n-        SlotIndex NewDefSI =\n-            LIS->InsertMachineInstrInMaps(*ReadVLMI).getRegSlot();\n-        LiveInterval &DefLI = LIS->getInterval(VLOutput);\n-        VNInfo *DefVNI = DefLI.getVNInfoAt(DefLI.beginIndex());\n-        DefLI.removeSegment(DefLI.beginIndex(), NewDefSI);\n-        DefVNI->def = NewDefSI;\n+        if (LIS) {\n+          SlotIndex NewDefSI =\n+              LIS->InsertMachineInstrInMaps(*ReadVLMI).getRegSlot();\n+          LiveInterval &DefLI = LIS->getInterval(VLOutput);\n+          VNInfo *DefVNI = DefLI.getVNInfoAt(DefLI.beginIndex());\n+          DefLI.removeSegment(DefLI.beginIndex(), NewDefSI);\n+          DefVNI->def = NewDefSI;\n+        }\n       }\n       // We don't use the vl output of the VLEFF/VLSEGFF anymore.\n       MI.getOperand(1).setReg(RISCV::X0);\n@@ -1714,7 +1765,7 @@ bool RISCVInsertVSETVLI::runOnMachineFunction(MachineFunction &MF) {\n \n   TII = ST->getInstrInfo();\n   MRI = &MF.getRegInfo();\n-  LIS = &getAnalysis<LiveIntervals>();\n+  LIS = getAnalysisIfAvailable<LiveIntervals>();\n \n   assert(BlockInfo.empty() && \"Expect empty block infos\");\n   BlockInfo.resize(MF.getNumBlockIDs());\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=riscv64 -O0 < %s"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/pr93587.ll",
+      "tests": [
+        {
+          "test_body": "\n; Make sure we don't run LiveIntervals at O0, otherwise it will crash when\n; running on this unreachable block.\n\ndefine i16 @f() {\nBB:\n  br label %BB1\n\nBB1:\n  %A = or i16 0, 0\n  %B = fcmp true float 0.000000e+00, 0.000000e+00\n  %C = or i1 %B, false\n  br i1 %C, label %BB1, label %BB2\n\nBB2:\n  ret i16 %A\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

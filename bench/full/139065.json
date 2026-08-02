@@ -1,0 +1,65 @@
+{
+  "base_commit": "c3ca0fb91eaef9133315024550ef7b0ca7b0458a",
+  "bug_id": "139065",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Transforms/Vectorize/LoopVectorize.cpp": [
+        "LoopVectorizationCostModel::computePredInstDiscount"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Transforms/Vectorize/LoopVectorize.cpp": [
+        [
+          5571,
+          5576
+        ]
+      ]
+    },
+    "components": [
+      "LoopVectorize"
+    ],
+    "fix_commit": "8c6c525a6bbb34a146a3d1f239757758e2d738e8"
+  },
+  "issue": {
+    "author": "TatyanaDoubts",
+    "body": "Full Assertion message:\n```\nAssertion `(BestFactor.Width == LegacyVF.Width || BestPlan.hasEarlyExit() || planContainsAdditionalSimplifications(getPlanFor(BestFactor.Width), CostCtx, OrigLoop) || planContainsAdditionalSimplifications(getPlanFor(LegacyVF.Width), CostCtx, OrigLoop)) && \" VPlan cost model and legacy cost model disagreed\"' failed.\n```\nTo reproduce run opt -passes=loop-vectorize with the test below:\n```\n; ModuleID = './reduced.ll'\nsource_filename = \"./reduced.ll\"\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32-ni:1-p2:32:8:8:32-ni:2\"\ntarget triple = \"aarch64-none-linux-gnu\"\n\ndefine i32 @wombat() gc \"statepoint-example\" {\nbb:\n  br label %bb2\n\nbb1:                                              ; preds = %bb2\n  %phi = phi i8 [ %or, %bb2 ]\n  ret i32 0\n\nbb2:                                              ; preds = %bb2, %bb\n  %phi3 = phi i8 [ 0, %bb ], [ %or, %bb2 ]\n  %phi4 = phi i32 [ 2, %bb ], [ %add, %bb2 ]\n  %phi5 = phi i32 [ 0, %bb ], [ %srem, %bb2 ]\n  %phi6 = phi i32 [ 0, %bb ], [ %phi4, %bb2 ]\n  %mul = mul i32 %phi5, 0\n  %trunc = trunc i32 %mul to i8\n  %or = or i8 %trunc, %phi3\n  %srem = srem i32 0, %phi6\n  %add = add i32 %phi4, 1\n  %icmp = icmp ugt i32 %phi4, 3\n  br i1 %icmp, label %bb1, label %bb2\n}\n```\nReproducer: https://godbolt.org/z/7qEMh5Mq9\n\nStack dump:\n```\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/opt -o /app/output.s -S -passes=loop-vectorize <source>\n1.\tRunning pass \"function(loop-vectorize<no-interleave-forced-only;no-vectorize-forced-only;>)\" on module \"<source>\"\n2.\tRunning pass \"loop-vectorize<no-interleave-forced-only;no-vectorize-forced-only;>\" on function \"wombat\"\n #0 0x0000000005589f78 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x5589f78)\n #1 0x0000000005587904 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007198a6842520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007198a68969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007198a6842476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007198a68287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007198a682871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007198a6839e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x00000000044b82a6 llvm::LoopVectorizationPlanner::computeBestVF() (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x44b82a6)\n #9 0x00000000044ce21a llvm::LoopVectorizePass::processLoop(llvm::Loop*) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x44ce21a)\n#10 0x00000000044d0df0 llvm::LoopVectorizePass::runImpl(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x44d0df0)\n#11 0x00000000044d1443 llvm::LoopVectorizePass::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x44d1443)\n#12 0x000000000324211e llvm::detail::PassModel<llvm::Function, llvm::LoopVectorizePass, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x324211e)\n#13 0x0000000005383340 llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x5383340)\n#14 0x0000000000e8682e llvm::detail::PassModel<llvm::Function, llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0xe8682e)\n#15 0x0000000005381c13 llvm::ModuleToFunctionPassAdaptor::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x5381c13)\n#16 0x0000000000e8567e llvm::detail::PassModel<llvm::Module, llvm::ModuleToFunctionPassAdaptor, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0xe8567e)\n#17 0x0000000005381620 llvm::PassManager<llvm::Module, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x5381620)\n#18 0x0000000000949a9a llvm::runPassPipeline(llvm::StringRef, llvm::Module&, llvm::TargetMachine*, llvm::TargetLibraryInfoImpl*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::StringRef, llvm::ArrayRef<llvm::PassPlugin>, llvm::ArrayRef<std::function<void (llvm::PassBuilder&)>>, llvm::opt_tool::OutputKind, llvm::opt_tool::VerifierKind, bool, bool, bool, bool, bool, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x949a9a)\n#19 0x000000000093d26c optMain (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x93d26c)\n#20 0x00007198a6829d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#21 0x00007198a6829e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#22 0x0000000000934ea5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x934ea5)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "frederick-vs-ja",
+        "body": "This looks very like a duplicate of #139060."
+      }
+    ],
+    "labels": [
+      "vectorizers",
+      "crash"
+    ],
+    "title": "Assertion `(BestFactor.Width == LegacyVF.Width || BestPlan.hasEarlyExit() || ... || planContainsAdditionalSimplifications(getPlanFor(LegacyVF.Width), CostCtx, OrigLoop)) && \" VPlan cost model and legacy cost model disagreed\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/139065",
+  "knowledge_cutoff": "2025-05-08T11:47:11Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/LoopVectorize"
+  ],
+  "patch": "commit 8c6c525a6bbb34a146a3d1f239757758e2d738e8\nAuthor: Florian Hahn <flo@fhahn.com>\nDate:   Fri May 9 20:29:22 2025 +0100\n\n    [LV] Don't consider FORs as profitable to scalarize.\n    \n    Fixed-order recurrence phis cannot be scalarized, they will always be\n    widened at the moment. Make sure they are not incorrectly considered\n    profitable to scalarize, similar to 41c1a7be3f1a2556e.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/139060.\n    Fixes https://github.com/llvm/llvm-project/issues/139065.\n\ndiff --git a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp\nindex b06bcbee9fdc..aabb04d03bc8 100644\n--- a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp\n+++ b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp\n@@ -5571,6 +5571,10 @@ InstructionCost LoopVectorizationCostModel::computePredInstDiscount(\n     if (ScalarCosts.contains(I))\n       continue;\n \n+    // Cannot scalarize fixed-order recurrence phis at the moment.\n+    if (isa<PHINode>(I) && Legal->isFixedOrderRecurrence(cast<PHINode>(I)))\n+      continue;\n+\n     // Compute the cost of the vector instruction. Note that this cost already\n     // includes the scalarization overhead of the predicated instruction.\n     InstructionCost VectorCost = getInstructionCost(I, VF);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -passes=loop-vectorize -S -o - %s"
+      ],
+      "file": "llvm/test/Transforms/LoopVectorize/X86/fixed-order-recurrence.ll",
+      "tests": [
+        {
+          "test_body": "target datalayout = \"e-m:e-i64:64-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-pc_linux\"\n\ndefine void @test_first_order_recurrence_tried_to_scalarized(ptr %dst, i1 %c, i32 %x) {\nentry:\n  %N = select i1 %c, i32 8, i32 9\n  br label %loop\n\nloop:                                             ; preds = %loop, %entry\n  %iv = phi i32 [ 0, %entry ], [ %iv.next, %loop ]\n  %for = phi i32 [ 4, %entry ], [ %iv, %loop ]\n  %iv.next = add nuw nsw i32 %iv, 1\n  %sub = sub nsw i32 10, %for\n  %gep.dst = getelementptr inbounds nuw i32, ptr %dst, i32 %iv\n  store i32 %sub, ptr %gep.dst, align 4\n  %ec = icmp eq i32 %iv.next, %N\n  br i1 %ec, label %exit, label %loop\n\nexit:                                             ; preds = %loop\n  ret void\n}\n",
+          "test_name": "test_first_order_recurrence_tried_to_scalarized"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

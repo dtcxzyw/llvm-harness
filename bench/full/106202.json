@@ -1,0 +1,60 @@
+{
+  "base_commit": "900cd627582349381bcc0ee74054ca4d9efb55df",
+  "bug_id": "106202",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "DAGCombiner::visitZERO_EXTEND"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          14114,
+          14126
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "4baf29e81e30e6ebc1da56b9e5c338014961acf9"
+  },
+  "issue": {
+    "author": "JonPsson1",
+    "body": "Bisected to \"[SelectionDAG] Add MaskedValueIsZero check to allow folding of zero extended variables we know are safe to extend (#85573)\" 7e72caf.\r\n\r\n```\r\nllc -mcpu=z10 -O3  tc_dagcomb_zext.ll\r\n\r\nAPInt.h:1347: void llvm::APInt::setBits(unsigned int, unsigned int): Assertion `loBit <= BitWidth && \"loBit out of range\"' failed.\r\n...\r\n#10 0x00000000029f46d6 (anonymous namespace)::DAGCombiner::visitZERO_EXTEND\r\n...\r\n```\r\n\r\n```\r\n@g_0 = external dso_local local_unnamed_addr global i16, align 2\r\n@g_1 = external dso_local local_unnamed_addr global i32, align 4\r\n@g_2 = external dso_local local_unnamed_addr global i32, align 4\r\n\r\ndefine void @func() {\r\n  store i32 41, ptr @g_1, align 4\r\n  %1 = load i32, ptr @g_1, align 4\r\n  %2 = load i16, ptr @g_0, align 2\r\n  %3 = zext i16 %2 to i32\r\n  %4 = shl i32 %3, %1\r\n  %5 = zext i32 %4 to i64\r\n  %6 = shl i64 %5, 48\r\n  %7 = ashr exact i64 %6, 48\r\n  %8 = or i64 %7, 0\r\n  %9 = sext i32 %1 to i64\r\n  %10 = icmp sge i64 %8, %9\r\n  %11 = zext i1 %10 to i32\r\n  %12 = or i32 0, %11\r\n  store i32 %12, ptr @g_2, align 4\r\n  ret void\r\n}\r\n```\r\n\r\n",
+    "comments": [],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[DAGCombiner] crash since 7e72caf"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/106202",
+  "knowledge_cutoff": "2024-08-27T09:14:19Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/SystemZ"
+  ],
+  "patch": "commit 4baf29e81e30e6ebc1da56b9e5c338014961acf9\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Tue Aug 27 18:12:16 2024 +0100\n\n    [DAG] Handle cases where a shift amount is larger than the pre-extended value bitwidth\n    \n    In the (zext (shl (zext x), cst)) -> (shl (zext x), cst) fold, don't use a bitmask / MaskedValueIsZero as we can't guarantee that the shift amount is in bounds.\n    \n    Fixes #106202\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex b27f06f94ff0..b0a906743f29 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -14114,13 +14114,10 @@ SDValue DAGCombiner::visitZERO_EXTEND(SDNode *N) {\n           if (ShAmtC->getAPIntValue().ugt(KnownZeroBits)) {\n             // If the shift is too large, then see if we can deduce that the\n             // shift is safe anyway.\n-            // Create a mask that has ones for the bits being shifted out.\n-            APInt ShiftOutMask =\n-                APInt::getHighBitsSet(ShVal.getValueSizeInBits(),\n-                                      ShAmtC->getAPIntValue().getZExtValue());\n \n             // Check if the bits being shifted out are known to be zero.\n-            if (!DAG.MaskedValueIsZero(ShVal, ShiftOutMask))\n+            KnownBits KnownShVal = DAG.computeKnownBits(ShVal);\n+            if (ShAmtC->getAPIntValue().ugt(KnownShVal.countMinLeadingZeros()))\n               return SDValue();\n           }\n         }\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=s390x-ibm-linux -mcpu=z10"
+      ],
+      "file": "llvm/test/CodeGen/SystemZ/pr106202.ll",
+      "tests": [
+        {
+          "test_body": "\n@g_0 = external dso_local local_unnamed_addr global i16, align 2\n@g_1 = external dso_local local_unnamed_addr global i32, align 4\n@g_2 = external dso_local local_unnamed_addr global i32, align 4\n\ndefine void @func() {\n  store i32 41, ptr @g_1, align 4\n  %1 = load i32, ptr @g_1, align 4\n  %2 = load i16, ptr @g_0, align 2\n  %3 = zext i16 %2 to i32\n  %4 = shl i32 %3, %1\n  %5 = zext i32 %4 to i64\n  %6 = shl i64 %5, 48\n  %7 = ashr exact i64 %6, 48\n  %8 = or i64 %7, 0\n  %9 = sext i32 %1 to i64\n  %10 = icmp sge i64 %8, %9\n  %11 = zext i1 %10 to i32\n  %12 = or i32 0, %11\n  store i32 %12, ptr @g_2, align 4\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

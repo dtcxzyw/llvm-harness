@@ -1,0 +1,101 @@
+{
+  "base_commit": "30df62992e890310550259afbe458b845c0d6b89",
+  "bug_id": "97477",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "RISCVTargetLowering::RISCVTargetLowering",
+        "lowerVECTOR_SHUFFLE"
+      ],
+      "llvm/lib/Target/RISCV/RISCVInstrInfoVVLPatterns.td": [
+        "VPatMultiplyAccVL_VV_VX<PatFrag op, string instruction_name>"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          1319,
+          1325
+        ],
+        [
+          5040,
+          5045
+        ],
+        [
+          5055,
+          5064
+        ]
+      ],
+      "llvm/lib/Target/RISCV/RISCVInstrInfoVVLPatterns.td": [
+        [
+          2117,
+          2123
+        ],
+        [
+          3001,
+          3008
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "c67653fbc3dd4ea9ab2a32c481a9ac4411020c7b"
+  },
+  "issue": {
+    "author": "mshabunin",
+    "body": "Reproduced with LLVM 18.1.7, 18.1.8 and _main_ (~ July 2, 2024).\r\n\r\nArch flags: `-march=rv64gc_v_zvfhmin`\r\n\r\n[sum-ad3ec8.cpp.txt](https://github.com/user-attachments/files/16073947/sum-ad3ec8.cpp.txt)\r\n[sum-ad3ec8.sh.txt](https://github.com/user-attachments/files/16073948/sum-ad3ec8.sh.txt)\r\n\r\n\r\n```\r\nFAILED: modules/core/CMakeFiles/opencv_core.dir/src/sum.dispatch.cpp.o \r\nccache /work/chains/llvm-main/bin/clang++ --target=riscv64-unknown-linux-gnu --sysroot=/work/chains/riscv-gcc-14.1.0/sysroot -DOPENCV_ALLOCATOR_STATS_COUNTER_TYPE=int -D_USE_MATH_DEFINES -D__OPENCV_BUILD=1 -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -I/work/opencv/3rdparty/clapack/include -I/work/opencv/modules/core/include -I/work/build-opencv-rvv10/modules/core -I/work/opencv/3rdparty/zlib -I/work/build-opencv-rvv10/3rdparty/zlib -isystem /work/build-opencv-rvv10 -march=rv64gc --gcc-toolchain=/work/chains/riscv-gcc-14.1.0 -w    -fsigned-char -W -Wall -Wreturn-type -Wnon-virtual-dtor -Waddress -Wsequence-point -Wformat -Wformat-security -Wmissing-declarations -Wmissing-prototypes -Wstrict-prototypes -Wundef -Winit-self -Wpointer-arith -Wshadow -Wsign-promo -Wuninitialized -Winconsistent-missing-override -Wno-delete-non-virtual-dtor -Wno-unnamed-type-template-args -Wno-comment -Wno-deprecated-enum-enum-conversion -Wno-deprecated-anon-enum-enum-conversion -fdiagnostics-show-option -pthread -Qunused-arguments -ffunction-sections -fdata-sections -DCV_RVV_SCALABLE -static -static-libgcc -static-libstdc++ -march=rv64gc_v_zvfhmin -fvisibility=hidden -fvisibility-inlines-hidden -O3 -DNDEBUG  -DNDEBUG -fPIC -std=c++11 -MD -MT modules/core/CMakeFiles/opencv_core.dir/src/sum.dispatch.cpp.o -MF modules/core/CMakeFiles/opencv_core.dir/src/sum.dispatch.cpp.o.d -o modules/core/CMakeFiles/opencv_core.dir/src/sum.dispatch.cpp.o -c /work/opencv/modules/core/src/sum.dispatch.cpp\r\nclang++: /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:1145: void VerifySDNode(llvm::SDNode *, const llvm::TargetLowering *): Assertion `(Op.getValueType() == EltVT || (EltVT.isInteger() && Op.getValueType().isInteger() && EltVT.bitsLE(Op.getValueType()))) && \"Wrong operand type!\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\r\nStack dump:\r\n0.\tProgram arguments: /work/chains/llvm-main/bin/clang++ --target=riscv64-unknown-linux-gnu --sysroot=/work/chains/riscv-gcc-14.1.0/sysroot -march=rv64gc --gcc-toolchain=/work/chains/riscv-gcc-14.1.0 -w -fsigned-char -W -Wall -Wreturn-type -Wnon-virtual-dtor -Waddress -Wsequence-point -Wformat -Wformat-security -Wmissing-declarations -Wmissing-prototypes -Wstrict-prototypes -Wundef -Winit-self -Wpointer-arith -Wshadow -Wsign-promo -Wuninitialized -Winconsistent-missing-override -Wno-delete-non-virtual-dtor -Wno-unnamed-type-template-args -Wno-comment -Wno-deprecated-enum-enum-conversion -Wno-deprecated-anon-enum-enum-conversion -fdiagnostics-show-option -pthread -Qunused-arguments -ffunction-sections -fdata-sections -static -static-libgcc -static-libstdc++ -march=rv64gc_v_zvfhmin -fvisibility=hidden -fvisibility-inlines-hidden -O3 -fPIC -std=c++11 -DOPENCV_ALLOCATOR_STATS_COUNTER_TYPE=int -D_USE_MATH_DEFINES -D__OPENCV_BUILD=1 -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -I/work/opencv/3rdparty/clapack/include -I/work/opencv/modules/core/include -I/work/build-opencv-rvv10/modules/core -I/work/opencv/3rdparty/zlib -I/work/build-opencv-rvv10/3rdparty/zlib -isystem /work/build-opencv-rvv10 -DCV_RVV_SCALABLE -DNDEBUG -DNDEBUG -c -MD -MT modules/core/CMakeFiles/opencv_core.dir/src/sum.dispatch.cpp.o -MF modules/core/CMakeFiles/opencv_core.dir/src/sum.dispatch.cpp.o.d -fcolor-diagnostics -o modules/core/CMakeFiles/opencv_core.dir/src/sum.dispatch.cpp.o /work/opencv/modules/core/src/sum.dispatch.cpp\r\n1.\t<eof> parser at end of file\r\n2.\tCode generation\r\n3.\tRunning pass 'Function Pass Manager' on module '/work/opencv/modules/core/src/sum.dispatch.cpp'.\r\n4.\tRunning pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@_ZN2cv12cpu_baselineL6sum16fEPKNS_6hfloatEPKhPfii'\r\n #0 0x0000644830493dbd llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) /work/chains/llvm-project/llvm/lib/Support/Unix/Signals.inc:723:11\r\n #1 0x00006448304942ab PrintStackTraceSignalHandler(void*) /work/chains/llvm-project/llvm/lib/Support/Unix/Signals.inc:798:1\r\n #2 0x00006448304922d6 llvm::sys::RunSignalHandlers() /work/chains/llvm-project/llvm/lib/Support/Signals.cpp:105:5\r\n #3 0x000064483049362e llvm::sys::CleanupOnSignal(unsigned long) /work/chains/llvm-project/llvm/lib/Support/Unix/Signals.inc:368:1\r\n #4 0x00006448303b7ea4 (anonymous namespace)::CrashRecoveryContextImpl::HandleCrash(int, unsigned long) /work/chains/llvm-project/llvm/lib/Support/CrashRecoveryContext.cpp:0:7\r\n #5 0x00006448303b8262 CrashRecoverySignalHandler(int) /work/chains/llvm-project/llvm/lib/Support/CrashRecoveryContext.cpp:391:1\r\n #6 0x00007d223f642520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #7 0x00007d223f6969fc __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\r\n #8 0x00007d223f6969fc __pthread_kill_internal ./nptl/pthread_kill.c:78:10\r\n #9 0x00007d223f6969fc pthread_kill ./nptl/pthread_kill.c:89:10\r\n#10 0x00007d223f642476 gsignal ./signal/../sysdeps/posix/raise.c:27:6\r\n#11 0x00007d223f6287f3 abort ./stdlib/abort.c:81:7\r\n#12 0x00007d223f62871b _nl_load_domain ./intl/loadmsgcat.c:1177:9\r\n#13 0x00007d223f639e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n#14 0x0000644831fcf785 VerifySDNode(llvm::SDNode*, llvm::TargetLowering const*) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:1146:7\r\n#15 0x0000644831fcf016 llvm::SelectionDAG::InsertNode(llvm::SDNode*) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:1163:3\r\n#16 0x0000644831ff9f5c llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::ArrayRef<llvm::SDValue>, llvm::SDNodeFlags) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:10044:13\r\n#17 0x0000644831fd5c5d llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::ArrayRef<llvm::SDValue>) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:9934:10\r\n#18 0x000064482c9cb395 llvm::SelectionDAG::getBuildVector(llvm::EVT, llvm::SDLoc const&, llvm::ArrayRef<llvm::SDValue>) /work/chains/llvm-project/llvm/include/llvm/CodeGen/SelectionDAG.h:844:12\r\n#19 0x0000644831f1940a (anonymous namespace)::SelectionDAGLegalize::ExpandNode(llvm::SDNode*) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:3541:16\r\n#20 0x0000644831f13ecb (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:1344:11\r\n#21 0x0000644831f12004 llvm::SelectionDAG::Legalize() /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:5800:13\r\n#22 0x000064483206149a llvm::SelectionDAGISel::CodeGenAndEmitDAG() /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1052:3\r\n#23 0x0000644832060283 llvm::SelectionDAGISel::SelectBasicBlock(llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, bool&) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:851:1\r\n#24 0x000064483205fcb5 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1864:11\r\n#25 0x000064483205d134 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:631:3\r\n#26 0x000064482e239ae5 llvm::RISCVDAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) /work/chains/llvm-project/llvm/lib/Target/RISCV/RISCVISelDAGToDAG.h:36:5\r\n#27 0x000064483205c140 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:374:3\r\n#28 0x000064482f3547c9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) /work/chains/llvm-project/llvm/lib/CodeGen/MachineFunctionPass.cpp:94:8\r\n#29 0x000064482fb720ba llvm::FPPassManager::runOnFunction(llvm::Function&) /work/chains/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1441:23\r\n#30 0x000064482fb76f32 llvm::FPPassManager::runOnModule(llvm::Module&) /work/chains/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1487:16\r\n#31 0x000064482fb729bb (anonymous namespace)::MPPassManager::runOnModule(llvm::Module&) /work/chains/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1556:23\r\n#32 0x000064482fb72524 llvm::legacy::PassManagerImpl::run(llvm::Module&) /work/chains/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:541:16\r\n#33 0x000064482fb77211 llvm::legacy::PassManager::run(llvm::Module&) /work/chains/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1683:3\r\n#34 0x00006448308a2d66 (anonymous namespace)::EmitAssemblyHelper::RunCodegenPipeline(clang::BackendAction, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>&, std::unique_ptr<llvm::ToolOutputFile, std::default_delete<llvm::ToolOutputFile>>&) /work/chains/llvm-project/clang/lib/CodeGen/BackendUtil.cpp:1153:3\r\n...\r\n#58 0x000064482c5bb9e5 main /work/chains/llvm-project/build/tools/clang/tools/driver/clang-driver.cpp:17:3\r\n#59 0x00007d223f629d90 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16\r\n#60 0x00007d223f629e40 call_init ./csu/../csu/libc-start.c:128:20\r\n#61 0x00007d223f629e40 __libc_start_main ./csu/../csu/libc-start.c:379:5\r\n#62 0x000064482c5836b5 _start (/work/chains/llvm-main/bin/clang+++0x1f956b5)\r\nclang++: error: clang frontend command failed with exit code 134 (use -v to see invocation)\r\nclang version 19.0.0git (https://github.com/llvm/llvm-project.git 43b9888214234363e3468ffda5bcd599e9608938)\r\nTarget: riscv64-unknown-linux-gnu\r\nThread model: posix\r\nInstalledDir: /work/chains/llvm-main/bin\r\nBuild config: +unoptimized, +assertions\r\nclang++: note: diagnostic msg: \r\n********************\r\n```",
+    "comments": [],
+    "labels": [
+      "backend:RISC-V",
+      "crash"
+    ],
+    "title": "[RISC-V] Crash with \"V\" and \"Zvfhmin\" extensions"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/97477",
+  "knowledge_cutoff": "2024-07-02T20:33:55Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit c67653fbc3dd4ea9ab2a32c481a9ac4411020c7b\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Wed Jul 3 23:56:17 2024 -0700\n\n    [RISCV] Support vXf16 vector_shuffle with Zvfhmin. (#97491)\n    \n    We can shuffle vXf16 vectors just like vXi16 vectors. We don't need any\n    FP instructions. Update the predicates for vrgather and vslides patterns\n    to only check the predicates based on the equivalent integer type. If we\n    use the FP type it will check Zvfh and block Zvfhmin.\n    \n    These are probably not the only patterns that need to be fixed, but the\n    test from the bug report no longer crashes.\n    \n    Fixes #97477\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 6fe683410d59..45368a01a0a7 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -1319,7 +1319,7 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,\n                               ISD::VP_SINT_TO_FP, ISD::VP_UINT_TO_FP},\n                              VT, Custom);\n           setOperationAction({ISD::CONCAT_VECTORS, ISD::INSERT_SUBVECTOR,\n-                              ISD::EXTRACT_SUBVECTOR},\n+                              ISD::EXTRACT_SUBVECTOR, ISD::VECTOR_SHUFFLE},\n                              VT, Custom);\n           setOperationAction({ISD::LOAD, ISD::STORE}, VT, Custom);\n           setOperationAction(ISD::SPLAT_VECTOR, VT, Custom);\n@@ -5040,6 +5040,14 @@ static SDValue lowerVECTOR_SHUFFLE(SDValue Op, SelectionDAG &DAG,\n           return convertFromScalableVector(VT, NewLoad, DAG, Subtarget);\n         }\n \n+        MVT SplatVT = ContainerVT;\n+\n+        // If we don't have Zfh, we need to use an integer scalar load.\n+        if (SVT == MVT::f16 && !Subtarget.hasStdExtZfh()) {\n+          SVT = MVT::i16;\n+          SplatVT = ContainerVT.changeVectorElementType(SVT);\n+        }\n+\n         // Otherwise use a scalar load and splat. This will give the best\n         // opportunity to fold a splat into the operation. ISel can turn it into\n         // the x0 strided load if we aren't able to fold away the select.\n@@ -5055,10 +5063,11 @@ static SDValue lowerVECTOR_SHUFFLE(SDValue Op, SelectionDAG &DAG,\n                              Ld->getMemOperand()->getFlags());\n         DAG.makeEquivalentMemoryOrdering(Ld, V);\n \n-        unsigned Opc =\n-            VT.isFloatingPoint() ? RISCVISD::VFMV_V_F_VL : RISCVISD::VMV_V_X_VL;\n+        unsigned Opc = SplatVT.isFloatingPoint() ? RISCVISD::VFMV_V_F_VL\n+                                                 : RISCVISD::VMV_V_X_VL;\n         SDValue Splat =\n-            DAG.getNode(Opc, DL, ContainerVT, DAG.getUNDEF(ContainerVT), V, VL);\n+            DAG.getNode(Opc, DL, SplatVT, DAG.getUNDEF(ContainerVT), V, VL);\n+        Splat = DAG.getBitcast(ContainerVT, Splat);\n         return convertFromScalableVector(VT, Splat, DAG, Subtarget);\n       }\n \ndiff --git a/llvm/lib/Target/RISCV/RISCVInstrInfoVVLPatterns.td b/llvm/lib/Target/RISCV/RISCVInstrInfoVVLPatterns.td\nindex a7945f2ee6c1..cc294bf9254e 100644\n--- a/llvm/lib/Target/RISCV/RISCVInstrInfoVVLPatterns.td\n+++ b/llvm/lib/Target/RISCV/RISCVInstrInfoVVLPatterns.td\n@@ -2117,7 +2117,8 @@ multiclass VPatWidenFPMulAccVL_VV_VF_RM<SDNode vop, string instruction_name> {\n \n multiclass VPatSlideVL_VX_VI<SDNode vop, string instruction_name> {\n   foreach vti = AllVectors in {\n-    let Predicates = GetVTypePredicates<vti>.Predicates in {\n+    defvar ivti = GetIntVTypeInfo<vti>.Vti;\n+    let Predicates = GetVTypePredicates<ivti>.Predicates in {\n       def : Pat<(vti.Vector (vop (vti.Vector vti.RegClass:$rd),\n                                  (vti.Vector vti.RegClass:$rs1),\n                                  uimm5:$rs2, (vti.Mask V0),\n@@ -3001,8 +3002,7 @@ foreach vti = AllFloatVectors in {\n                   (vti.Scalar vti.ScalarRegClass:$rs1), GPR:$vl, vti.Log2SEW)>;\n   }\n   defvar ivti = GetIntVTypeInfo<vti>.Vti;\n-  let Predicates = !listconcat(GetVTypePredicates<vti>.Predicates,\n-                               GetVTypePredicates<ivti>.Predicates) in {\n+  let Predicates = GetVTypePredicates<ivti>.Predicates in {\n     def : Pat<(vti.Vector\n                (riscv_vrgather_vv_vl vti.RegClass:$rs2,\n                                      (ivti.Vector vti.RegClass:$rs1),\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=riscv32 -mattr=+d,+zfh,+zvfh,+v -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -mattr=+d,+zfh,+zvfh,+v -verify-machineinstrs < %s",
+        "llc -mtriple=riscv32 -mattr=+d,+zvfhmin,+v -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -mattr=+d,+zvfhmin,+v -verify-machineinstrs < %s"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/fixed-vectors-fp-shuffles.ll",
+      "tests": [
+        {
+          "test_body": "define <8 x double> @splice_binary2(<8 x double> %x, <8 x double> %y) {\n  %s = shufflevector <8 x double> %x, <8 x double> %y, <8 x i32> <i32 13, i32 14, i32 15, i32 0, i32 1, i32 2, i32 3, i32 4>\n  ret <8 x double> %s\n}\n",
+          "test_name": "splice_binary2"
+        },
+        {
+          "test_body": "define <4 x half> @vrgather_shuffle_vv_v4f16(<4 x half> %x, <4 x half> %y) {\n  %s = shufflevector <4 x half> %x, <4 x half> %y, <4 x i32> <i32 1, i32 2, i32 0, i32 5>\n  ret <4 x half> %s\n}\n",
+          "test_name": "vrgather_shuffle_vv_v4f16"
+        },
+        {
+          "test_body": "define <4 x half> @vrgather_shuffle_vx_v4f16_load(ptr %p) {\n  %v = load <4 x half>, ptr %p, align 8\n  %s = shufflevector <4 x half> %v, <4 x half> undef, <4 x i32> <i32 1, i32 1, i32 1, i32 1>\n  ret <4 x half> %s\n}\n",
+          "test_name": "vrgather_shuffle_vx_v4f16_load"
+        },
+        {
+          "test_body": "define <4 x half> @shuffle_v4f16(<4 x half> %x, <4 x half> %y) {\n  %s = shufflevector <4 x half> %x, <4 x half> %y, <4 x i32> <i32 0, i32 1, i32 6, i32 3>\n  ret <4 x half> %s\n}\n",
+          "test_name": "shuffle_v4f16"
+        },
+        {
+          "test_body": "define <4 x half> @vrgather_permute_shuffle_vu_v4f16(<4 x half> %x) {\n  %s = shufflevector <4 x half> %x, <4 x half> poison, <4 x i32> <i32 1, i32 2, i32 0, i32 1>\n  ret <4 x half> %s\n}\n",
+          "test_name": "vrgather_permute_shuffle_vu_v4f16"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

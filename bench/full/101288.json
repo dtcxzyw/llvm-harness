@@ -1,0 +1,71 @@
+{
+  "base_commit": "1961f9fc6d7b207734354ca152a6c0a267cce0c0",
+  "bug_id": "101288",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86InstrInfo.cpp": [
+        "X86::getCondFromCMov",
+        "X86::getCondFromSETCC",
+        "X86::getCondSrcNoFromDesc"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86InstrInfo.cpp": [
+        [
+          3121,
+          3129
+        ],
+        [
+          3145,
+          3152
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "50cf413426805d32c19c71756f601c864dd6fa7a"
+  },
+  "issue": {
+    "author": "KanRobert",
+    "body": "```\r\ndefine i32 @widget() {\r\nbb:\r\n  br label %bb1\r\nbb1:\r\n  %phi = phi i32 [ 0, %bb ], [ %zext, %bb1 ]\r\n  %phi2 = phi i32 [ 0, %bb ], [ %add3, %bb1 ]\r\n  %load = load i32, ptr null, align 4\r\n  %add = add i32 %load, %phi\r\n  store i32 %add, ptr null, align 4\r\n  %icmp = icmp ugt i32 %phi, %add\r\n  %zext = zext i1 %icmp to i32\r\n  %add3 = add i32 %phi2, %zext\r\n  %icmp4 = icmp ult i32 %phi2, 0\r\n  %and = and i1 %icmp, false\r\n  br i1 %and, label %bb1, label %bb2\r\nbb2:\r\n  ret i32 0\r\n}\r\n```\r\n\r\n```\r\nllc: skan/llvm-project/llvm/lib/Target/X86/X86FlagsCopyLowering.cpp:899: void {anonymous}::X86FlagsCopyLoweringPass::rewriteMI(llvm::MachineBasicBlock&, llvm::MachineBasicBlock::iterator, const llvm::DebugLoc&, llvm::MachineInstr&, {anonymous}::CondRegArray&): Assertion `CC != X86::COND_INVALID && \"Unknown EFLAG user!\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.      Program arguments: llc -mattr=+zu\r\n1.      Running pass 'Function Pass Manager' on module '<stdin>'.\r\n```",
+    "comments": [],
+    "labels": [
+      "bug",
+      "backend:X86",
+      "crash-on-valid"
+    ],
+    "title": "x86 backend crashes when enabling zero-upper feature for APX"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/101288",
+  "knowledge_cutoff": "2024-07-31T05:09:41Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 50cf413426805d32c19c71756f601c864dd6fa7a\nAuthor: Shengchen Kan <shengchen.kan@intel.com>\nDate:   Wed Jul 31 14:04:18 2024 +0800\n\n    [X86,CodeGen] Return the correct condition code for SETZUCC\n    \n    llvm-issue: https://github.com/llvm/llvm-project/issues/101288\n\ndiff --git a/llvm/lib/Target/X86/X86InstrInfo.cpp b/llvm/lib/Target/X86/X86InstrInfo.cpp\nindex 918a6089fe9a..7fc786b1e570 100644\n--- a/llvm/lib/Target/X86/X86InstrInfo.cpp\n+++ b/llvm/lib/Target/X86/X86InstrInfo.cpp\n@@ -3121,9 +3121,9 @@ bool X86InstrInfo::hasCommutePreference(MachineInstr &MI, bool &Commute) const {\n \n int X86::getCondSrcNoFromDesc(const MCInstrDesc &MCID) {\n   unsigned Opcode = MCID.getOpcode();\n-  if (!(X86::isJCC(Opcode) || X86::isSETCC(Opcode) || X86::isCMOVCC(Opcode) ||\n-        X86::isCFCMOVCC(Opcode) || X86::isCCMPCC(Opcode) ||\n-        X86::isCTESTCC(Opcode)))\n+  if (!(X86::isJCC(Opcode) || X86::isSETCC(Opcode) || X86::isSETZUCC(Opcode) ||\n+        X86::isCMOVCC(Opcode) || X86::isCFCMOVCC(Opcode) ||\n+        X86::isCCMPCC(Opcode) || X86::isCTESTCC(Opcode)))\n     return -1;\n   // Assume that condition code is always the last use operand.\n   unsigned NumUses = MCID.getNumOperands() - MCID.getNumDefs();\n@@ -3145,8 +3145,9 @@ X86::CondCode X86::getCondFromBranch(const MachineInstr &MI) {\n }\n \n X86::CondCode X86::getCondFromSETCC(const MachineInstr &MI) {\n-  return X86::isSETCC(MI.getOpcode()) ? X86::getCondFromMI(MI)\n-                                      : X86::COND_INVALID;\n+  return X86::isSETCC(MI.getOpcode()) || X86::isSETZUCC(MI.getOpcode())\n+             ? X86::getCondFromMI(MI)\n+             : X86::COND_INVALID;\n }\n \n X86::CondCode X86::getCondFromCMov(const MachineInstr &MI) {\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64 -mattr=+zu"
+      ],
+      "file": "llvm/test/CodeGen/X86/apx/setzucc.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine i64 @i64(i64 %x) #0 {\n  %t0 = icmp ne i64 %x, 1\n  %if = select i1 %t0, i64 1, i64 0\n  ret i64 %if\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "i64"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine i32 @flags_copy_lowering() #0 {\nbb:\n  br label %bb1\n\nbb1:                                              ; preds = %bb1, %bb\n  %phi = phi i32 [ 0, %bb ], [ %zext, %bb1 ]\n  %phi2 = phi i32 [ 0, %bb ], [ %add3, %bb1 ]\n  %load = load i32, ptr null, align 4\n  %add = add i32 %load, %phi\n  store i32 %add, ptr null, align 4\n  %icmp = icmp ugt i32 %phi, %add\n  %zext = zext i1 %icmp to i32\n  %add3 = add i32 %phi2, %zext\n  %icmp4 = icmp ult i32 %phi2, 0\n  %and = and i1 %icmp, false\n  br i1 %and, label %bb1, label %bb2\n\nbb2:                                              ; preds = %bb1\n  ret i32 0\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "flags_copy_lowering"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,65 @@
+{
+  "base_commit": "18123cc91d7dd65dc87839227abbfdd456c4fcba",
+  "bug_id": "153797",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Analysis/LoopAccessAnalysis.cpp": [
+        "getStrideFromAddRec",
+        "llvm::getPtrStride"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Analysis/LoopAccessAnalysis.cpp": [
+        [
+          936,
+          941
+        ],
+        [
+          1590,
+          1600
+        ]
+      ]
+    },
+    "components": [
+      "LoopAccessAnalysis"
+    ],
+    "fix_commit": "bb3066d42b42a3e6deaf69bcfabf8597018ec44b"
+  },
+  "issue": {
+    "author": "stevesuzuki-arm",
+    "body": "https://godbolt.org/z/oK9e7K5sv\nand\nhttps://godbolt.org/z/j9oGddo71\nAssertion fail \"Request for a fixed element count on a scalable object\"\n```\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64--linux-gnueabihf\"\n\ndefine i32 @gradient_fast_par_for_gradient_fast_s0_x_v18_v22(ptr %gradient_fast, i64 %0, ptr %1) {\nentry:\n  br label %\"2_for_gradient_fast.s0.x.v20.v23\"\n\n\"2_for_gradient_fast.s0.x.v20.v23\":               ; preds = %\"2_for_gradient_fast.s0.x.v20.v23\", %entry\n  %indvars.iv = phi i64 [ 0, %entry ], [ %indvars.iv.next, %\"2_for_gradient_fast.s0.x.v20.v23\" ]\n  %2 = shl i64 %indvars.iv, 1\n  %3 = add i64 %2, %0\n  %4 = trunc i64 %indvars.iv to i32\n  %5 = insertelement <vscale x 4 x i32> zeroinitializer, i32 %4, i64 0\n  %6 = getelementptr i32, ptr %gradient_fast, i64 %3\n  store <vscale x 4 x i32> %5, ptr %6, align 4\n  %.reass3 = or i32 %4, 1\n  %7 = insertelement <vscale x 4 x i32> zeroinitializer, i32 %.reass3, i64 0\n  %8 = shufflevector <vscale x 4 x i32> %7, <vscale x 4 x i32> zeroinitializer, <vscale x 4 x i32> zeroinitializer\n  %9 = getelementptr i32, ptr %1, i64 %3\n  store <vscale x 4 x i32> %8, ptr %9, align 4\n  %indvars.iv.next = add i64 %indvars.iv, 1\n  %.not = icmp eq i64 %indvars.iv, 16\n  br i1 %.not, label %\"2_end_for_gradient_fast.s0.x.v20.v23\", label %\"2_for_gradient_fast.s0.x.v20.v23\"\n\n\"2_end_for_gradient_fast.s0.x.v20.v23\":           ; preds = %\"2_for_gradient_fast.s0.x.v20.v23\"\n  ret i32 0\n}\n```\n`opt -mtriple=aarch64-none-elf -mattr=+sve2 -O2`\n\n```\nopt: /root/llvm-project/llvm/include/llvm/Support/TypeSize.h:204: constexpr llvm::details::FixedOrScalableQuantity<LeafTy, ValueTy>::ScalarTy llvm::details::FixedOrScalableQuantity<LeafTy, ValueTy>::getFixedValue() const [with LeafTy = llvm::TypeSize; ValueTy = long unsigned int; llvm::details::FixedOrScalableQuantity<LeafTy, ValueTy>::ScalarTy = long unsigned int]: Assertion `(!isScalable() || isZero()) && \"Request for a fixed element count on a scalable object\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/opt -o /app/output.s -S -mattr=+sve2 -O2 <source>\n1.\tRunning pass \"function<eager-inv>(float2int,lower-constant-intrinsics,loop(loop-rotate<header-duplication;no-prepare-for-lto>,loop-deletion),loop-distribute,inject-tli-mappings,loop-vectorize<no-interleave-forced-only;no-vectorize-forced-only;>,infer-alignment,loop-load-elim,instcombine<max-iterations=1;no-verify-fixpoint>,simplifycfg<bonus-inst-threshold=1;forward-switch-cond;switch-range-to-icmp;switch-to-lookup;no-keep-loops;hoist-common-insts;no-hoist-loads-stores-with-cond-faulting;sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>,slp-vectorizer,vector-combine,instcombine<max-iterations=1;no-verify-fixpoint>,loop-unroll<O2>,transform-warning,sroa<preserve-cfg>,infer-alignment,instcombine<max-iterations=1;no-verify-fixpoint>,loop-mssa(licm<allowspeculation>),alignment-from-assumptions,loop-sink,instsimplify,div-rem-pairs,tailcallelim,simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;no-hoist-common-insts;hoist-loads-stores-with-cond-faulting;no-sink-common-insts;speculate-blocks;simplify-cond-branch;speculate-unpredictables>)\" on module \"<source>\"\n2.\tRunning pass \"loop-load-elim\" on function \"gradient_fast_par_for_gradient_fast_s0_x_v18_v22\"\n #0 0x00000000056cc228 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x56cc228)\n #1 0x00000000056c90d4 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007eb5ed442520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007eb5ed4969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007eb5ed442476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007eb5ed4287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007eb5ed42871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007eb5ed439e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000004c2e205 (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x4c2e205)\n #9 0x0000000004c2e323 isNoWrap(llvm::PredicatedScalarEvolution&, llvm::SCEVAddRecExpr const*, llvm::Value*, llvm::Type*, llvm::Loop const*, bool, std::optional<long>) LoopAccessAnalysis.cpp:0:0\n#10 0x0000000004c38463 (anonymous namespace)::AccessAnalysis::createCheckForAccess(llvm::RuntimePointerChecking&, llvm::PointerIntPair<llvm::Value*, 1u, bool, llvm::PointerLikeTypeTraits<llvm::Value*>, llvm::PointerIntPairInfo<llvm::Value*, 1u, llvm::PointerLikeTypeTraits<llvm::Value*>>>, llvm::Type*, llvm::DenseMap<llvm::Value*, llvm::SCEV const*, llvm::DenseMapInfo<llvm::Value*, void>, llvm::detail::DenseMapPair<llvm::Value*, llvm::SCEV const*>> const&, llvm::DenseMap<llvm::Value*, unsigned int, llvm::DenseMapInfo<llvm::Value*, void>, llvm::detail::DenseMapPair<llvm::Value*, unsigned int>>&, llvm::Loop*, unsigned int&, unsigned int, bool) LoopAccessAnalysis.cpp:0:0\n#11 0x0000000004c3b1fa (anonymous namespace)::AccessAnalysis::canCheckPtrAtRT(llvm::RuntimePointerChecking&, llvm::Loop*, llvm::DenseMap<llvm::Value*, llvm::SCEV const*, llvm::DenseMapInfo<llvm::Value*, void>, llvm::detail::DenseMapPair<llvm::Value*, llvm::SCEV const*>> const&, llvm::Value*&, bool) (.part.0) LoopAccessAnalysis.cpp:0:0\n#12 0x0000000004c40bc0 llvm::LoopAccessInfo::analyzeLoop(llvm::AAResults*, llvm::LoopInfo const*, llvm::TargetLibraryInfo const*, llvm::DominatorTree*) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x4c40bc0)\n#13 0x0000000004c41562 llvm::LoopAccessInfo::LoopAccessInfo(llvm::Loop*, llvm::ScalarEvolution*, llvm::TargetTransformInfo const*, llvm::TargetLibraryInfo const*, llvm::AAResults*, llvm::DominatorTree*, llvm::LoopInfo*, llvm::AssumptionCache*, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x4c41562)\n#14 0x0000000004c425c5 llvm::LoopAccessInfoManager::getInfo(llvm::Loop&, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x4c425c5)\n#15 0x00000000044992df llvm::LoopLoadEliminationPass::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x44992df)\n#16 0x0000000002df211e llvm::detail::PassModel<llvm::Function, llvm::LoopLoadEliminationPass, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x2df211e)\n#17 0x00000000054bb0d1 llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x54bb0d1)\n#18 0x0000000000ec9bee llvm::detail::PassModel<llvm::Function, llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0xec9bee)\n#19 0x00000000054bb594 llvm::ModuleToFunctionPassAdaptor::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x54bb594)\n#20 0x000000000096b66e llvm::detail::PassModel<llvm::Module, llvm::ModuleToFunctionPassAdaptor, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x96b66e)\n#21 0x00000000054b9201 llvm::PassManager<llvm::Module, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x54b9201)\n#22 0x000000000097590a llvm::runPassPipeline(llvm::StringRef, llvm::Module&, llvm::TargetMachine*, llvm::TargetLibraryInfoImpl*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::StringRef, llvm::ArrayRef<llvm::PassPlugin>, llvm::ArrayRef<std::function<void (llvm::PassBuilder&)>>, llvm::opt_tool::OutputKind, llvm::opt_tool::VerifierKind, bool, bool, bool, bool, bool, bool, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x97590a)\n#23 0x00000000009699d7 optMain (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x9699d7)\n#24 0x00007eb5ed429d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#25 0x00007eb5ed429e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#26 0x0000000000960a75 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x960a75)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [],
+    "labels": [
+      "crash",
+      "llvm:analysis"
+    ],
+    "title": "[AArch64][SVE] Assertion fail \"Request for a fixed element count on a scalable object\""
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/153797",
+  "knowledge_cutoff": "2025-08-15T12:37:07Z",
+  "lit_test_dir": [
+    "llvm/test/Analysis/LoopAccessAnalysis"
+  ],
+  "patch": "commit bb3066d42b42a3e6deaf69bcfabf8597018ec44b\nAuthor: Benjamin Maxwell <benjamin.maxwell@arm.com>\nDate:   Tue Aug 19 06:40:07 2025 +0100\n\n    [LAA] Move scalable vector check into `getStrideFromAddRec()` (#154013)\n    \n    This moves the check closer to the `.getFixedValue()` call and fixes\n    #153797 (which is a regression from #126971).\n\ndiff --git a/llvm/lib/Analysis/LoopAccessAnalysis.cpp b/llvm/lib/Analysis/LoopAccessAnalysis.cpp\nindex 62baf9b632bc..bceddd032527 100644\n--- a/llvm/lib/Analysis/LoopAccessAnalysis.cpp\n+++ b/llvm/lib/Analysis/LoopAccessAnalysis.cpp\n@@ -936,6 +936,12 @@ private:\n static std::optional<int64_t>\n getStrideFromAddRec(const SCEVAddRecExpr *AR, const Loop *Lp, Type *AccessTy,\n                     Value *Ptr, PredicatedScalarEvolution &PSE) {\n+  if (isa<ScalableVectorType>(AccessTy)) {\n+    LLVM_DEBUG(dbgs() << \"LAA: Bad stride - Scalable object: \" << *AccessTy\n+                      << \"\\n\");\n+    return std::nullopt;\n+  }\n+\n   // The access function must stride over the innermost loop.\n   if (Lp != AR->getLoop()) {\n     LLVM_DEBUG({\n@@ -1590,11 +1596,6 @@ llvm::getPtrStride(PredicatedScalarEvolution &PSE, Type *AccessTy, Value *Ptr,\n     return 0;\n \n   assert(Ptr->getType()->isPointerTy() && \"Unexpected non-ptr\");\n-  if (isa<ScalableVectorType>(AccessTy)) {\n-    LLVM_DEBUG(dbgs() << \"LAA: Bad stride - Scalable object: \" << *AccessTy\n-                      << \"\\n\");\n-    return std::nullopt;\n-  }\n \n   const SCEVAddRecExpr *AR = dyn_cast<SCEVAddRecExpr>(PtrScev);\n   if (Assume && !AR)\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -passes=loop-load-elim -mtriple=aarch64 -mattr=+sve -S -debug < %s 2>&1"
+      ],
+      "file": "llvm/test/Analysis/LoopAccessAnalysis/scalable-vector-regression-tests.ll",
+      "tests": [
+        {
+          "test_body": "define void @regression_test_is_no_wrap_access_scalable_typesize(ptr %ptr_a, i64 %n, ptr %ptr_b) {\nentry:\n  br label %loop\n\nloop:                                             ; preds = %loop, %entry\n  %iv = phi i64 [ 0, %entry ], [ %iv.next, %loop ]\n  %0 = shl i64 %iv, 1\n  %1 = add i64 %0, %n\n  %2 = trunc i64 %iv to i32\n  %3 = insertelement <vscale x 4 x i32> zeroinitializer, i32 %2, i64 0\n  %4 = getelementptr i32, ptr %ptr_a, i64 %1\n  store <vscale x 4 x i32> %3, ptr %4, align 4\n  %.reass3 = or i32 %2, 1\n  %5 = insertelement <vscale x 4 x i32> zeroinitializer, i32 %.reass3, i64 0\n  %6 = shufflevector <vscale x 4 x i32> %5, <vscale x 4 x i32> zeroinitializer, <vscale x 4 x i32> zeroinitializer\n  %7 = getelementptr i32, ptr %ptr_b, i64 %1\n  store <vscale x 4 x i32> %6, ptr %7, align 4\n  %iv.next = add i64 %iv, 1\n  %.not = icmp eq i64 %iv, 16\n  br i1 %.not, label %end, label %loop\n\nend:                                              ; preds = %loop\n  ret void\n}\n",
+          "test_name": "regression_test_is_no_wrap_access_scalable_typesize"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

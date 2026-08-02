@@ -1,0 +1,75 @@
+{
+  "base_commit": "ec544035227bd88e3622b85ba70499cb0e62b2bc",
+  "bug_id": "127296",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/Hexagon/HexagonISelLowering.cpp": [
+        "HexagonTargetLowering::LowerUAddSubO"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/Hexagon/HexagonISelLowering.cpp": [
+        [
+          3273,
+          3279
+        ]
+      ]
+    },
+    "components": [
+      "Hexagon"
+    ],
+    "fix_commit": "788cb725d8b92a82e41e64540dccca97c9086a58"
+  },
+  "issue": {
+    "author": "alexrp",
+    "body": "```llvm\ntarget datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon-unknown-linux4.19.0-musl\"\n\ndefine fastcc void @os.linux.tls.initStatic() {\n  %1 = call { i32, i1 } @llvm.usub.with.overflow.i32(i32 0, i32 1)\n  br label %2\n\n2:                                                ; preds = %0\n  %3 = extractvalue { i32, i1 } %1, 0\n  ret void\n}\n\n; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)\ndeclare { i32, i1 } @llvm.usub.with.overflow.i32(i32, i32) #0\n\nattributes #0 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }\n```\n\n```\n\u276f llc reduced.ll -march hexagon -O0\nllc: /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/APInt.h:127: llvm::APInt::APInt(unsigned int, uint64_t, bool, bool): Assertion `llvm::isUIntN(BitWidth, val) && \"Value is not an N-bit unsigned value\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.      Program arguments: llc reduced.ll -march hexagon -O0\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\n2.      Running pass 'Hexagon DAG->DAG Pattern Instruction Selection' on function '@os.linux.tls.initStatic'\n #0 0x0000771d51b80ed2 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) /home/alexrp/Source/llvm-project/llvm/lib/Support/Unix/Signals.inc:802:3\n #1 0x0000771d51b7e87f llvm::sys::RunSignalHandlers() /home/alexrp/Source/llvm-project/llvm/lib/Support/Signals.cpp:105:20\n #2 0x0000771d51b7ec0d SignalHandler(int) /home/alexrp/Source/llvm-project/llvm/lib/Support/Unix/Signals.inc:415:1\n #3 0x0000771d50445330 (/lib/x86_64-linux-gnu/libc.so.6+0x45330)\n #4 0x0000771d5049eb2c __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x0000771d5049eb2c __pthread_kill_internal ./nptl/pthread_kill.c:78:10\n #6 0x0000771d5049eb2c pthread_kill ./nptl/pthread_kill.c:89:10\n #7 0x0000771d5044527e raise ./signal/../sysdeps/posix/raise.c:27:6\n #8 0x0000771d504288ff abort ./stdlib/abort.c:81:7\n #9 0x0000771d5042881b _nl_load_domain ./intl/loadmsgcat.c:1177:9\n#10 0x0000771d5043b517 (/lib/x86_64-linux-gnu/libc.so.6+0x3b517)\n#11 0x0000771d51a220b9 llvm::maxIntN(long) /home/alexrp/Source/llvm-project/llvm/include/llvm/Support/MathExtras.h:252:35\n#12 0x0000771d51a220b9 llvm::isIntN(unsigned int, long) /home/alexrp/Source/llvm-project/llvm/include/llvm/Support/MathExtras.h:262:53\n#13 0x0000771d51a220b9 llvm::APInt::APInt(unsigned int, unsigned long, bool, bool) /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/APInt.h:120:11\n#14 0x0000771d5277f3f6 llvm::SelectionDAG::getConstant(llvm::APInt const&, llvm::SDLoc const&, llvm::EVT, bool, bool) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:1674:39\n#15 0x0000771d5277f3f6 llvm::SelectionDAG::getConstant(unsigned long, llvm::SDLoc const&, llvm::EVT, bool, bool) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:1668:21\n#16 0x0000771d555f5de6 llvm::HexagonTargetLowering::LowerUAddSubO(llvm::SDValue, llvm::SelectionDAG&) const /home/alexrp/Source/llvm-project/llvm/lib/Target/Hexagon/HexagonISelLowering.cpp:3275:32\n#17 0x0000771d525da658 (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:1316:43\n#18 0x0000771d525dbb18 llvm::SelectionDAG::Legalize() /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:5842:28\n#19 0x0000771d527bbb69 llvm::TimeRegion::~TimeRegion() /home/alexrp/Source/llvm-project/llvm/include/llvm/Support/Timer.h:160:9\n#20 0x0000771d527bbb69 llvm::NamedRegionTimer::~NamedRegionTimer() /home/alexrp/Source/llvm-project/llvm/include/llvm/Support/Timer.h:168:8\n#21 0x0000771d527bbb69 llvm::SelectionDAGISel::CodeGenAndEmitDAG() /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1079:3\n#22 0x0000771d527c0235 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1904:33\n#23 0x0000771d527c18f9 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:616:22\n#24 0x0000771d555cd384 llvm::HexagonDAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/Target/Hexagon/HexagonISelDAGToDAG.h:47:17\n#25 0x0000771d527b2227 llvm::OptLevelChanger::~OptLevelChanger() /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:269:11\n#26 0x0000771d527b2227 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:376:1\n#27 0x0000771d527b2227 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:347:6\n#28 0x0000771d520fa4bf llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/MachineFunctionPass.cpp:94:33\n#29 0x0000771d51d45424 llvm::FPPassManager::runOnFunction(llvm::Function&) /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1416:7\n#30 0x0000771d51d45641 llvm::ilist_detail::node_base_prevnext<llvm::ilist_node_base<true, void>, true>::getNext() const /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/ilist_node_base.h:42:38\n#31 0x0000771d51d45641 llvm::ilist_node_impl<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false, void>>::getNext() /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/ilist_node.h:117:66\n#32 0x0000771d51d45641 llvm::ilist_iterator<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false, void>, false, false>::operator++() /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/ilist_iterator.h:187:25\n#33 0x0000771d51d45641 llvm::FPPassManager::runOnModule(llvm::Module&) /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1451:22\n#34 0x0000771d51d45e8d runOnModule /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1528:7\n#35 0x0000771d51d45e8d llvm::legacy::PassManagerImpl::run(llvm::Module&) /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:539:55\n#36 0x000058a5a81e89df compileModule(char**, llvm::LLVMContext&) /home/alexrp/Source/llvm-project/llvm/tools/llc/llc.cpp:753:34\n#37 0x000058a5a81dd057 main /home/alexrp/Source/llvm-project/llvm/tools/llc/llc.cpp:411:35\n#38 0x0000771d5042a1ca __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#39 0x0000771d5042a28b call_init ./csu/../csu/libc-start.c:128:20\n#40 0x0000771d5042a28b __libc_start_main ./csu/../csu/libc-start.c:347:5\n#41 0x000058a5a81ddde5 _start (/opt/llvm-20/bin/llc+0x12de5)\n```",
+    "comments": [
+      {
+        "author": "alexrp",
+        "body": "cc @androm3da "
+      },
+      {
+        "author": "androm3da",
+        "body": "FYI @iajbar and @yandalur  I tried reverting #117558 on top of `main` and that seemed to remove the assertion.\n\nSo I am just guessing that maybe this code in `HexagonTargetLowering::LowerUAddSubO()` depends on the implicit truncation?  Not quite sure how to mitigate that, so I'll assign this issue to you, Ikhlas.\n\n```\n     if (Opc == ISD::USUBO) {\n      SDValue Op = DAG.getNode(ISD::SUB, dl, VTs.VTs[0], {X, Y});\n      SDValue Ov = DAG.getSetCC(dl, MVT::i1, Op,\n                                DAG.getConstant(-1, dl, ty(Op)), ISD::SETEQ);\n      return DAG.getMergeValues({Op, Ov}, dl);\n    }\n```"
+      },
+      {
+        "author": "topperc",
+        "body": "> FYI [@iajbar](https://github.com/iajbar) and [@yandalur](https://github.com/yandalur) I tried reverting [#117558](https://github.com/llvm/llvm-project/pull/117558) on top of `main` and that seemed to remove the assertion.\n> \n> So I am just guessing that maybe this code in `HexagonTargetLowering::LowerUAddSubO()` depends on the implicit truncation? Not quite sure how to mitigate that, so I'll assign this issue to you, Ikhlas.\n> \n> ```\n>      if (Opc == ISD::USUBO) {\n>       SDValue Op = DAG.getNode(ISD::SUB, dl, VTs.VTs[0], {X, Y});\n>       SDValue Ov = DAG.getSetCC(dl, MVT::i1, Op,\n>                                 DAG.getConstant(-1, dl, ty(Op)), ISD::SETEQ);\n>       return DAG.getMergeValues({Op, Ov}, dl);\n>     }\n> ```\n\nChange DAG.getConstant to DAG.getAllOnesConstant and drop the `-1` argument.\n\nThe -1 is being signed extended to 64 bits for uint64_t operand to getConstant, but the type is only 32 bits. Using getSignedConstant would also be a fix."
+      }
+    ],
+    "labels": [
+      "backend:Hexagon",
+      "regression",
+      "release:backport",
+      "crash-on-valid"
+    ],
+    "title": "Assertion `llvm::isUIntN(BitWidth, val) && \"Value is not an N-bit unsigned value\"` when using `@llvm.usub.with.overflow` on Hexagon"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/127296",
+  "knowledge_cutoff": "2025-02-15T03:54:30Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/Hexagon"
+  ],
+  "patch": "commit 788cb725d8b92a82e41e64540dccca97c9086a58\nAuthor: Brian Cain <brian.cain@oss.qualcomm.com>\nDate:   Mon Feb 17 09:30:48 2025 -0600\n\n    [Hexagon] Explicitly truncate constant in UAddSubO (#127360)\n    \n    After #117558 landed, this code would assert \"Value is not an N-bit\n    unsigned value\" in getConstant(), from a test case in zig.\n    \n    Co-authored-by:  Craig Topper <craig.topper@sifive.com>\n    Fixes #127296\n\ndiff --git a/llvm/lib/Target/Hexagon/HexagonISelLowering.cpp b/llvm/lib/Target/Hexagon/HexagonISelLowering.cpp\nindex 1a7667fe42fb..b31360b4096d 100644\n--- a/llvm/lib/Target/Hexagon/HexagonISelLowering.cpp\n+++ b/llvm/lib/Target/Hexagon/HexagonISelLowering.cpp\n@@ -3273,7 +3273,7 @@ HexagonTargetLowering::LowerUAddSubO(SDValue Op, SelectionDAG &DAG) const {\n     if (Opc == ISD::USUBO) {\n       SDValue Op = DAG.getNode(ISD::SUB, dl, VTs.VTs[0], {X, Y});\n       SDValue Ov = DAG.getSetCC(dl, MVT::i1, Op,\n-                                DAG.getConstant(-1, dl, ty(Op)), ISD::SETEQ);\n+                                DAG.getAllOnesConstant(dl, ty(Op)), ISD::SETEQ);\n       return DAG.getMergeValues({Op, Ov}, dl);\n     }\n   }\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=hexagon -O0 < %s"
+      ],
+      "file": "llvm/test/CodeGen/Hexagon/iss127296.ll",
+      "tests": [
+        {
+          "test_body": "\n\ndefine fastcc void @os.linux.tls.initStatic(i32 %x) {\n  %1 = call { i32, i1 } @llvm.usub.with.overflow.i32(i32 %x, i32 1)\n  br label %2\n\n  2:                                                ; preds = %0\n  %3 = extractvalue { i32, i1 } %1, 0\n  ret void\n}\n\n; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)\ndeclare { i32, i1 } @llvm.usub.with.overflow.i32(i32, i32) #0\n\nattributes #0 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }\n",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,69 @@
+{
+  "base_commit": "e573c6b67eb729a625431121139100bebc61ba1f",
+  "bug_id": "117684",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "combineExtractVectorElt",
+        "scalarizeExtEltFP"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          45857,
+          45863
+        ],
+        [
+          45892,
+          45904
+        ],
+        [
+          46257,
+          46263
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "9bdf683ba6cd9ad07667513d264a2bc02d969186"
+  },
+  "issue": {
+    "author": "abhishek-kaushik22",
+    "body": "Compiler Explorer: https://godbolt.org/z/qnfb4M8rY\n\n```\nllc: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:969: void {anonymous}::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*): Assertion `(TLI.getTypeAction(*DAG.getContext(), Op.getValueType()) == TargetLowering::TypeLegal || Op.getOpcode() == ISD::TargetConstant || Op.getOpcode() == ISD::Register) && \"Unexpected illegal type!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@module_sf_pxlsm_mp_pxlsm_'\n #0 0x0000000003c16b18 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c16b18)\n #1 0x0000000003c1450c SignalHandler(int) Signals.cpp:0:0\n #2 0x00007f34db442520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007f34db4969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007f34db442476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007f34db4287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007f34db42871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007f34db439e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x00000000038b1b33 (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) (.part.0) LegalizeDAG.cpp:0:0\n #9 0x00000000038b4213 llvm::SelectionDAG::Legalize() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x38b4213)\n#10 0x00000000039cc57d llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39cc57d)\n#11 0x00000000039cfcd2 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39cfcd2)\n#12 0x00000000039d0ff0 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39d0ff0)\n#13 0x00000000039c18bf llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39c18bf)\n#14 0x0000000002b7ba89 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#15 0x0000000003180c10 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3180c10)\n#16 0x0000000003180fc1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3180fc1)\n#17 0x0000000003181877 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3181877)\n#18 0x000000000086bf88 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#19 0x000000000075fb4e main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x75fb4e)\n#20 0x00007f34db429d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#21 0x00007f34db429e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#22 0x00000000008628ce _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8628ce)\nProgram terminated with signal: SIGSEGV\nCompiler returned:  #139\n```\nThis is happening because of this combine which produces an `i1` node, the condition checking for `i1` to check for pre-type legalization fails on AVX512.\n```\n  // Vector FP selects don't fit the pattern of FP math ops (because the\n  // condition has a different type and we have to change the opcode), so deal\n  // with those here.\n  // FIXME: This is restricted to pre type legalization by ensuring the setcc\n  // has i1 elements. If we loosen this we need to convert vector bool to a\n  // scalar bool.\n  if (Vec.getOpcode() == ISD::VSELECT &&\n      Vec.getOperand(0).getOpcode() == ISD::SETCC &&\n      Vec.getOperand(0).getValueType().getScalarType() == MVT::i1 &&\n      Vec.getOperand(0).getOperand(0).getValueType() == VecVT) {\n    // ext (sel Cond, X, Y), 0 --> sel (ext Cond, 0), (ext X, 0), (ext Y, 0)\n    SDLoc DL(ExtElt);\n    SDValue Ext0 = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL,\n                               Vec.getOperand(0).getValueType().getScalarType(),\n                               Vec.getOperand(0), Index);\n    SDValue Ext1 = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL, VT,\n                               Vec.getOperand(1), Index);\n    SDValue Ext2 = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL, VT,\n                               Vec.getOperand(2), Index);\n    return DAG.getNode(ISD::SELECT, DL, VT, Ext0, Ext1, Ext2);\n  }\n```\nI see two ways to fix this, either we address the `FIXME` #117682 or enforce the check by actually checking the DAG combine level before the combine #117681.\nBecause of the first fix the quality of generated code may be poor, so which is the proper way to do it.\n\n@topperc @phoebewang @e-kud Can you please share your thoughts on this?\n",
+    "comments": [],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid"
+    ],
+    "title": "[X86] Unexpected Illegal Type"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/117684",
+  "knowledge_cutoff": "2024-11-26T08:12:21Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 9bdf683ba6cd9ad07667513d264a2bc02d969186\nAuthor: abhishek-kaushik22 <abhishek.kaushik@intel.com>\nDate:   Thu Nov 28 08:19:10 2024 +0800\n\n    [X86] Enforce strict pre-legalization to combine in scalarizeExtEltFP (#117681)\n    \n    Use a `DCI` object to actually check the DAG combine level instead of\n    using the type `i1` because this assumption fails on AVX512 where we\n    have types like `v8i1` after legalization.\n    \n    Closes #117684\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex 2e065a938a31..d490de06590f 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -45857,7 +45857,8 @@ static SDValue combineExtractWithShuffle(SDNode *N, SelectionDAG &DAG,\n /// Extracting a scalar FP value from vector element 0 is free, so extract each\n /// operand first, then perform the math as a scalar op.\n static SDValue scalarizeExtEltFP(SDNode *ExtElt, SelectionDAG &DAG,\n-                                 const X86Subtarget &Subtarget) {\n+                                 const X86Subtarget &Subtarget,\n+                                 TargetLowering::DAGCombinerInfo &DCI) {\n   assert(ExtElt->getOpcode() == ISD::EXTRACT_VECTOR_ELT && \"Expected extract\");\n   SDValue Vec = ExtElt->getOperand(0);\n   SDValue Index = ExtElt->getOperand(1);\n@@ -45892,13 +45893,13 @@ static SDValue scalarizeExtEltFP(SDNode *ExtElt, SelectionDAG &DAG,\n   // Vector FP selects don't fit the pattern of FP math ops (because the\n   // condition has a different type and we have to change the opcode), so deal\n   // with those here.\n-  // FIXME: This is restricted to pre type legalization by ensuring the setcc\n-  // has i1 elements. If we loosen this we need to convert vector bool to a\n-  // scalar bool.\n-  if (Vec.getOpcode() == ISD::VSELECT &&\n+  // FIXME: This is restricted to pre type legalization. If we loosen this we\n+  // need to convert vector bool to a scalar bool.\n+  if (DCI.isBeforeLegalize() && Vec.getOpcode() == ISD::VSELECT &&\n       Vec.getOperand(0).getOpcode() == ISD::SETCC &&\n-      Vec.getOperand(0).getValueType().getScalarType() == MVT::i1 &&\n       Vec.getOperand(0).getOperand(0).getValueType() == VecVT) {\n+    assert(Vec.getOperand(0).getValueType().getScalarType() == MVT::i1 &&\n+           \"Unexpected cond type for combine\");\n     // ext (sel Cond, X, Y), 0 --> sel (ext Cond, 0), (ext X, 0), (ext Y, 0)\n     SDLoc DL(ExtElt);\n     SDValue Ext0 = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL,\n@@ -46257,7 +46258,7 @@ static SDValue combineExtractVectorElt(SDNode *N, SelectionDAG &DAG,\n   if (SDValue V = combineArithReduction(N, DAG, Subtarget))\n     return V;\n \n-  if (SDValue V = scalarizeExtEltFP(N, DAG, Subtarget))\n+  if (SDValue V = scalarizeExtEltFP(N, DAG, Subtarget, DCI))\n     return V;\n \n   if (CIdx)\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64"
+      ],
+      "file": "llvm/test/CodeGen/X86/extract-vselect-setcc.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @PR117684(i1 %cond, <8 x float> %vec, ptr %ptr1, ptr %ptr2) #0 {\n  %cmp = fcmp olt <8 x float> %vec, zeroinitializer\n  %sel1 = select <8 x i1> %cmp, <8 x float> zeroinitializer, <8 x float>\n  <float 0x7FF8000000000000, float 0x7FF8000000000000, float 0x7FF8000000000000, float 0x7FF8000000000000,\n  float 0x7FF8000000000000, float 0x7FF8000000000000, float 0x7FF8000000000000, float 0x7FF8000000000000>\n  %fmul1 = fmul <8 x float> zeroinitializer, %sel1\n  %shuffle = shufflevector <8 x float> %fmul1, <8 x float> zeroinitializer, <8 x i32> zeroinitializer\n  %fmul2 = fmul <8 x float> %shuffle,\n  <float 0x7FF8000000000000, float 0x7FF8000000000000, float 0x7FF8000000000000, float 0x7FF8000000000000,\n  float 0x7FF8000000000000, float 0x7FF8000000000000, float 0x7FF8000000000000, float 0x7FF8000000000000>\n  %sel2 = select i1 %cond, ptr %ptr1, ptr %ptr2\n  store <8 x float> %fmul2, ptr %sel2, align 4\n  %fmul3 = fmul <8 x float> %shuffle, zeroinitializer\n  store <8 x float> %fmul3, ptr %ptr2, align 4\n  ret void\n}\n\nattributes #0 = { \"target-cpu\"=\"skylake-avx512\" }",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

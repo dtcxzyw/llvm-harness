@@ -1,0 +1,78 @@
+{
+  "base_commit": "12a6546395c6225112731f33608afed452c4f8d1",
+  "bug_id": "85681",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp": [
+        "SelectionDAG::simplifyFPBinop",
+        "SelectionDAG::simplifyShift"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp": [
+        [
+          9595,
+          9600
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "2377b9773d40d2daa249ac20fe452f041bb6a88c"
+  },
+  "issue": {
+    "author": "DataCorrupted",
+    "body": "# Reproduction\r\n\r\nhttps://godbolt.org/z/d4YWMP6cT\r\n\r\nSame problem with emeraldrapids, sapphirerapids, or znver4.\r\n\r\n@phoebewang Is this a bug or misuse? If it is a bug, I can help fix it.",
+    "comments": [
+      {
+        "author": "phoebewang",
+        "body": "@DataCorrupted `shl` on `i1` type is allowed, but the result is UB if the second operator is not full of zeros. Nevertheless, a crash is always a bug. I think we may simply optimize a\r\n```\r\n%c = shl <32 x i1> %a, %b\r\n```\r\nto\r\n```\r\n%c = %a\r\n```\r\nSimilarly to lshr/ashr https://godbolt.org/z/KcTo3h8cq"
+      },
+      {
+        "author": "RKSimon",
+        "body": "Alive2: https://alive2.llvm.org/ce/z/SdESbg"
+      },
+      {
+        "author": "RKSimon",
+        "body": "Reduced: \r\n```ll\r\ndefine i32 @PR85681(i32 %a0) {\r\n  %v0 = bitcast i32 %a0 to <32 x i1>\r\n  %s = shl <32 x i1> <i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true>, %v0\r\n  %r = bitcast <32 x i1> %s to i32\r\n  ret i32 %r\r\n}\r\n\r\n```"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash"
+    ],
+    "title": "[CodeGen] x86_64 unable to select `X86ISD::VSHLV`/`X86ISD::VSRLV` on v32i1"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/85681",
+  "knowledge_cutoff": "2024-03-18T18:52:12Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 2377b9773d40d2daa249ac20fe452f041bb6a88c\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Tue Mar 19 20:17:56 2024 +0000\n\n    [DAG] SimplifyShift - shift i1/vXi1 X, Y --> X (any non-zero shift amount is undefined).\n    \n    Alive2: https://alive2.llvm.org/ce/z/SdESbg\n    \n    Fixes #85681\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp b/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\nindex 6f6ed4bd4502..9d73a42df2a4 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\n@@ -9595,6 +9595,10 @@ SDValue SelectionDAG::simplifyShift(SDValue X, SDValue Y) {\n   if (ISD::matchUnaryPredicate(Y, isShiftTooBig, true))\n     return getUNDEF(X.getValueType());\n \n+  // shift i1/vXi1 X, Y --> X (any non-zero shift amount is undefined).\n+  if (X.getValueType().getScalarType() == MVT::i1)\n+    return X;\n+\n   return SDValue();\n }\n \n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-- -mcpu=emeraldrapids",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v2",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v3",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v4"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr85681.ll",
+      "tests": [
+        {
+          "test_body": "\n; PR85681 - shift i1/vXi1 X, Y -> X as only Y==0 is defined\n\ndefine i32 @shl(i32 %a0) {\n  %v0 = bitcast i32 %a0 to <32 x i1>\n  %s = shl <32 x i1> <i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true>, %v0\n  %r = bitcast <32 x i1> %s to i32\n  ret i32 %r\n}\n\ndefine i32 @lshr(i32 %a0) {\n  %v0 = bitcast i32 %a0 to <32 x i1>\n  %s = lshr <32 x i1> <i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true>, %v0\n  %r = bitcast <32 x i1> %s to i32\n  ret i32 %r\n}\n\ndefine i32 @ashr(i32 %a0) {\n  %v0 = bitcast i32 %a0 to <32 x i1>\n  %s = ashr <32 x i1> <i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true>, %v0\n  %r = bitcast <32 x i1> %s to i32\n  ret i32 %r\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

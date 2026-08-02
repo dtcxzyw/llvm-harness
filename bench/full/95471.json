@@ -1,0 +1,196 @@
+{
+  "base_commit": "cdad39b7e007aa2a597f6fbeda28a6b269406916",
+  "bug_id": "95471",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp": [
+        "NVPTXAsmPrinter::GetSymbolRef",
+        "NVPTXAsmPrinter::bufferAggregateConstant",
+        "NVPTXAsmPrinter::emitFunctionParamList",
+        "NVPTXAsmPrinter::emitPTXGlobalVariable",
+        "NVPTXAsmPrinter::printModuleLevelGV",
+        "NVPTXAsmPrinter::printReturnValStr",
+        "ShouldPassAsArray"
+      ],
+      "llvm/lib/Target/NVPTX/NVPTXAsmPrinter.h": [
+        "NVPTXAsmPrinter",
+        "addBytes",
+        "addSymbol",
+        "addZeros"
+      ],
+      "llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp": [
+        "ComputePTXValueVTs",
+        "IsTypePassedAsArray",
+        "NVPTXTargetLowering::LowerCall",
+        "NVPTXTargetLowering::LowerFormalArguments",
+        "NVPTXTargetLowering::LowerGlobalAddress",
+        "NVPTXTargetLowering::getPrototype"
+      ],
+      "llvm/lib/Target/NVPTX/NVPTXUtilities.cpp": [
+        "Isv2x16VT",
+        "shouldEmitPTXNoReturn"
+      ],
+      "llvm/lib/Target/NVPTX/NVPTXUtilities.h": [
+        "getValidPTXIdentifier"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp": [
+        [
+          249,
+          259
+        ],
+        [
+          264,
+          289
+        ],
+        [
+          975,
+          982
+        ],
+        [
+          1016,
+          1021
+        ],
+        [
+          1266,
+          1273
+        ],
+        [
+          1383,
+          1389
+        ],
+        [
+          1682,
+          1729
+        ]
+      ],
+      "llvm/lib/Target/NVPTX/NVPTXAsmPrinter.h": [
+        [
+          111,
+          137
+        ]
+      ],
+      "llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp": [
+        [
+          246,
+          259
+        ],
+        [
+          1165,
+          1175
+        ],
+        [
+          1186,
+          1192
+        ],
+        [
+          1203,
+          1209
+        ],
+        [
+          1224,
+          1230
+        ],
+        [
+          1529,
+          1535
+        ],
+        [
+          1718,
+          1724
+        ],
+        [
+          3362,
+          3368
+        ]
+      ],
+      "llvm/lib/Target/NVPTX/NVPTXUtilities.cpp": [
+        [
+          372,
+          379
+        ]
+      ],
+      "llvm/lib/Target/NVPTX/NVPTXUtilities.h": [
+        [
+          84,
+          90
+        ]
+      ]
+    },
+    "components": [
+      "NVPTX"
+    ],
+    "fix_commit": "30013872190ca05eb00333adb989c9f74b1cf3ac"
+  },
+  "issue": {
+    "author": "beetrees",
+    "body": "When compiling the following IR for `nvptx64-nvidia-cuda` ([compiler explorer](https://godbolt.org/z/5To81ed8M)):\r\n\r\n```llvm\r\ndefine fp128 @identity(fp128 %x) {\r\n  ret fp128 %x\r\n}\r\n```\r\n\r\nLLVM will crash with the following assertion failure:\r\n\r\n```\r\nllc: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp:11476: void llvm::SelectionDAGISel::LowerArguments(const llvm::Function&): Assertion `InVals.size() == Ins.size() && \"LowerFormalArguments didn't emit the correct number of values!\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -O3 <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'NVPTX DAG->DAG Pattern Instruction Selection' on function '@id2'\r\n #0 0x00000000039ffc08 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39ffc08)\r\n #1 0x00000000039fd35c SignalHandler(int) Signals.cpp:0:0\r\n #2 0x00007616a2e42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x00007616a2e969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x00007616a2e42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x00007616a2e287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x00007616a2e2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\r\n #7 0x00007616a2e39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n #8 0x00000000036fd90b llvm::SelectionDAGISel::LowerArguments(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36fd90b)\r\n #9 0x00000000037c2335 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37c2335)\r\n#10 0x00000000037c2f88 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37c2f88)\r\n#11 0x00000000037b417f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37b417f)\r\n#12 0x00000000029e2a29 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#13 0x0000000002fbc7d3 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2fbc7d3)\r\n#14 0x0000000002fbca11 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2fbca11)\r\n#15 0x0000000002fbd275 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2fbd275)\r\n#16 0x000000000083a37c compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#17 0x000000000073005e main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x73005e)\r\n#18 0x00007616a2e29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#19 0x00007616a2e29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#20 0x0000000000830e9e _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x830e9e)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```",
+    "comments": [
+      {
+        "author": "pvimal816",
+        "body": "I can take a look at this. Please assign this to me."
+      },
+      {
+        "author": "oscarbg",
+        "body": "Cuda 12.8 and blackwell gpus support fp128 in device code (kernels)"
+      },
+      {
+        "author": "Artem-B",
+        "body": "> Cuda 12.8 and blackwell gpus support fp128 in device code (kernels)\n\nI do not see fp128 mentioned anywhere in the PTX docs: https://docs.nvidia.com/cuda/parallel-thread-execution/\nBut CUDA docs do have few mentions of fp128 builtins:\nhttps://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#:~:text=Quad%2DPrecision%20Floating%2DPoint%20Functions\n\n> __float128 type is supported for devices with compute capability 10.0 and later, when compiled in conjunction with a host compiler that supports the type. A constant expression of __float128 type may be processed by the compiler in a floating point representation with lower precision.\n\nIt's not clear to me what exactly they mean by \"processed by the compiler in a floating point representation with lower precision\" -- just downcast to double and back (e.g. fp128 as a storage type only) or actually emulate fp128 using double?\n\nIt's also not clear how/why it's limited to sm_100+ only, given that it does not seem to have any special ops for fp128 and any emulation via double is doable on older GPUs, too. So, we have more questions than answers here."
+      },
+      {
+        "author": "Artem-B",
+        "body": "@AlexMaclean ^^^ Do you know what's up with fp128 support on the recent GPUs?"
+      },
+      {
+        "author": "AlexMaclean",
+        "body": "This isn't an area I've personally worked much on but here is my understanding:\n> It's not clear to me what exactly they mean by \"processed by the compiler in a floating point representation with lower precision\" -- just downcast to double and back (e.g. fp128 as a storage type only) or actually emulate fp128 using double?\n\nThis sentence has been in the docs for a while (https://docs.nvidia.com/cuda/archive/12.4.0/cuda-c-programming-guide/index.html#host-compiler-extensions). I think this wording is referring to how host compilers may handle fp128 in host side code. It is not referring to recently added fp128 support. fp128 support goes beyond just a storage type and emulates these instructions in software via lots of operations on smaller types.\n> It's also not clear how/why it's limited to sm_100+ only, given that it does not seem to have any special ops for fp128 and any emulation via double is doable on older GPUs, too. So, we have more questions than answers here.\n\nAs your observation of the PTX spec shows, there isn't anything special introduced in sm_100 which is needed to support fp128. The constraint is imposed by how we're rolling out support in the compiler."
+      },
+      {
+        "author": "Artem-B",
+        "body": "OK. \n\n- GPUs do not support fp128. It's not part of PTX spec, so the support is intended to be provided by compiler.\n- AFAICT, LLVM does not provide emulation of fp128. So, the choice is between soft-FP via libcalls (which we can't use as it would rely on external libraries which we don't have on GPU) or native h/w support (which we don't have).\n- CUDA docs only mention fp128 in the context of compiler builtins. So NVCC appears to provide them via some sort of built-in soft-float. I can kind of see that it may be implemented in the NVCC's back-end for the newer GPUs only.\n- the bug is about fp128 in LLVM IR. We do not have that on NVPTX at the moment, not even as the storage type.\n- we could implement storage-only support for f128, similar to what we do for i128, but that's about it.\n- IMO, storage-only support for f128 has fairly limited usefulness. I'd say implementing it would be a very low priority task.\n\nOverall, my conclusion is that the failure is more or less expected -- not everything that can be expressed in IR is expected to be correctly lowered on a particular target, and there's no pressing need for implementing storage-only support. If someone sends a patch, it would be welcome. Otherwise, I'd suggest casting to i128 for f128 loads/stores as a workaround.\n"
+      },
+      {
+        "author": "tgross35",
+        "body": "The example in the top post now works, but trivial f128 operations crash https://llvm.godbolt.org/z/snYbYx1ds. This is expected, but could this issue be reopened to track better behavior here? Or a new issue, but there is some relevant discussion here.\n\nAmdgpu has the same difficulties fwiw https://github.com/llvm/llvm-project/issues/121122"
+      },
+      {
+        "author": "tgross35",
+        "body": "Created https://github.com/llvm/llvm-project/issues/191013 for the rest."
+      }
+    ],
+    "labels": [
+      "crash",
+      "backend:NVPTX"
+    ],
+    "title": "`fp128` causes compilation failures when compiling for `nvptx64-nvidia-cuda`"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/95471",
+  "knowledge_cutoff": "2024-06-13T20:50:32Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/NVPTX"
+  ],
+  "patch": "commit 30013872190ca05eb00333adb989c9f74b1cf3ac\nAuthor: Alex MacLean <amaclean@nvidia.com>\nDate:   Thu Apr 17 13:19:48 2025 -0700\n\n    [NVPTX] Basic support for fp128 as a storage type (#136006)\n    \n    While fp128 operations are not natively supported in hardware, emulation\n    for them is supported by nvcc. This change adds basic support for\n    fp128 as a storage type allowing for lowering of IR containing these\n    types.\n    \n    Fixes: https://github.com/llvm/llvm-project/issues/95471\n\ndiff --git a/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp b/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp\nindex 65cfeadc21a3..2f4b109e8e9e 100644\n--- a/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp\n+++ b/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.cpp\n@@ -249,11 +249,6 @@ MCOperand NVPTXAsmPrinter::GetSymbolRef(const MCSymbol *Symbol) {\n   return MCOperand::createExpr(Expr);\n }\n \n-static bool ShouldPassAsArray(Type *Ty) {\n-  return Ty->isAggregateType() || Ty->isVectorTy() || Ty->isIntegerTy(128) ||\n-         Ty->isHalfTy() || Ty->isBFloatTy();\n-}\n-\n void NVPTXAsmPrinter::printReturnValStr(const Function *F, raw_ostream &O) {\n   const DataLayout &DL = getDataLayout();\n   const NVPTXSubtarget &STI = TM.getSubtarget<NVPTXSubtarget>(*F);\n@@ -264,26 +259,21 @@ void NVPTXAsmPrinter::printReturnValStr(const Function *F, raw_ostream &O) {\n     return;\n   O << \" (\";\n \n-  if ((Ty->isFloatingPointTy() || Ty->isIntegerTy()) &&\n-      !ShouldPassAsArray(Ty)) {\n-    unsigned size = 0;\n-    if (auto *ITy = dyn_cast<IntegerType>(Ty)) {\n-      size = ITy->getBitWidth();\n-    } else {\n-      assert(Ty->isFloatingPointTy() && \"Floating point type expected here\");\n-      size = Ty->getPrimitiveSizeInBits();\n-    }\n-    size = promoteScalarArgumentSize(size);\n-    O << \".param .b\" << size << \" func_retval0\";\n-  } else if (isa<PointerType>(Ty)) {\n-    O << \".param .b\" << TLI->getPointerTy(DL).getSizeInBits()\n-      << \" func_retval0\";\n-  } else if (ShouldPassAsArray(Ty)) {\n-    unsigned totalsz = DL.getTypeAllocSize(Ty);\n-    Align RetAlignment = TLI->getFunctionArgumentAlignment(\n+  auto PrintScalarRetVal = [&](unsigned Size) {\n+    O << \".param .b\" << promoteScalarArgumentSize(Size) << \" func_retval0\";\n+  };\n+  if (shouldPassAsArray(Ty)) {\n+    const unsigned TotalSize = DL.getTypeAllocSize(Ty);\n+    const Align RetAlignment = TLI->getFunctionArgumentAlignment(\n         F, Ty, AttributeList::ReturnIndex, DL);\n     O << \".param .align \" << RetAlignment.value() << \" .b8 func_retval0[\"\n-      << totalsz << \"]\";\n+      << TotalSize << \"]\";\n+  } else if (Ty->isFloatingPointTy()) {\n+    PrintScalarRetVal(Ty->getPrimitiveSizeInBits());\n+  } else if (auto *ITy = dyn_cast<IntegerType>(Ty)) {\n+    PrintScalarRetVal(ITy->getBitWidth());\n+  } else if (isa<PointerType>(Ty)) {\n+    PrintScalarRetVal(TLI->getPointerTy(DL).getSizeInBits());\n   } else\n     llvm_unreachable(\"Unknown return type\");\n   O << \") \";\n@@ -975,8 +965,8 @@ void NVPTXAsmPrinter::printModuleLevelGV(const GlobalVariable *GVar,\n   O << \" .align \"\n     << GVar->getAlign().value_or(DL.getPrefTypeAlign(ETy)).value();\n \n-  if (ETy->isFloatingPointTy() || ETy->isPointerTy() ||\n-      (ETy->isIntegerTy() && ETy->getScalarSizeInBits() <= 64)) {\n+  if (ETy->isPointerTy() || ((ETy->isIntegerTy() || ETy->isFloatingPointTy()) &&\n+                             ETy->getScalarSizeInBits() <= 64)) {\n     O << \" .\";\n     // Special case: ABI requires that we use .u8 for predicates\n     if (ETy->isIntegerTy(1))\n@@ -1016,6 +1006,7 @@ void NVPTXAsmPrinter::printModuleLevelGV(const GlobalVariable *GVar,\n     // and vectors are lowered into arrays of bytes.\n     switch (ETy->getTypeID()) {\n     case Type::IntegerTyID: // Integers larger than 64 bits\n+    case Type::FP128TyID:\n     case Type::StructTyID:\n     case Type::ArrayTyID:\n     case Type::FixedVectorTyID: {\n@@ -1266,8 +1257,8 @@ void NVPTXAsmPrinter::emitPTXGlobalVariable(const GlobalVariable *GVar,\n   O << \" .align \"\n     << GVar->getAlign().value_or(DL.getPrefTypeAlign(ETy)).value();\n \n-  // Special case for i128\n-  if (ETy->isIntegerTy(128)) {\n+  // Special case for i128/fp128\n+  if (ETy->getScalarSizeInBits() == 128) {\n     O << \" .b8 \";\n     getSymbol(GVar)->print(O, MAI);\n     O << \"[16]\";\n@@ -1383,7 +1374,7 @@ void NVPTXAsmPrinter::emitFunctionParamList(const Function *F, raw_ostream &O) {\n       continue;\n     }\n \n-    if (ShouldPassAsArray(Ty)) {\n+    if (shouldPassAsArray(Ty)) {\n       // Just print .param .align <a> .b8 .param[size];\n       // <a>  = optimal alignment for the element type; always multiple of\n       //        PAL.getParamAlignment\n@@ -1682,48 +1673,49 @@ void NVPTXAsmPrinter::bufferLEByte(const Constant *CPV, int Bytes,\n void NVPTXAsmPrinter::bufferAggregateConstant(const Constant *CPV,\n                                               AggBuffer *aggBuffer) {\n   const DataLayout &DL = getDataLayout();\n-  int Bytes;\n+\n+  auto ExtendBuffer = [](APInt Val, AggBuffer *Buffer) {\n+    for (unsigned I : llvm::seq(Val.getBitWidth() / 8))\n+      Buffer->addByte(Val.extractBitsAsZExtValue(8, I * 8));\n+  };\n \n   // Integers of arbitrary width\n   if (const ConstantInt *CI = dyn_cast<ConstantInt>(CPV)) {\n-    APInt Val = CI->getValue();\n-    for (unsigned I = 0, E = DL.getTypeAllocSize(CPV->getType()); I < E; ++I) {\n-      uint8_t Byte = Val.getLoBits(8).getZExtValue();\n-      aggBuffer->addBytes(&Byte, 1, 1);\n-      Val.lshrInPlace(8);\n-    }\n+    ExtendBuffer(CI->getValue(), aggBuffer);\n     return;\n   }\n \n+  // f128\n+  if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CPV)) {\n+    if (CFP->getType()->isFP128Ty()) {\n+      ExtendBuffer(CFP->getValueAPF().bitcastToAPInt(), aggBuffer);\n+      return;\n+    }\n+  }\n+\n   // Old constants\n   if (isa<ConstantArray>(CPV) || isa<ConstantVector>(CPV)) {\n-    if (CPV->getNumOperands())\n-      for (unsigned i = 0, e = CPV->getNumOperands(); i != e; ++i)\n-        bufferLEByte(cast<Constant>(CPV->getOperand(i)), 0, aggBuffer);\n+    for (const auto &Op : CPV->operands())\n+      bufferLEByte(cast<Constant>(Op), 0, aggBuffer);\n     return;\n   }\n \n-  if (const ConstantDataSequential *CDS =\n-          dyn_cast<ConstantDataSequential>(CPV)) {\n-    if (CDS->getNumElements())\n-      for (unsigned i = 0; i < CDS->getNumElements(); ++i)\n-        bufferLEByte(cast<Constant>(CDS->getElementAsConstant(i)), 0,\n-                     aggBuffer);\n+  if (const auto *CDS = dyn_cast<ConstantDataSequential>(CPV)) {\n+    for (unsigned I : llvm::seq(CDS->getNumElements()))\n+      bufferLEByte(cast<Constant>(CDS->getElementAsConstant(I)), 0, aggBuffer);\n     return;\n   }\n \n   if (isa<ConstantStruct>(CPV)) {\n     if (CPV->getNumOperands()) {\n       StructType *ST = cast<StructType>(CPV->getType());\n-      for (unsigned i = 0, e = CPV->getNumOperands(); i != e; ++i) {\n-        if (i == (e - 1))\n-          Bytes = DL.getStructLayout(ST)->getElementOffset(0) +\n-                  DL.getTypeAllocSize(ST) -\n-                  DL.getStructLayout(ST)->getElementOffset(i);\n-        else\n-          Bytes = DL.getStructLayout(ST)->getElementOffset(i + 1) -\n-                  DL.getStructLayout(ST)->getElementOffset(i);\n-        bufferLEByte(cast<Constant>(CPV->getOperand(i)), Bytes, aggBuffer);\n+      for (unsigned I : llvm::seq(CPV->getNumOperands())) {\n+        int EndOffset = (I + 1 == CPV->getNumOperands())\n+                            ? DL.getStructLayout(ST)->getElementOffset(0) +\n+                                  DL.getTypeAllocSize(ST)\n+                            : DL.getStructLayout(ST)->getElementOffset(I + 1);\n+        int Bytes = EndOffset - DL.getStructLayout(ST)->getElementOffset(I);\n+        bufferLEByte(cast<Constant>(CPV->getOperand(I)), Bytes, aggBuffer);\n       }\n     }\n     return;\ndiff --git a/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.h b/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.h\nindex 74daaa2fb713..9ed7e650e7b0 100644\n--- a/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.h\n+++ b/llvm/lib/Target/NVPTX/NVPTXAsmPrinter.h\n@@ -111,27 +111,22 @@ class LLVM_LIBRARY_VISIBILITY NVPTXAsmPrinter : public AsmPrinter {\n \n     // Copy Num bytes from Ptr.\n     // if Bytes > Num, zero fill up to Bytes.\n-    unsigned addBytes(unsigned char *Ptr, int Num, int Bytes) {\n-      assert((curpos + Num) <= size);\n-      assert((curpos + Bytes) <= size);\n-      for (int i = 0; i < Num; ++i) {\n-        buffer[curpos] = Ptr[i];\n-        curpos++;\n-      }\n-      for (int i = Num; i < Bytes; ++i) {\n-        buffer[curpos] = 0;\n-        curpos++;\n-      }\n-      return curpos;\n+    void addBytes(const unsigned char *Ptr, unsigned Num, unsigned Bytes) {\n+      for (unsigned I : llvm::seq(Num))\n+        addByte(Ptr[I]);\n+      if (Bytes > Num)\n+        addZeros(Bytes - Num);\n     }\n \n-    unsigned addZeros(int Num) {\n-      assert((curpos + Num) <= size);\n-      for (int i = 0; i < Num; ++i) {\n-        buffer[curpos] = 0;\n-        curpos++;\n-      }\n-      return curpos;\n+    void addByte(uint8_t Byte) {\n+      assert(curpos < size);\n+      buffer[curpos] = Byte;\n+      curpos++;\n+    }\n+\n+    void addZeros(unsigned Num) {\n+      for (unsigned _ : llvm::seq(Num))\n+        addByte(0);\n     }\n \n     void addSymbol(const Value *GVar, const Value *GVarBeforeStripping) {\ndiff --git a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp\nindex abe4c2700969..277a34173e7b 100644\n--- a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp\n+++ b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp\n@@ -246,14 +246,11 @@ static void ComputePTXValueVTs(const TargetLowering &TLI, const DataLayout &DL,\n   SmallVector<uint64_t, 16> TempOffsets;\n \n   // Special case for i128 - decompose to (i64, i64)\n-  if (Ty->isIntegerTy(128)) {\n-    ValueVTs.push_back(EVT(MVT::i64));\n-    ValueVTs.push_back(EVT(MVT::i64));\n+  if (Ty->isIntegerTy(128) || Ty->isFP128Ty()) {\n+    ValueVTs.append({MVT::i64, MVT::i64});\n \n-    if (Offsets) {\n-      Offsets->push_back(StartingOffset + 0);\n-      Offsets->push_back(StartingOffset + 8);\n-    }\n+    if (Offsets)\n+      Offsets->append({StartingOffset + 0, StartingOffset + 8});\n \n     return;\n   }\n@@ -1165,11 +1162,6 @@ NVPTXTargetLowering::LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const {\n   return DAG.getNode(NVPTXISD::Wrapper, dl, PtrVT, Op);\n }\n \n-static bool IsTypePassedAsArray(const Type *Ty) {\n-  return Ty->isAggregateType() || Ty->isVectorTy() || Ty->isIntegerTy(128) ||\n-         Ty->isHalfTy() || Ty->isBFloatTy();\n-}\n-\n std::string NVPTXTargetLowering::getPrototype(\n     const DataLayout &DL, Type *retTy, const ArgListTy &Args,\n     const SmallVectorImpl<ISD::OutputArg> &Outs, MaybeAlign retAlignment,\n@@ -1186,7 +1178,7 @@ std::string NVPTXTargetLowering::getPrototype(\n   } else {\n     O << \"(\";\n     if ((retTy->isFloatingPointTy() || retTy->isIntegerTy()) &&\n-        !IsTypePassedAsArray(retTy)) {\n+        !shouldPassAsArray(retTy)) {\n       unsigned size = 0;\n       if (auto *ITy = dyn_cast<IntegerType>(retTy)) {\n         size = ITy->getBitWidth();\n@@ -1203,7 +1195,7 @@ std::string NVPTXTargetLowering::getPrototype(\n       O << \".param .b\" << size << \" _\";\n     } else if (isa<PointerType>(retTy)) {\n       O << \".param .b\" << PtrVT.getSizeInBits() << \" _\";\n-    } else if (IsTypePassedAsArray(retTy)) {\n+    } else if (shouldPassAsArray(retTy)) {\n       O << \".param .align \" << (retAlignment ? retAlignment->value() : 0)\n         << \" .b8 _[\" << DL.getTypeAllocSize(retTy) << \"]\";\n     } else {\n@@ -1224,7 +1216,7 @@ std::string NVPTXTargetLowering::getPrototype(\n     first = false;\n \n     if (!Outs[OIdx].Flags.isByVal()) {\n-      if (IsTypePassedAsArray(Ty)) {\n+      if (shouldPassAsArray(Ty)) {\n         Align ParamAlign =\n             getArgumentAlignment(&CB, Ty, i + AttributeList::FirstArgIndex, DL);\n         O << \".param .align \" << ParamAlign.value() << \" .b8 \";\n@@ -1529,7 +1521,7 @@ SDValue NVPTXTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,\n     SDVTList DeclareParamVTs = DAG.getVTList(MVT::Other, MVT::Glue);\n \n     bool NeedAlign; // Does argument declaration specify alignment?\n-    bool PassAsArray = IsByVal || IsTypePassedAsArray(Ty);\n+    const bool PassAsArray = IsByVal || shouldPassAsArray(Ty);\n     if (IsVAArg) {\n       if (ParamCount == FirstVAArg) {\n         SDValue DeclareParamOps[] = {\n@@ -1718,7 +1710,7 @@ SDValue NVPTXTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,\n     //  .param .align N .b8 retval0[<size-in-bytes>], or\n     //  .param .b<size-in-bits> retval0\n     unsigned resultsz = DL.getTypeAllocSizeInBits(RetTy);\n-    if (!IsTypePassedAsArray(RetTy)) {\n+    if (!shouldPassAsArray(RetTy)) {\n       resultsz = promoteScalarArgumentSize(resultsz);\n       SDVTList DeclareRetVTs = DAG.getVTList(MVT::Other, MVT::Glue);\n       SDValue DeclareRetOps[] = { Chain, DAG.getConstant(1, dl, MVT::i32),\n@@ -3362,7 +3354,7 @@ SDValue NVPTXTargetLowering::LowerFormalArguments(\n \n     if (theArgs[i]->use_empty()) {\n       // argument is dead\n-      if (IsTypePassedAsArray(Ty) && !Ty->isVectorTy()) {\n+      if (shouldPassAsArray(Ty) && !Ty->isVectorTy()) {\n         SmallVector<EVT, 16> vtparts;\n \n         ComputePTXValueVTs(*this, DAG.getDataLayout(), Ty, vtparts);\ndiff --git a/llvm/lib/Target/NVPTX/NVPTXUtilities.cpp b/llvm/lib/Target/NVPTX/NVPTXUtilities.cpp\nindex 3d9d2ae37208..b800445a3b19 100644\n--- a/llvm/lib/Target/NVPTX/NVPTXUtilities.cpp\n+++ b/llvm/lib/Target/NVPTX/NVPTXUtilities.cpp\n@@ -372,8 +372,4 @@ bool shouldEmitPTXNoReturn(const Value *V, const TargetMachine &TM) {\n          !isKernelFunction(*F);\n }\n \n-bool Isv2x16VT(EVT VT) {\n-  return (VT == MVT::v2f16 || VT == MVT::v2bf16 || VT == MVT::v2i16);\n-}\n-\n } // namespace llvm\ndiff --git a/llvm/lib/Target/NVPTX/NVPTXUtilities.h b/llvm/lib/Target/NVPTX/NVPTXUtilities.h\nindex 9283b398a9c1..2288241ec017 100644\n--- a/llvm/lib/Target/NVPTX/NVPTXUtilities.h\n+++ b/llvm/lib/Target/NVPTX/NVPTXUtilities.h\n@@ -84,7 +84,14 @@ inline unsigned promoteScalarArgumentSize(unsigned size) {\n \n bool shouldEmitPTXNoReturn(const Value *V, const TargetMachine &TM);\n \n-bool Isv2x16VT(EVT VT);\n+inline bool Isv2x16VT(EVT VT) {\n+  return (VT == MVT::v2f16 || VT == MVT::v2bf16 || VT == MVT::v2i16);\n+}\n+\n+inline bool shouldPassAsArray(Type *Ty) {\n+  return Ty->isAggregateType() || Ty->isVectorTy() ||\n+         Ty->getScalarSizeInBits() == 128 || Ty->isHalfTy() || Ty->isBFloatTy();\n+}\n \n namespace NVPTX {\n inline std::string getValidPTXIdentifier(StringRef Name) {\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mcpu=sm_20"
+      ],
+      "file": "llvm/test/CodeGen/NVPTX/fp128-storage-type.ll",
+      "tests": [
+        {
+          "test_body": "\ntarget triple = \"nvptx64-unknown-cuda\"\n\ndefine fp128 @identity(fp128 %x) {\n  ret fp128 %x\n}\n\ndefine void @load_store(ptr %in, ptr %out) {\n  %val = load fp128, ptr %in\n  store fp128 %val, ptr %out\n  ret void\n}\n\ndefine void @call(fp128 %x) {\n  call void @call(fp128 %x)\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

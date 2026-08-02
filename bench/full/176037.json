@@ -1,0 +1,70 @@
+{
+  "base_commit": "a975d2c71152200e1f8070967d5a0bf905b7080c",
+  "bug_id": "176037",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp": [
+        "SelectionDAG::getNode",
+        "SelectionDAG::getVPZeroExtendInReg",
+        "SelectionDAG::getZeroExtendInReg"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp": [
+        [
+          1569,
+          1580
+        ],
+        [
+          1591,
+          1597
+        ],
+        [
+          7910,
+          7916
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "2fa1ba62ac92fe95613d980e38ac2db36141fee8"
+  },
+  "issue": {
+    "author": "alexey-bataev",
+    "body": "https://godbolt.org/z/cEaxWvxKh",
+    "comments": [],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[CodeGen[AArch64] Assertion `isScalableVector() == VT.isScalableVector() && \"Comparison between scalable and fixed types\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/176037",
+  "knowledge_cutoff": "2026-01-14T21:18:03Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 2fa1ba62ac92fe95613d980e38ac2db36141fee8\nAuthor: Manasij Mukherjee <manasijm@nvidia.com>\nDate:   Wed Jan 14 22:00:26 2026 -0800\n\n    [SelectionDAG] Fix zext assertion check for scalable vectors (#176064)\n    \n    Use element type comparisons in getZeroExtendInReg to avoid comparing\n    scalable and fixed types.\n    \n    Fixes #176037\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp b/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\nindex 80db53f02ba8..c1c9fbadf959 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\n@@ -1569,12 +1569,14 @@ SDValue SelectionDAG::getZeroExtendInReg(SDValue Op, const SDLoc &DL, EVT VT) {\n   assert((!VT.isVector() ||\n           VT.getVectorElementCount() == OpVT.getVectorElementCount()) &&\n          \"Vector element counts must match in getZeroExtendInReg\");\n-  assert(VT.bitsLE(OpVT) && \"Not extending!\");\n+  assert(VT.getScalarType().bitsLE(OpVT.getScalarType()) && \"Not extending!\");\n   if (OpVT == VT)\n     return Op;\n   // TODO: Use computeKnownBits instead of AssertZext.\n-  if (Op.getOpcode() == ISD::AssertZext &&\n-      cast<VTSDNode>(Op.getOperand(1))->getVT().bitsLE(VT))\n+  if (Op.getOpcode() == ISD::AssertZext && cast<VTSDNode>(Op.getOperand(1))\n+                                               ->getVT()\n+                                               .getScalarType()\n+                                               .bitsLE(VT.getScalarType()))\n     return Op;\n   APInt Imm = APInt::getLowBitsSet(OpVT.getScalarSizeInBits(),\n                                    VT.getScalarSizeInBits());\n@@ -1591,7 +1593,7 @@ SDValue SelectionDAG::getVPZeroExtendInReg(SDValue Op, SDValue Mask,\n          \"getVPZeroExtendInReg type and operand type should be vector!\");\n   assert(VT.getVectorElementCount() == OpVT.getVectorElementCount() &&\n          \"Vector element counts must match in getZeroExtendInReg\");\n-  assert(VT.bitsLE(OpVT) && \"Not extending!\");\n+  assert(VT.getScalarType().bitsLE(OpVT.getScalarType()) && \"Not extending!\");\n   if (OpVT == VT)\n     return Op;\n   APInt Imm = APInt::getLowBitsSet(OpVT.getScalarSizeInBits(),\n@@ -7910,7 +7912,7 @@ SDValue SelectionDAG::getNode(unsigned Opcode, const SDLoc &DL, EVT VT,\n     assert((!EVT.isVector() ||\n             EVT.getVectorElementCount() == VT.getVectorElementCount()) &&\n            \"Vector element counts must match in SIGN_EXTEND_INREG\");\n-    assert(EVT.bitsLE(VT) && \"Not extending!\");\n+    assert(EVT.getScalarType().bitsLE(VT.getScalarType()) && \"Not extending!\");\n     if (EVT == VT) return N1;  // Not actually extending\n     break;\n   }\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-unknown-linux-gnu -mattr=+sve -o - %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/aarch64-sve-setcc-promote-nxv8i8-crash.ll",
+      "tests": [
+        {
+          "test_body": "\n; Just check that llc does not crash\ndefine void @sve_setcc_promote_nxv8i8_crash(ptr %0, <vscale x 8 x i8> %1, <vscale x 8 x i8> %2) {\niter.check:\n  %wide.load61.pre = load <vscale x 8 x i8>, ptr null, align 1\n  br label %vec.epilog.vector.body\n\nvec.epilog.vector.body:                           ; preds = %vec.epilog.vector.body, %iter.check\n  %3 = icmp eq <vscale x 8 x i8> %wide.load61.pre, zeroinitializer\n  %4 = icmp slt <vscale x 8 x i8> %wide.load61.pre, zeroinitializer\n  %5 = select <vscale x 8 x i1> %3, <vscale x 8 x i8> zeroinitializer, <vscale x 8 x i8> %1\n  %6 = select <vscale x 8 x i1> %4, <vscale x 8 x i8> zeroinitializer, <vscale x 8 x i8> %2\n  %7 = xor <vscale x 8 x i8> %5, %6\n  store <vscale x 8 x i8> %7, ptr %0, align 1\n  br label %vec.epilog.vector.body\n}\n",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

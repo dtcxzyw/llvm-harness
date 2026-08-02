@@ -1,0 +1,70 @@
+{
+  "base_commit": "cee0703cea3bb5cbf8ce9588de854f8b5417d9cc",
+  "bug_id": "175868",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SafeStack.cpp": [
+        "SafeStack::IsAccessSafe",
+        "SafeStack::getStaticAllocaAllocationSize"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SafeStack.cpp": [
+        [
+          177,
+          182
+        ],
+        [
+          204,
+          209
+        ]
+      ]
+    },
+    "components": [
+      "SafeStack"
+    ],
+    "fix_commit": "537f3d3a7588d226b86590f97c4401107585e1ce"
+  },
+  "issue": {
+    "author": "aeubanks",
+    "body": "https://godbolt.org/z/Kvr6nzE5P\n```\n$ cat /tmp/a.cc\n__attribute__((target(\"+sve2+sve2-aes,+sve\"))) void f() { __SVUint64_t pivot; }\n$ clang -cc1 -triple aarch64-grtev4-linux-gnu -emit-obj -fsanitize=safe-stack /tmp/a.cc\nfatal error: error in backend: Cannot implicitly convert a scalable size to a fixed-width size in `TypeSize::operator ScalarTy()`\n```\n\nseems to only happen with `-fsanitize=safe-stack`",
+    "comments": [
+      {
+        "author": "c-rhodes",
+        "body": "no longer crashing on trunk, was fixed by #180547"
+      }
+    ],
+    "labels": [
+      "llvm:codegen",
+      "crash"
+    ],
+    "title": "AArch64 __SVUint64_t + safe-stack: Cannot implicitly convert a scalable size to a fixed-width size in `TypeSize::operator ScalarTy()`"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/175868",
+  "knowledge_cutoff": "2026-01-13T23:53:12Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 537f3d3a7588d226b86590f97c4401107585e1ce\nAuthor: Jakob Koschel <jakobkoschel@google.com>\nDate:   Thu Mar 5 01:11:44 2026 +0100\n\n    [SafeStack] Fix crashing with scalable TypeSizes (#180547)\n    \n    On e.g. aarch64 the TypeSize of scalar types can have a size that is not\n    known at compile time.\n    Currently when safestack occurs those it simply crashes as described in\n    https://github.com/llvm/llvm-project/issues/175868.\n    \n    Since we cannot verify the size at compile time we simply consider the\n    access to be unsafe (in regards to safestack).\n    \n    Reproducer:\n    ```\n    #include <arm_sve.h>\n    \n    int main() {\n        svint32_t vec = svindex_s32(0, 1);\n        svint32_t res = svadd_s32_z(svptrue_b32(), vec, vec);\n        int32_t buffer[1024];\n        svst1_s32(svptrue_b32(), buffer, res);\n        return 0;\n    }\n    ```\n\ndiff --git a/llvm/lib/CodeGen/SafeStack.cpp b/llvm/lib/CodeGen/SafeStack.cpp\nindex 1de5b821376a..152dcca20929 100644\n--- a/llvm/lib/CodeGen/SafeStack.cpp\n+++ b/llvm/lib/CodeGen/SafeStack.cpp\n@@ -177,6 +177,8 @@ class SafeStack {\n \n   bool IsMemIntrinsicSafe(const MemIntrinsic *MI, const Use &U,\n                           const Value *AllocaPtr, uint64_t AllocaSize);\n+  bool IsAccessSafe(Value *Addr, TypeSize Size, const Value *AllocaPtr,\n+                    uint64_t AllocaSize);\n   bool IsAccessSafe(Value *Addr, uint64_t Size, const Value *AllocaPtr,\n                     uint64_t AllocaSize);\n \n@@ -204,6 +206,16 @@ uint64_t SafeStack::getStaticAllocaAllocationSize(const AllocaInst* AI) {\n   return 0;\n }\n \n+bool SafeStack::IsAccessSafe(Value *Addr, TypeSize AccessSize,\n+                             const Value *AllocaPtr, uint64_t AllocaSize) {\n+  if (AccessSize.isScalable()) {\n+    // In case we don't know the size at compile time we cannot verify if the\n+    // access is safe.\n+    return false;\n+  }\n+  return IsAccessSafe(Addr, AccessSize.getFixedValue(), AllocaPtr, AllocaSize);\n+}\n+\n bool SafeStack::IsAccessSafe(Value *Addr, uint64_t AccessSize,\n                              const Value *AllocaPtr, uint64_t AllocaSize) {\n   const SCEV *AddrExpr = SE.getSCEV(Addr);\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-linux-gnu -stop-after=safe-stack < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/safestack_scalar.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @test_sve() safestack {\nentry:\n  %v = alloca <vscale x 16 x i8>, align 16\n  %val = load <vscale x 16 x i8>, ptr %v\n  ret void\n}\n",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

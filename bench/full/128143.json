@@ -1,0 +1,66 @@
+{
+  "base_commit": "3ec83f5774f391076cef094249fe9fa48cdc61fc",
+  "bug_id": "128143",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "DAGCombiner::visitFREEZE"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          16158,
+          16168
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "646e4f2eede9a39e46012dde9430cd289682e83c"
+  },
+  "issue": {
+    "author": "dtcxzyw",
+    "body": "Reproducer: https://godbolt.org/z/7aTdb9c5d\n```\n; bin/llc test.ll -o -\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\n@g_132 = external global [2 x [3 x i8]]\n@g_200 = external global i8\n\ndefine i64 @test(i1 %cmp24.i.i.i.i.i, i32 %0) {\nentry:\n  %cmp24.i.i.i.i.i2 = icmp ne ptr @g_132, @g_200\n  %.fr.i.i.i.i.i = freeze ptr @g_132\n  %1 = icmp ne ptr %.fr.i.i.i.i.i, @g_200\n  %rem.i424.i.2.i.zext.i.i.i.i = zext i1 %1 to i32\n  %or.cond20.i.i.1.i.i.i.i.i = select i1 %cmp24.i.i.i.i.i, i1 %cmp24.i.i.i.i.i2, i1 false\n  %spec.select.i.i.1.i.i.i.i.i = select i1 %or.cond20.i.i.1.i.i.i.i.i, i32 0, i32 1\n  %conv300.i.1.i.i.i.i.i = sext i32 %spec.select.i.i.1.i.i.i.i.i to i64\n  %cmp3.i429.i.2.i.i.i.i.i = icmp ult i32 %0, %rem.i424.i.2.i.zext.i.i.i.i\n  %or.cond20.i.i.2.i.i.i.i.i = select i1 %cmp24.i.i.i.i.i, i1 %cmp3.i429.i.2.i.i.i.i.i, i1 false\n  %spec.select.i.i.2.i.i.i.i.i = select i1 %or.cond20.i.i.2.i.i.i.i.i, i32 0, i32 1\n  %conv300.i.2.i.i.i.i.i = sext i32 %spec.select.i.i.2.i.i.i.i.i to i64\n  %or301.i.2.i.i.i.i.i = or i64 %conv300.i.1.i.i.i.i.i, %conv300.i.2.i.i.i.i.i\n  ret i64 %or301.i.2.i.i.i.i.i\n}\n```\n```\nllc: /root/llvm-project/llvm/include/llvm/CodeGen/SelectionDAGNodes.h:993: const llvm::SDValue& llvm::SDNode::getOperand(unsigned int) const: Assertion `Num < NumOperands && \"Invalid child # of SDNode!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@test'\n #0 0x0000000003e76458 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e76458)\n #1 0x0000000003e73e14 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x0000715c02a42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x0000715c02a969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x0000715c02a42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x0000715c02a287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x0000715c02a2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x0000715c02a39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x00000000039e7fd3 (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39e7fd3)\n #9 0x0000000003aa01d1 (anonymous namespace)::DAGCombiner::visitFREEZE(llvm::SDNode*) (.isra.0) DAGCombiner.cpp:0:0\n#10 0x0000000003abcc7f (anonymous namespace)::DAGCombiner::visit(llvm::SDNode*) DAGCombiner.cpp:0:0\n#11 0x0000000003abf3ac (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#12 0x0000000003ac0c98 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#13 0x0000000003ac35ab llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ac35ab)\n#14 0x0000000003c24ba9 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c24ba9)\n#15 0x0000000003c288d5 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c288d5)\n#16 0x0000000003c29b75 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c29b75)\n#17 0x0000000003c1a4ef llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c1a4ef)\n#18 0x0000000002da289a llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#19 0x00000000033b772f llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x33b772f)\n#20 0x00000000033b7ae1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x33b7ae1)\n#21 0x00000000033b8381 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x33b8381)\n#22 0x00000000008c51b3 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#23 0x00000000007b4cde main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7b4cde)\n#24 0x0000715c02a29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#25 0x0000715c02a29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#26 0x00000000008bb995 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8bb995)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\nllvm version: 3302bef5b41a99547f10b91d0aabe59aa3dc7fb0",
+    "comments": [
+      {
+        "author": "dtcxzyw",
+        "body": "Further reduced IR: https://godbolt.org/z/bhGcPezjM"
+      }
+    ],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG",
+      "generated by fuzzer"
+    ],
+    "title": "[DAGCombiner] Assertion `Num < NumOperands && \"Invalid child # of SDNode!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/128143",
+  "knowledge_cutoff": "2025-02-21T07:26:49Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 646e4f2eede9a39e46012dde9430cd289682e83c\nAuthor: Yingwei Zheng <dtcxzyw2333@gmail.com>\nDate:   Sat Feb 22 12:06:34 2025 +0800\n\n    [DAGCombiner] visitFREEZE: Early exit when N is deleted (#128161)\n    \n    `N` may get merged with existing nodes inside the loop. Early exit when\n    it is deleted to avoid the crash.\n    Alternative solution: use `DAGNodeDeletedListener` to refresh the value\n    of N.\n    \n    Closes https://github.com/llvm/llvm-project/issues/128143.\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex b07f3814d9d2..a83be13ebff2 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -16158,11 +16158,13 @@ SDValue DAGCombiner::visitFREEZE(SDNode *N) {\n       DAG.UpdateNodeOperands(FrozenMaybePoisonOperand.getNode(),\n                              MaybePoisonOperand);\n     }\n+\n+    // This node has been merged with another.\n+    if (N->getOpcode() == ISD::DELETED_NODE)\n+      return SDValue(N, 0);\n   }\n \n-  // This node has been merged with another.\n-  if (N->getOpcode() == ISD::DELETED_NODE)\n-    return SDValue(N, 0);\n+  assert(N->getOpcode() != ISD::DELETED_NODE && \"Node was deleted!\");\n \n   // The whole node may have been updated, so the value we were holding\n   // may no longer be valid. Re-fetch the operand we're `freeze`ing.\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64--"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr128143.ll",
+      "tests": [
+        {
+          "test_body": "\n@g_1 = external global i8\n@g_2 = external global i8\n\n; Make sure we don't crash on this test.\n\ndefine i1 @test(i1 %cmp1, i32 %x) {\nentry:\n  %cmp2 = icmp ne ptr @g_1, @g_2\n  %fr = freeze ptr @g_1\n  %cmp3 = icmp ne ptr %fr, @g_2\n  %ext1 = zext i1 %cmp3 to i32\n  %sel1 = select i1 %cmp1, i1 %cmp2, i1 false\n  %cmp4 = icmp ult i32 %x, %ext1\n  %sel3 = select i1 %cmp1, i1 %cmp4, i1 false\n  %or = or i1 %sel1, %sel3\n  ret i1 %or\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

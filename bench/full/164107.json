@@ -1,0 +1,78 @@
+{
+  "base_commit": "f5ae102745bd5c2abf7b9bcdc1f7e765951c648b",
+  "bug_id": "164107",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "combineTruncationShuffle"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          26876,
+          26881
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "a51e498ea6e14cdfbed587a7901ea237706b9ccb"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/v77zoxcv6\nTestcase:\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\ndefine i32 @func_1(<16 x i1> %0) #0 {\nentry:\n  %cmp = shufflevector <16 x i1> %0, <16 x i1> zeroinitializer, <16 x i32> zeroinitializer\n  %sext = sext <16 x i1> %cmp to <16 x i64>\n  %1 = bitcast <16 x i64> %sext to <64 x i16>\n  %vecinit15.i = shufflevector <64 x i16> %1, <64 x i16> zeroinitializer, <16 x i32> <i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56>\n  %conv16.i = sext <16 x i16> %vecinit15.i to <16 x i64>\n  %2 = bitcast <16 x i64> %conv16.i to <32 x i32>\n  %conv22.i = extractelement <32 x i32> %2, i64 4\n  ret i32 %conv22.i\n}\n\nattributes #0 = { \"target-features\"=\"+avx\" }\n```\nllc error:\n```\nllc: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:6749: llvm::SDValue llvm::SelectionDAG::getNode(unsigned int, const llvm::SDLoc&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags): Assertion `VT.getSizeInBits() == N1.getValueSizeInBits() && \"Cannot BITCAST between types of different sizes!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -O1 <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@func_1'\n #0 0x0000000004166dd8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4166dd8)\n #1 0x0000000004163c84 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007645ba642520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007645ba6969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007645ba642476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007645ba6287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007645ba62871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007645ba639e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000003eae8cd llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3eae8cd)\n #9 0x0000000003eb0bbd llvm::SelectionDAG::getBitcast(llvm::EVT, llvm::SDValue) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3eb0bbd)\n#10 0x0000000003d4a1d0 (anonymous namespace)::DAGCombiner::visitVECTOR_SHUFFLE(llvm::SDNode*) DAGCombiner.cpp:0:0\n#11 0x0000000003d875ef (anonymous namespace)::DAGCombiner::visit(llvm::SDNode*) DAGCombiner.cpp:0:0\n#12 0x0000000003d88d7c (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#13 0x0000000003d8a7ed (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#14 0x0000000003d8d353 llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3d8d353)\n#15 0x0000000003ef6ff4 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ef6ff4)\n#16 0x0000000003efacbd llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3efacbd)\n#17 0x0000000003efc2a5 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3efc2a5)\n#18 0x0000000003ee7aaf llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ee7aaf)\n#19 0x00000000030547b9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#20 0x00000000036a2a88 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36a2a88)\n#21 0x00000000036a2cc1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36a2cc1)\n#22 0x00000000036a352f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36a352f)\n#23 0x00000000008f5a49 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#24 0x00000000007c3ba6 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c3ba6)\n#25 0x00007645ba629d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#26 0x00007645ba629e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#27 0x00000000008eb085 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8eb085)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\ncc @RKSimon @phoebewang ",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "I'll take a look "
+      }
+    ],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[X86] llc crashed at O1/O2/O3 and asserted \"Cannot BITCAST between types of different sizes!\""
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/164107",
+  "knowledge_cutoff": "2025-10-18T18:00:24Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit a51e498ea6e14cdfbed587a7901ea237706b9ccb\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Sun Oct 19 15:15:33 2025 +0100\n\n    [DAG] combineTruncationShuffle - ensure the *_EXTEND_VECTOR_INREG node didn't come from a smaller type (#164160)\n    \n    The *_EXTEND_VECTOR_INREG source vector must be the same size as the destination\n    \n    We already have a similar TODO to handle more types.\n    \n    Fixes #164107\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex c97300d64d45..6bf9008c3d67 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -26876,6 +26876,8 @@ static SDValue combineTruncationShuffle(ShuffleVectorSDNode *SVN,\n   // TODO: handle more extension/truncation cases as cases arise.\n   if (EltSizeInBits != ExtSrcSizeInBits)\n     return SDValue();\n+  if (VT.getSizeInBits() != N00.getValueSizeInBits())\n+    return SDValue();\n \n   // We can remove *extend_vector_inreg only if the truncation happens at\n   // the same scale as the extension.\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -disable-peephole -mtriple=i686-unknown -mattr=+avx",
+        "llc < %s -disable-peephole -mtriple=i686-unknown -mattr=+avx2",
+        "llc < %s -disable-peephole -mtriple=i686-unknown -mattr=+avx512f",
+        "llc < %s -disable-peephole -mtriple=x86_64-unknown -mattr=+avx",
+        "llc < %s -disable-peephole -mtriple=x86_64-unknown -mattr=+avx2",
+        "llc < %s -disable-peephole -mtriple=x86_64-unknown -mattr=+avx512f"
+      ],
+      "file": "llvm/test/CodeGen/X86/vector-shuffle-combining-avx.ll",
+      "tests": [
+        {
+          "test_body": "define void @PR48908(<4 x double> %v0, <4 x double> %v1, <4 x double> %v2, ptr noalias %out0, ptr noalias %out1, ptr noalias %out2) {\n  %t0 = shufflevector <4 x double> %v0, <4 x double> %v1, <4 x i32> <i32 0, i32 1, i32 2, i32 4>\n  %t1 = shufflevector <4 x double> %v1, <4 x double> %v2, <4 x i32> <i32 1, i32 2, i32 4, i32 5>\n  %r0 = shufflevector <4 x double> %t0, <4 x double> %t1, <4 x i32> <i32 0, i32 3, i32 6, i32 1>\n  store <4 x double> %r0, ptr %out0, align 32\n  %r1 = shufflevector <4 x double> %t0, <4 x double> %t1, <4 x i32> <i32 4, i32 7, i32 2, i32 5>\n  store <4 x double> %r1, ptr %out1, align 32\n  %t2 = shufflevector <4 x double> %v0, <4 x double> %v1, <4 x i32> <i32 3, i32 7, i32 poison, i32 poison>\n  %r2 = shufflevector <4 x double> %t2, <4 x double> %v2, <4 x i32> <i32 6, i32 0, i32 1, i32 7>\n  store <4 x double> %r2, ptr %out2, align 32\n  ret void\n}\n",
+          "test_name": "PR48908"
+        },
+        {
+          "test_body": "define <4 x i64> @concat_self_v4i64(<2 x i64> %x) {\n  %cat = shufflevector <2 x i64> %x, <2 x i64> undef, <4 x i32> <i32 0, i32 1, i32 0, i32 1>\n  %s = shufflevector <4 x i64> %cat, <4 x i64> undef, <4 x i32> <i32 0, i32 2, i32 1, i32 3>\n  ret <4 x i64> %s\n}\n",
+          "test_name": "concat_self_v4i64"
+        },
+        {
+          "test_body": "define i32 @PR164107(<16 x i1> %0) {\n  %cmp = shufflevector <16 x i1> %0, <16 x i1> zeroinitializer, <16 x i32> zeroinitializer\n  %sext = sext <16 x i1> %cmp to <16 x i64>\n  %bc.1 = bitcast <16 x i64> %sext to <64 x i16>\n  %vecinit15.i = shufflevector <64 x i16> %bc.1, <64 x i16> zeroinitializer, <16 x i32> <i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56, i32 56>\n  %conv16.i = sext <16 x i16> %vecinit15.i to <16 x i64>\n  %bc.2 = bitcast <16 x i64> %conv16.i to <32 x i32>\n  %conv22.i = extractelement <32 x i32> %bc.2, i64 4\n  ret i32 %conv22.i\n}\n",
+          "test_name": "PR164107"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

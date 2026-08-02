@@ -1,0 +1,84 @@
+{
+  "base_commit": "2ce48b2691a49e91dc8ecd6dfb7eeb533f77a5c1",
+  "bug_id": "171879",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/PowerPC/PPCISelLowering.cpp": [
+        "PPCTargetLowering::PPCTargetLowering",
+        "PPCTargetLowering::PerformDAGCombine",
+        "PPCTargetLowering::hasMultipleConditionRegisters"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/PowerPC/PPCISelLowering.cpp": [
+        [
+          1455,
+          1460
+        ],
+        [
+          18226,
+          18231
+        ],
+        [
+          20665,
+          20667
+        ]
+      ],
+      "llvm/lib/Target/PowerPC/PPCISelLowering.h": [
+        [
+          925,
+          930
+        ]
+      ]
+    },
+    "components": [
+      "PowerPC"
+    ],
+    "fix_commit": "668938917493fe05c98d5b725f68dfd17ab8eb2f"
+  },
+  "issue": {
+    "author": "alexrp",
+    "body": "```llvm\ntarget datalayout = \"e-m:e-Fn32-i64:64-i128:128-n32:64-S128-v256:256:256-v512:512:512\"\ntarget triple = \"powerpc64le-unknown-linux5.10.0-musl\"\n\ndefine fastcc <16 x i16> @crypto.Certificate.rsa.PKCS1v1_5Signature.verify__anon_1281860(<16 x i1> %0) #0 {\nEntry:\n  %1 = bitcast <16 x i1> %0 to i16\n  %2 = insertelement <16 x i16> zeroinitializer, i16 %1, i64 0\n  ret <16 x i16> %2\n}\n\nattributes #0 = { \"target-cpu\"=\"pwr10\" }\n```\n\n```\n\u276f llc --version | head -n2\nLLVM (http://llvm.org/):\n  LLVM version 21.1.8\n\u276f llc -O3 reduced.ll\nllc: /home/alexrp/Sources/llvm/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:6564: llvm::SDValue llvm::SelectionDAG::getNode(unsigned int, const llvm::SDLoc&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags): Assertion `VT.getSizeInBits() == N1.getValueSizeInBits() && \"Cannot BITCAST between types of different sizes!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: llc -O3 reduced.ll\n1.\tRunning pass 'Function Pass Manager' on module 'reduced.ll'.\n2.\tRunning pass 'PowerPC DAG->DAG Pattern Instruction Selection' on function '@crypto.Certificate.rsa.PKCS1v1_5Signature.verify__anon_1281860'\n #0 0x000070b2893b456d llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) /home/alexrp/Sources/llvm/llvm/lib/Support/Unix/Signals.inc:838:3\n #1 0x000070b2893b16a4 llvm::sys::RunSignalHandlers() /home/alexrp/Sources/llvm/llvm/lib/Support/Signals.cpp:104:20\n #2 0x000070b2893b1ebc SignalHandler(int, siginfo_t*, void*) /home/alexrp/Sources/llvm/llvm/lib/Support/Unix/Signals.inc:426:14\n #3 0x000070b287c45f60 (/lib/x86_64-linux-gnu/libc.so.6+0x45f60)\n #4 0x000070b287ca5fed __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x000070b287ca5fed __pthread_kill_internal ./nptl/pthread_kill.c:89:10\n #6 0x000070b287ca5fed pthread_kill ./nptl/pthread_kill.c:100:10\n #7 0x000070b287c45e2e raise ./signal/../sysdeps/posix/raise.c:27:6\n #8 0x000070b287c28888 internal_signal_block_all ./stdlib/../sysdeps/unix/sysv/linux/internal-signals.h:81:3\n #9 0x000070b287c28888 __abort_lock_wrlock ./stdlib/abort.c:62:3\n#10 0x000070b287c28888 abort ./stdlib/abort.c:85:3\n#11 0x000070b287c287f0 __assert_perror_fail ./assert/assert-perr.c:31:1\n#12 0x000070b288d4e3a1 llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags) (.cold) /home/alexrp/Sources/llvm/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:6406:5\n#13 0x000070b289dd8452 (anonymous namespace)::SelectionDAGLegalize::PromoteNode(llvm::SDNode*) /home/alexrp/Sources/llvm/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:5538:10\n#14 0x000070b289de4828 llvm::SelectionDAG::Legalize() /home/alexrp/Sources/llvm/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:6120:28\n#15 0x000070b289fc035b llvm::TimeRegion::~TimeRegion() /home/alexrp/Sources/llvm/llvm/include/llvm/Support/Timer.h:162:9\n#16 0x000070b289fc035b llvm::NamedRegionTimer::~NamedRegionTimer() /home/alexrp/Sources/llvm/llvm/include/llvm/Support/Timer.h:170:8\n#17 0x000070b289fc035b llvm::SelectionDAGISel::CodeGenAndEmitDAG() /home/alexrp/Sources/llvm/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1068:3\n#18 0x000070b289fc3bb8 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) /home/alexrp/Sources/llvm/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1891:33\n#19 0x000070b289fc53fc llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Sources/llvm/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:605:22\n#20 0x000070b28d2c03fc (anonymous namespace)::PPCDAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Sources/llvm/llvm/lib/Target/PowerPC/PPCISelDAGToDAG.cpp:172:5\n#21 0x000070b289fbcd81 llvm::OptLevelChanger::~OptLevelChanger() /home/alexrp/Sources/llvm/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:267:11\n#22 0x000070b289fbcd81 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Sources/llvm/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:373:1\n#23 0x000070b289fbcd81 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Sources/llvm/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:345:6\n#24 0x000070b2898fe32a llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) /home/alexrp/Sources/llvm/llvm/lib/CodeGen/MachineFunctionPass.cpp:108:30\n#25 0x000070b289571faa llvm::FPPassManager::runOnFunction(llvm::Function&) /home/alexrp/Sources/llvm/llvm/lib/IR/LegacyPassManager.cpp:1398:40\n#26 0x000070b2895721b5 llvm::ilist_detail::node_base_prevnext<llvm::ilist_node_base<true, void>, true>::getNext() const /home/alexrp/Sources/llvm/llvm/include/llvm/ADT/ilist_node_base.h:42:38\n#27 0x000070b2895721b5 llvm::ilist_node_impl<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false, void>>::getNext() /home/alexrp/Sources/llvm/llvm/include/llvm/ADT/ilist_node.h:119:66\n#28 0x000070b2895721b5 llvm::ilist_iterator<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false, void>, false, false>::operator++() /home/alexrp/Sources/llvm/llvm/include/llvm/ADT/ilist_iterator.h:187:25\n#29 0x000070b2895721b5 llvm::FPPassManager::runOnModule(llvm::Module&) /home/alexrp/Sources/llvm/llvm/lib/IR/LegacyPassManager.cpp:1443:22\n#30 0x000070b289572a4f runOnModule /home/alexrp/Sources/llvm/llvm/lib/IR/LegacyPassManager.cpp:1513:38\n#31 0x000070b289572a4f llvm::legacy::PassManagerImpl::run(llvm::Module&) /home/alexrp/Sources/llvm/llvm/lib/IR/LegacyPassManager.cpp:531:55\n#32 0x0000615181f0f1b9 compileModule(char**, llvm::LLVMContext&) /home/alexrp/Sources/llvm/llvm/tools/llc/llc.cpp:761:34\n#33 0x0000615181f03707 main /home/alexrp/Sources/llvm/llvm/tools/llc/llc.cpp:404:35\n#34 0x000070b287c2a575 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#35 0x000070b287c2a628 call_init ./csu/../csu/libc-start.c:128:20\n#36 0x000070b287c2a628 __libc_start_main ./csu/../csu/libc-start.c:347:5\n#37 0x0000615181f04cf5 _start (/opt/llvm-21/bin/llc+0x14cf5)\n```",
+    "comments": [
+      {
+        "author": "alexrp",
+        "body": "Friendly ping. This has us disabling all of Zig's HTTP(S) tests on PowerPC, and also renders the package manager non-functional, so it's fairly high impact."
+      }
+    ],
+    "labels": [
+      "backend:PowerPC",
+      "release:backport",
+      "crash-on-valid"
+    ],
+    "title": "[llvm][PowerPC] `Assertion 'VT.getSizeInBits() == N1.getValueSizeInBits() && \"Cannot BITCAST between types of different sizes!\"' failed.`"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/171879",
+  "knowledge_cutoff": "2025-12-11T18:12:47Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/PowerPC"
+  ],
+  "patch": "commit 668938917493fe05c98d5b725f68dfd17ab8eb2f\nAuthor: Maryam Moghadas <maryammo@ca.ibm.com>\nDate:   Tue Apr 7 10:03:24 2026 -0400\n\n    [PowerPC] Optimize bitcast(truncate) patterns using vbpermq (#181233)\n    \n    Use vbpermq and vbpermd to efficiently pack i1 vector bits into scalar\n    integers, avoiding stack operations during type legalization.\n    Fixes https://github.com/llvm/llvm-project/issues/171879\n\ndiff --git a/llvm/lib/Target/PowerPC/PPCISelLowering.cpp b/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\nindex 753306a8d365..d21ccb59f996 100644\n--- a/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\n+++ b/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\n@@ -1455,6 +1455,9 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,\n     setTargetDAGCombine({ISD::TRUNCATE, ISD::SETCC, ISD::SELECT_CC});\n   }\n \n+  if (Subtarget.hasP8Vector())\n+    setTargetDAGCombine(ISD::BITCAST);\n+\n   // With 32 condition bits, we don't need to sink (and duplicate) compares\n   // aggressively in CodeGenPrep.\n   if (Subtarget.useCRBits()) {\n@@ -18226,6 +18229,9 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,\n     return DAGCombineBuildVector(N, DCI);\n   case PPCISD::ADDC:\n     return DAGCombineAddc(N, DCI);\n+\n+  case ISD::BITCAST:\n+    return DAGCombineBitcast(N, DCI);\n   }\n \n   return SDValue();\n@@ -20665,3 +20671,76 @@ Value *PPCTargetLowering::emitMaskedAtomicCmpXchgIntrinsic(\n bool PPCTargetLowering::hasMultipleConditionRegisters(EVT VT) const {\n   return Subtarget.useCRBits();\n }\n+\n+/// Shuffle masks for vectors of bits are not legal as such vectors are\n+/// reserved for MMA/DM.\n+bool PPCTargetLowering::isShuffleMaskLegal(ArrayRef<int> Mask, EVT VT) const {\n+  if (VT.getScalarType() == MVT::i1)\n+    return false;\n+  return TargetLowering::isShuffleMaskLegal(Mask, VT);\n+}\n+\n+// Optimize the following patterns using vbpermq/vbpermd:\n+//   i16 = bitcast(v16i1 truncate(v16i8))\n+//   i8  = bitcast(v8i1  truncate(v8i16))\n+//   i8  = bitcast(v8i1  truncate(v8i8))\n+SDValue PPCTargetLowering::DAGCombineBitcast(SDNode *N,\n+                                             DAGCombinerInfo &DCI) const {\n+  SDValue Op0 = N->getOperand(0);\n+  if (Op0.getOpcode() != ISD::TRUNCATE)\n+    return SDValue();\n+  SDValue Src = Op0.getOperand(0);\n+  EVT ResVT = N->getValueType(0);\n+  EVT TruncResVT = Op0.getValueType();\n+  EVT SrcVT = Src.getValueType();\n+  SDLoc dl(N);\n+  SelectionDAG &DAG = DCI.DAG;\n+  bool IsLittleEndian = Subtarget.isLittleEndian();\n+\n+  if (ResVT != MVT::i16 && ResVT != MVT::i8)\n+    return SDValue();\n+  SDValue VBPerm =\n+      GenerateVBPERM(DAG, dl, Src, SrcVT, TruncResVT, IsLittleEndian);\n+  if (!VBPerm)\n+    return SDValue();\n+  SDValue ForExtract = DAG.getBitcast(MVT::v4i32, VBPerm);\n+  SDValue Extracted =\n+      DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl, MVT::i32, ForExtract,\n+                  DAG.getIntPtrConstant(IsLittleEndian ? 2 : 1, dl));\n+  return DAG.getNode(ISD::TRUNCATE, dl, ResVT, Extracted);\n+}\n+\n+SDValue PPCTargetLowering::GenerateVBPERM(SelectionDAG &DAG, SDLoc dl,\n+                                          SDValue Src, EVT SrcVT, EVT ResVT,\n+                                          bool IsLE) const {\n+  bool IsV16i8 = (ResVT == MVT::v16i1 && SrcVT == MVT::v16i8);\n+  bool IsV8i16 = (ResVT == MVT::v8i1 && SrcVT == MVT::v8i16);\n+  bool IsV8i8 = (ResVT == MVT::v8i1 && SrcVT == MVT::v8i8);\n+\n+  if (!IsV16i8 && !IsV8i16 && !IsV8i8)\n+    return SDValue();\n+\n+  if (IsV8i8) {\n+    Src = DAG.getNode(ISD::INSERT_SUBVECTOR, dl, MVT::v16i8,\n+                      DAG.getUNDEF(MVT::v16i8), Src,\n+                      DAG.getIntPtrConstant(0, dl));\n+  }\n+  SmallVector<int, 16> BitIndices(16, 128);\n+  unsigned NumElts = SrcVT.getVectorNumElements();\n+  unsigned EltSize = SrcVT.getScalarType().getSizeInBits();\n+  for (int Idx = 0, End = SrcVT.getVectorNumElements(); Idx < End; Idx++) {\n+    BitIndices[Idx] = EltSize * (NumElts - Idx) - 1;\n+    if (IsV8i8 && IsLE)\n+      BitIndices[Idx] += 64;\n+  }\n+  if (!IsLE)\n+    std::reverse(BitIndices.begin(), BitIndices.end());\n+  SmallVector<SDValue, 16> BVOps;\n+  for (auto Idx : BitIndices)\n+    BVOps.push_back(DAG.getConstant(Idx, dl, MVT::i8));\n+  SDValue VRB = DAG.getBuildVector(MVT::v16i8, dl, BVOps);\n+  return DAG.getNode(\n+      ISD::INTRINSIC_WO_CHAIN, dl, MVT::v16i8,\n+      DAG.getConstant(Intrinsic::ppc_altivec_vbpermq, dl, MVT::i32),\n+      DAG.getBitcast(MVT::v16i8, Src), VRB);\n+}\ndiff --git a/llvm/lib/Target/PowerPC/PPCISelLowering.h b/llvm/lib/Target/PowerPC/PPCISelLowering.h\nindex cfcc6b5f03ed..7077d7fa486e 100644\n--- a/llvm/lib/Target/PowerPC/PPCISelLowering.h\n+++ b/llvm/lib/Target/PowerPC/PPCISelLowering.h\n@@ -925,6 +925,12 @@ namespace llvm {\n     bool mayBeEmittedAsTailCall(const CallInst *CI) const override;\n     bool isMaskAndCmp0FoldingBeneficial(const Instruction &AndI) const override;\n \n+    bool isShuffleMaskLegal(ArrayRef<int> M, EVT VT) const override;\n+\n+    SDValue DAGCombineBitcast(SDNode *N, DAGCombinerInfo &DCI) const;\n+    SDValue GenerateVBPERM(SelectionDAG &DAG, SDLoc dl, SDValue Src, EVT SrcVT,\n+                           EVT ResVT, bool IsLE) const;\n+\n     /// getAddrModeForFlags - Based on the set of address flags, select the most\n     /// optimal instruction format to match by.\n     PPC::AddrMode getAddrModeForFlags(unsigned Flags) const;\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=powerpc64le -mcpu=pwr10 < %s",
+        "llc -mtriple=powerpc64 -mcpu=pwr10 < %s",
+        "llc -mtriple=powerpc64 -mcpu=pwr7 < %s"
+      ],
+      "file": "llvm/test/CodeGen/PowerPC/bitcast-truncate-vec-i1.ll",
+      "tests": [
+        {
+          "test_body": "\n; i16 = bitcast(v16i1 truncate(v16i8))\ndefine fastcc <16 x i16> @test_v16i8_to_i16(<16 x i1> %0) {\n;\n;\nEntry:\n  %1 = bitcast <16 x i1> %0 to i16\n  %2 = insertelement <16 x i16> zeroinitializer, i16 %1, i64 0\n  ret <16 x i16> %2\n}\n\n; i8 = bitcast(v8i1 truncate(v8i16))\ndefine fastcc <16 x i8> @test_v8i16_to_i8(<8 x i1> %0) {\n;\n;\nEntry:\n  %2 = bitcast <8 x i1> %0 to i8\n  %3 = insertelement <16 x i8> zeroinitializer, i8 %2, i64 0\n  ret <16 x i8> %3\n}\n\n; i8 = bitcast(v8i1 truncate(v8i8))\ndefine i8 @test_v8i8_to_i8(<8 x i8> %a) {\n;\n;\n  %1 = trunc <8 x i8> %a to <8 x i1>\n  %2 = bitcast <8 x i1> %1 to i8\n  ret i8 %2\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

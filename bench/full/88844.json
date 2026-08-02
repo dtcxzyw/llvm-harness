@@ -1,0 +1,80 @@
+{
+  "base_commit": "73d423319c0957a9b16ed8d5fb7c8336729b9c38",
+  "bug_id": "88844",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/PowerPC/PPCMergeStringPool.cpp": [
+        "PPCMergeStringPool::replaceUsesWithGEP",
+        "hasReplaceableUsers"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/PowerPC/PPCMergeStringPool.cpp": [
+        [
+          23,
+          28
+        ],
+        [
+          117,
+          125
+        ],
+        [
+          314,
+          327
+        ],
+        [
+          330,
+          367
+        ]
+      ]
+    },
+    "components": [
+      "PowerPC"
+    ],
+    "fix_commit": "3a3aeb8eba40e981d3a9ff92175f949c2f3d4434"
+  },
+  "issue": {
+    "author": "nikic",
+    "body": "```llvm\r\ntarget datalayout = \"e-m:e-Fn32-i64:64-n32:64-S128-v256:256:256-v512:512:512\"\r\ntarget triple = \"ppc64le-redhat-linux-gnu\"\r\n\r\n@id = private unnamed_addr constant [4 x i8] c\"@id\\00\", align 1\r\n\r\n; Higher-aligned dummy to make sure it is first in the string pool.\r\n@dummy = private unnamed_addr constant [1 x i32] [i32 42], align 4\r\n\r\ndefine ptr @test() personality ptr @__gnu_objc_personality_v0 {\r\n  invoke void @foo(ptr @dummy)\r\n          to label %cont unwind label %unwind\r\n\r\ncont:\r\n  unreachable\r\n\r\nunwind:\r\n  %lp = landingpad { ptr, i32 }\r\n          catch ptr @id\r\n  %id = tail call i32 @llvm.eh.typeid.for(ptr @id)\r\n  resume { ptr, i32 } %lp\r\n}\r\n\r\ndeclare i32 @__gnu_objc_personality_v0(...)\r\n\r\ndeclare i32 @llvm.eh.typeid.for(ptr)\r\n\r\ndeclare void @foo()\r\n```\r\n\r\nPPC string pool merging replaces the `@id` uses with string pool references. Both of these (in catch and in llvm.eh.typeid.for) are illegal as they are required to be constants.",
+    "comments": [
+      {
+        "author": "nikic",
+        "body": "Backport PR: https://github.com/llvm/llvm-project/pull/91557"
+      }
+    ],
+    "labels": [
+      "backend:PowerPC",
+      "release:backport",
+      "release:cherry-pick-failed",
+      "llvm:crash"
+    ],
+    "title": "[PPCMergeStringPool] Global variables replaced with GEP instructions where not legal"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/88844",
+  "knowledge_cutoff": "2024-04-16T05:20:22Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/PowerPC"
+  ],
+  "patch": "commit 3a3aeb8eba40e981d3a9ff92175f949c2f3d4434\nAuthor: Nikita Popov <npopov@redhat.com>\nDate:   Thu May 9 13:27:20 2024 +0900\n\n    [PPCMergeStringPool] Avoid replacing constant with instruction (#88846)\n    \n    String pool merging currently, for a reason that's not entirely clear to\n    me, tries to create GEP instructions instead of GEP constant expressions\n    when replacing constant references. It only uses constant expressions in\n    cases where this is required. However, it does not catch all cases where\n    such a requirement exists. For example, the landingpad catch clause has\n    to be a constant.\n    \n    Fix this by always using the constant expression variant, which also\n    makes the implementation simpler.\n    \n    Additionally, there are some edge cases where even replacement with a\n    constant GEP is not legal. The one I am aware of is the\n    llvm.eh.typeid.for intrinsic, so add a special case to forbid\n    replacements for it.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/88844.\n\ndiff --git a/llvm/lib/Target/PowerPC/PPCMergeStringPool.cpp b/llvm/lib/Target/PowerPC/PPCMergeStringPool.cpp\nindex 76d60c28f1e4..abc5353e4a5e 100644\n--- a/llvm/lib/Target/PowerPC/PPCMergeStringPool.cpp\n+++ b/llvm/lib/Target/PowerPC/PPCMergeStringPool.cpp\n@@ -23,6 +23,7 @@\n #include \"llvm/Analysis/ScalarEvolutionAliasAnalysis.h\"\n #include \"llvm/IR/Constants.h\"\n #include \"llvm/IR/Instructions.h\"\n+#include \"llvm/IR/IntrinsicInst.h\"\n #include \"llvm/IR/Module.h\"\n #include \"llvm/IR/ValueSymbolTable.h\"\n #include \"llvm/Pass.h\"\n@@ -117,9 +118,20 @@ private:\n // sure that they can be replaced.\n static bool hasReplaceableUsers(GlobalVariable &GV) {\n   for (User *CurrentUser : GV.users()) {\n-    // Instruction users are always valid.\n-    if (isa<Instruction>(CurrentUser))\n+    if (auto *I = dyn_cast<Instruction>(CurrentUser)) {\n+      // Do not merge globals in exception pads.\n+      if (I->isEHPad())\n+        return false;\n+\n+      if (auto *II = dyn_cast<IntrinsicInst>(I)) {\n+        // Some intrinsics require a plain global.\n+        if (II->getIntrinsicID() == Intrinsic::eh_typeid_for)\n+          return false;\n+      }\n+\n+      // Other instruction users are always valid.\n       continue;\n+    }\n \n     // We cannot replace GlobalValue users because they are not just nodes\n     // in IR. To replace a user like this we would need to create a new\n@@ -314,14 +326,6 @@ void PPCMergeStringPool::replaceUsesWithGEP(GlobalVariable *GlobalToReplace,\n     Users.push_back(CurrentUser);\n \n   for (User *CurrentUser : Users) {\n-    Instruction *UserInstruction = dyn_cast<Instruction>(CurrentUser);\n-    Constant *UserConstant = dyn_cast<Constant>(CurrentUser);\n-\n-    // At this point we expect that the user is either an instruction or a\n-    // constant.\n-    assert((UserConstant || UserInstruction) &&\n-           \"Expected the user to be an instruction or a constant.\");\n-\n     // The user was not found so it must have been replaced earlier.\n     if (!userHasOperand(CurrentUser, GlobalToReplace))\n       continue;\n@@ -330,38 +334,13 @@ void PPCMergeStringPool::replaceUsesWithGEP(GlobalVariable *GlobalToReplace,\n     if (isa<GlobalValue>(CurrentUser))\n       continue;\n \n-    if (!UserInstruction) {\n-      // User is a constant type.\n-      Constant *ConstGEP = ConstantExpr::getInBoundsGetElementPtr(\n-          PooledStructType, GPool, Indices);\n-      UserConstant->handleOperandChange(GlobalToReplace, ConstGEP);\n-      continue;\n-    }\n-\n-    if (PHINode *UserPHI = dyn_cast<PHINode>(UserInstruction)) {\n-      // GEP instructions cannot be added before PHI nodes.\n-      // With getInBoundsGetElementPtr we create the GEP and then replace it\n-      // inline into the PHI.\n-      Constant *ConstGEP = ConstantExpr::getInBoundsGetElementPtr(\n-          PooledStructType, GPool, Indices);\n-      UserPHI->replaceUsesOfWith(GlobalToReplace, ConstGEP);\n-      continue;\n-    }\n-    // The user is a valid instruction that is not a PHINode.\n-    GetElementPtrInst *GEPInst =\n-        GetElementPtrInst::Create(PooledStructType, GPool, Indices);\n-    GEPInst->insertBefore(UserInstruction);\n-\n-    LLVM_DEBUG(dbgs() << \"Inserting GEP before:\\n\");\n-    LLVM_DEBUG(UserInstruction->dump());\n-\n+    Constant *ConstGEP = ConstantExpr::getInBoundsGetElementPtr(\n+        PooledStructType, GPool, Indices);\n     LLVM_DEBUG(dbgs() << \"Replacing this global:\\n\");\n     LLVM_DEBUG(GlobalToReplace->dump());\n     LLVM_DEBUG(dbgs() << \"with this:\\n\");\n-    LLVM_DEBUG(GEPInst->dump());\n-\n-    // After the GEP is inserted the GV can be replaced.\n-    CurrentUser->replaceUsesOfWith(GlobalToReplace, GEPInst);\n+    LLVM_DEBUG(ConstGEP->dump());\n+    GlobalToReplace->replaceAllUsesWith(ConstGEP);\n   }\n }\n \n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=ppc64le-unknown-linux-gnu < %s"
+      ],
+      "file": "llvm/test/CodeGen/PowerPC/mergeable-string-pool-exceptions.ll",
+      "tests": [
+        {
+          "test_body": "\n@id = private unnamed_addr constant [4 x i8] c\"@id\\00\", align 1\n@id2 = private unnamed_addr constant [5 x i8] c\"@id2\\00\", align 1\n\n; Higher-aligned dummy to make sure it is first in the string pool.\n@dummy = private unnamed_addr constant [1 x i32] [i32 42], align 4\n\ndefine ptr @test1() personality ptr @__gnu_objc_personality_v0 {\n  invoke void @foo(ptr @dummy)\n          to label %cont unwind label %unwind\n\ncont:\n  unreachable\n\nunwind:\n  %lp = landingpad { ptr, i32 }\n          catch ptr @id\n  resume { ptr, i32 } %lp\n}\n\ndefine i32 @test2() personality ptr @__gnu_objc_personality_v0 {\n  %id = tail call i32 @llvm.eh.typeid.for(ptr @id2)\n  ret i32 %id\n}\n\ndeclare i32 @__gnu_objc_personality_v0(...)\n\ndeclare i32 @llvm.eh.typeid.for(ptr)\n\ndeclare void @foo()",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

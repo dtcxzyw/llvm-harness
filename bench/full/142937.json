@@ -1,0 +1,61 @@
+{
+  "base_commit": "392bd577e37d795224da6fefc4b621a3f117105e",
+  "bug_id": "142937",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp": [
+        "SelectionDAGBuilder::visitIntrinsicCall"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp": [
+        [
+          7384,
+          7389
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "d6ecd6a658103adc76cf67de64e0b5b399e6fcef"
+  },
+  "issue": {
+    "author": "abhishek-kaushik22",
+    "body": "Godbolt: https://godbolt.org/z/r1feYojPc\n\nWhen trying to bisect a file compiled with `-flto` I encountered a compiler crash \n```\nBISECT: NOT running pass (1) Merge contiguous icmps into a memcmp on function (wombat)\nBISECT: NOT running pass (2) Expand memcmp() to load/stores on function (wombat)\nBISECT: NOT running pass (3) Constant Hoisting on function (wombat)\nBISECT: NOT running pass (4) Partially inline calls to library functions on function (wombat)\nBISECT: NOT running pass (5) X86 Partial Reduction on function (wombat)\nBISECT: NOT running pass (6) CodeGen Prepare on function (wombat)\nBISECT: NOT running pass (7) X86 DAG->DAG Instruction Selection on function (wombat)\nllc: /root/llvm-project/llvm/include/llvm/Support/Casting.h:578: decltype(auto) llvm::cast(From*) [with To = llvm::MDNode; From = llvm::Metadata]: Assertion `isa<To>(Val) && \"cast<Ty>() argument of incompatible type!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -opt-bisect-limit=0 -mtriple=x86_64-- <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@wombat'\n #0 0x0000000003f17898 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f17898)\n #1 0x0000000003f15224 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007c77e3a42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007c77e3a969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007c77e3a42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007c77e3a287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007c77e3a2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007c77e3a39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000003beb607 llvm::SelectionDAGBuilder::getValueImpl(llvm::Value const*) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3beb607)\n #9 0x0000000003bf1c83 llvm::SelectionDAGBuilder::getValue(llvm::Value const*) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3bf1c83)\n#10 0x0000000003c03f53 llvm::SelectionDAGBuilder::visitTargetIntrinsic(llvm::CallInst const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c03f53)\n#11 0x0000000003c0c061 llvm::SelectionDAGBuilder::visitIntrinsicCall(llvm::CallInst const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c0c061)\n#12 0x0000000003c18ac3 llvm::SelectionDAGBuilder::visitCall(llvm::CallInst const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c18ac3)\n#13 0x0000000003c2baef llvm::SelectionDAGBuilder::visit(llvm::Instruction const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c2baef)\n#14 0x0000000003cbad3d llvm::SelectionDAGISel::SelectBasicBlock(llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, bool&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3cbad3d)\n#15 0x0000000003cbba8e llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3cbba8e)\n#16 0x0000000003cbcf15 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3cbcf15)\n#17 0x0000000003cad7df llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3cad7df)\n#18 0x0000000002e5e86a llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#19 0x000000000348a4bf llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x348a4bf)\n#20 0x000000000348a871 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x348a871)\n#21 0x000000000348b111 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x348b111)\n#22 0x00000000008c85a8 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#23 0x00000000007a640e main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7a640e)\n#24 0x00007c77e3a29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#25 0x00007c77e3a29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#26 0x00000000008bec85 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8bec85)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\n\nI managed to reduce to the llvm ir to \n```\ndefine void @wombat() {\nbb:\n  %call = call i1 @llvm.public.type.test(ptr null, metadata !\"typeinfo\")\n  br label %bb1\n\nbb1:\n  call void @llvm.assume(i1 %call)\n  ret void\n}\n```\n\nThe `llvm*.type.test` is supposed to be removed at the IR level but because of the bisect limit we encounter it in SelectionDAG and that causes a crash.",
+    "comments": [],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[SelectionDAG][X86] Compiler crash when using `-opt-bisect-limit=0` because of `llvm.type.test` intrinsic"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/142937",
+  "knowledge_cutoff": "2025-06-05T10:02:26Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit d6ecd6a658103adc76cf67de64e0b5b399e6fcef\nAuthor: Abhishek Kaushik <abhishek.kaushik@intel.com>\nDate:   Mon Jun 9 10:44:55 2025 +0530\n\n    [SelectionDAG][X86] Handle `llvm.type.test` in DAGBuilder (#142939)\n    \n    Closes #142937\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp b/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp\nindex 2460c864b081..e6a1dc930685 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp\n@@ -7384,6 +7384,11 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,\n     setValue(&I, getValue(I.getOperand(0)));\n     return;\n \n+  case Intrinsic::type_test:\n+  case Intrinsic::public_type_test:\n+    setValue(&I, getValue(ConstantInt::getTrue(I.getType())));\n+    return;\n+\n   case Intrinsic::assume:\n   case Intrinsic::experimental_noalias_scope_decl:\n   case Intrinsic::var_annotation:\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=i686-- -O0",
+        "llc < %s -mtriple=x86_64-- -O0"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr142937.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @public_type_test() {\n; X86-LABEL: public_type_test:\n; X86:       # %bb.0: # %bb\n; X86-NEXT:    movb $1, %al\n; X86-NEXT:  # %bb.1: # %bb1\n; X86-NEXT:    retl\n;\n; X64-LABEL: public_type_test:\n; X64:       # %bb.0: # %bb\n; X64-NEXT:    movb $1, %al\n; X64-NEXT:  # %bb.1: # %bb1\n; X64-NEXT:    retq\nbb:\n  %call = call i1 @llvm.public.type.test(ptr null, metadata !\"typeinfo\")\n  br label %bb1\n\nbb1:\n  call void @llvm.assume(i1 %call)\n  ret void\n}\n\ndefine void @type_test() {\n; X86-LABEL: type_test:\n; X86:       # %bb.0: # %bb\n; X86-NEXT:    movb $1, %al\n; X86-NEXT:    testb $1, %al\n; X86-NEXT:    jne .LBB1_2\n; X86-NEXT:  # %bb.1: # %bb1\n; X86-NEXT:    ud1l 2(%eax), %eax\n; X86-NEXT:  .LBB1_2: # %bb2\n; X86-NEXT:    retl\n;\n; X64-LABEL: type_test:\n; X64:       # %bb.0: # %bb\n; X64-NEXT:    movb $1, %al\n; X64-NEXT:    testb $1, %al\n; X64-NEXT:    jne .LBB1_2\n; X64-NEXT:  # %bb.1: # %bb1\n; X64-NEXT:    ud1l 2(%eax), %eax\n; X64-NEXT:  .LBB1_2: # %bb2\n; X64-NEXT:    retq\nbb:\n  %call = tail call i1 @llvm.type.test(ptr null, metadata !\"typeinfo\")\n  br i1 %call, label %bb2, label %bb1\n\nbb1:\n  tail call void @llvm.ubsantrap(i8 2)\n  unreachable\n\nbb2:\n  ret void\n}\n\ndeclare i1 @llvm.public.type.test(ptr, metadata)\n\ndeclare void @llvm.assume(i1 noundef)\n\ndeclare i1 @llvm.type.test(ptr, metadata)\n\ndeclare void @llvm.ubsantrap(i8 immarg)",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,62 @@
+{
+  "base_commit": "e5f5517f9121083dbb9d2841b607f504cbbb490b",
+  "bug_id": "127298",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/PowerPC/PPCISelLowering.cpp": [
+        "PPCTargetLowering::SelectOptimalAddrMode"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/PowerPC/PPCISelLowering.cpp": [
+        [
+          19110,
+          19117
+        ]
+      ]
+    },
+    "components": [
+      "PowerPC"
+    ],
+    "fix_commit": "256145b4b0058ae22a1040cd4b7ea44fc49a4ece"
+  },
+  "issue": {
+    "author": "alexrp",
+    "body": "```llvm\ntarget datalayout = \"E-m:e-p:32:32-Fn32-i64:64-n32\"\ntarget triple = \"powerpc-unknown-linux4.19.0-musleabihf\"\n\ndefine fastcc void @behavior.ptrfromint.forceCompilerAnalyzeBranchHardCodedPtrDereference() {\nEntry:\n  %0 = load volatile i8, ptr inttoptr (i32 -559038737 to ptr), align 1\n  ret void\n}\n```\n\nObviously not code meant to actually be *run* - only compiled. I think \"crash on valid\" still applies since I don't see anything wrong with the IR in a vacuum, and it compiled fine in prior LLVM versions.\n\n```\n\u276f llc reduced.ll -O0\nllc: /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/APInt.h:127: llvm::APInt::APInt(unsigned int, uint64_t, bool, bool): Assertion `llvm::isUIntN(BitWidth, val) && \"Value is not an N-bit unsigned value\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.      Program arguments: llc reduced.ll -O0\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\n2.      Running pass 'PowerPC DAG->DAG Pattern Instruction Selection' on function '@behavior.ptrfromint.forceCompilerAnalyzeBranchHardCodedPtrDereference'\n #0 0x0000714490d80ed2 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) /home/alexrp/Source/llvm-project/llvm/lib/Support/Unix/Signals.inc:802:3\n #1 0x0000714490d7e87f llvm::sys::RunSignalHandlers() /home/alexrp/Source/llvm-project/llvm/lib/Support/Signals.cpp:105:20\n #2 0x0000714490d7ec0d SignalHandler(int) /home/alexrp/Source/llvm-project/llvm/lib/Support/Unix/Signals.inc:415:1\n #3 0x000071448f645330 (/lib/x86_64-linux-gnu/libc.so.6+0x45330)\n #4 0x000071448f69eb2c __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x000071448f69eb2c __pthread_kill_internal ./nptl/pthread_kill.c:78:10\n #6 0x000071448f69eb2c pthread_kill ./nptl/pthread_kill.c:89:10\n #7 0x000071448f64527e raise ./signal/../sysdeps/posix/raise.c:27:6\n #8 0x000071448f6288ff abort ./stdlib/abort.c:81:7\n #9 0x000071448f62881b _nl_load_domain ./intl/loadmsgcat.c:1177:9\n#10 0x000071448f63b517 (/lib/x86_64-linux-gnu/libc.so.6+0x3b517)\n#11 0x0000714490c220b9 llvm::maxIntN(long) /home/alexrp/Source/llvm-project/llvm/include/llvm/Support/MathExtras.h:252:35\n#12 0x0000714490c220b9 llvm::isIntN(unsigned int, long) /home/alexrp/Source/llvm-project/llvm/include/llvm/Support/MathExtras.h:262:53\n#13 0x0000714490c220b9 llvm::APInt::APInt(unsigned int, unsigned long, bool, bool) /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/APInt.h:120:11\n#14 0x000071449197f3f6 llvm::SelectionDAG::getConstant(llvm::APInt const&, llvm::SDLoc const&, llvm::EVT, bool, bool) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:1674:39\n#15 0x000071449197f3f6 llvm::SelectionDAG::getConstant(unsigned long, llvm::SDLoc const&, llvm::EVT, bool, bool) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:1668:21\n#16 0x0000714494cf3db0 llvm::PPCTargetLowering::SelectOptimalAddrMode(llvm::SDNode const*, llvm::SDValue, llvm::SDValue&, llvm::SDValue&, llvm::SelectionDAG&, llvm::MaybeAlign) const /home/alexrp/Source/llvm-project/llvm/lib/Target/PowerPC/PPCISelLowering.cpp:19053:14\n#17 0x0000714494c6b13e SelectDForm /home/alexrp/Source/llvm-project/llvm/lib/Target/PowerPC/PPCISelDAGToDAG.cpp:267:71\n#18 0x0000714494c6b13e (anonymous namespace)::PPCDAGToDAGISel::CheckComplexPattern(llvm::SDNode*, llvm::SDNode*, llvm::SDValue, unsigned int, llvm::SmallVectorImpl<std::pair<llvm::SDValue, llvm::SDNode*>>&) /home/alexrp/Source/llvm-project/build-20/lib/Target/PowerPC/PPCGenDAGISel.inc:79877:21\n#19 0x00007144919b3cec llvm::SelectionDAGISel::SelectCodeCommon(llvm::SDNode*, unsigned char const*, unsigned int) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:3612:7\n#20 0x0000714494c877d8 llvm::TrackingMDRef::untrack() /home/alexrp/Source/llvm-project/llvm/include/llvm/IR/TrackingMDRef.h:89:9\n#21 0x0000714494c877d8 llvm::TrackingMDRef::~TrackingMDRef() /home/alexrp/Source/llvm-project/llvm/include/llvm/IR/TrackingMDRef.h:55:29\n#22 0x0000714494c877d8 llvm::TypedTrackingMDRef<llvm::MDNode>::~TypedTrackingMDRef() /home/alexrp/Source/llvm-project/llvm/include/llvm/IR/TrackingMDRef.h:106:26\n#23 0x0000714494c877d8 llvm::DebugLoc::~DebugLoc() /home/alexrp/Source/llvm-project/llvm/include/llvm/IR/DebugLoc.h:33:9\n#24 0x0000714494c877d8 llvm::SDLoc::~SDLoc() /home/alexrp/Source/llvm-project/llvm/include/llvm/CodeGen/SelectionDAGNodes.h:1182:7\n#25 0x0000714494c877d8 (anonymous namespace)::PPCDAGToDAGISel::Select(llvm::SDNode*) /home/alexrp/Source/llvm-project/llvm/lib/Target/PowerPC/PPCISelDAGToDAG.cpp:6364:1\n#26 0x00007144919aad11 llvm::SmallVectorTemplateCommon<llvm::SDNode*, void>::isSmall() const /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/SmallVector.h:143:39\n#27 0x00007144919aad11 llvm::SmallVectorImpl<llvm::SDNode*>::~SmallVectorImpl() /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/SmallVector.h:603:23\n#28 0x00007144919aad11 llvm::SmallVector<llvm::SDNode*, 4u>::~SmallVector() /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/SmallVector.h:1203:3\n#29 0x00007144919aad11 llvm::SelectionDAGISel::DoInstructionSelection() /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1354:5\n#30 0x00007144919bbca7 llvm::TimeRegion::~TimeRegion() /home/alexrp/Source/llvm-project/llvm/include/llvm/Support/Timer.h:160:9\n#31 0x00007144919bbca7 llvm::NamedRegionTimer::~NamedRegionTimer() /home/alexrp/Source/llvm-project/llvm/include/llvm/Support/Timer.h:168:8\n#32 0x00007144919bbca7 llvm::SelectionDAGISel::CodeGenAndEmitDAG() /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1123:3\n#33 0x00007144919c0235 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1904:33\n#34 0x00007144919c18f9 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:616:22\n#35 0x0000714494c8f1ab (anonymous namespace)::PPCDAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/Target/PowerPC/PPCISelDAGToDAG.cpp:172:5\n#36 0x00007144919b2227 llvm::OptLevelChanger::~OptLevelChanger() /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:269:11\n#37 0x00007144919b2227 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:376:1\n#38 0x00007144919b2227 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:347:6\n#39 0x00007144912fa4bf llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) /home/alexrp/Source/llvm-project/llvm/lib/CodeGen/MachineFunctionPass.cpp:94:33\n#40 0x0000714490f45424 llvm::FPPassManager::runOnFunction(llvm::Function&) /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1416:7\n#41 0x0000714490f45641 llvm::ilist_detail::node_base_prevnext<llvm::ilist_node_base<true, void>, true>::getNext() const /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/ilist_node_base.h:42:38\n#42 0x0000714490f45641 llvm::ilist_node_impl<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false, void>>::getNext() /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/ilist_node.h:117:66\n#43 0x0000714490f45641 llvm::ilist_iterator<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false, void>, false, false>::operator++() /home/alexrp/Source/llvm-project/llvm/include/llvm/ADT/ilist_iterator.h:187:25\n#44 0x0000714490f45641 llvm::FPPassManager::runOnModule(llvm::Module&) /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1451:22\n#45 0x0000714490f45e8d runOnModule /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1528:7\n#46 0x0000714490f45e8d llvm::legacy::PassManagerImpl::run(llvm::Module&) /home/alexrp/Source/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:539:55\n#47 0x00006158388669df compileModule(char**, llvm::LLVMContext&) /home/alexrp/Source/llvm-project/llvm/tools/llc/llc.cpp:753:34\n#48 0x000061583885b057 main /home/alexrp/Source/llvm-project/llvm/tools/llc/llc.cpp:411:35\n#49 0x000071448f62a1ca __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#50 0x000071448f62a28b call_init ./csu/../csu/libc-start.c:128:20\n#51 0x000071448f62a28b __libc_start_main ./csu/../csu/libc-start.c:347:5\n#52 0x000061583885bde5 _start (/opt/llvm-20/bin/llc+0x12de5)\n```",
+    "comments": [],
+    "labels": [
+      "backend:PowerPC",
+      "regression",
+      "release:backport",
+      "crash-on-valid"
+    ],
+    "title": "Assertion `llvm::isUIntN(BitWidth, val) && \"Value is not an N-bit unsigned value\"` for `load volatile` from hardcoded pointer on `powerpc-linux-musleabihf`"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/127298",
+  "knowledge_cutoff": "2025-02-15T04:06:49Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/PowerPC"
+  ],
+  "patch": "commit 256145b4b0058ae22a1040cd4b7ea44fc49a4ece\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Sat Feb 15 14:13:32 2025 -0800\n\n    [PowerPC] Use getSignedTargetConstant in SelectOptimalAddrMode. (#127305)\n    \n    Fixes #127298.\n\ndiff --git a/llvm/lib/Target/PowerPC/PPCISelLowering.cpp b/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\nindex f1195feea80e..767d1ded8de3 100644\n--- a/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\n+++ b/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\n@@ -19110,8 +19110,8 @@ PPC::AddrMode PPCTargetLowering::SelectOptimalAddrMode(const SDNode *Parent,\n         int32_t Addr = (int32_t)CNImm;\n         // Otherwise, break this down into LIS + Disp.\n         Disp = DAG.getSignedTargetConstant((int16_t)Addr, DL, MVT::i32);\n-        Base =\n-            DAG.getTargetConstant((Addr - (int16_t)Addr) >> 16, DL, MVT::i32);\n+        Base = DAG.getSignedTargetConstant((Addr - (int16_t)Addr) >> 16, DL,\n+                                           MVT::i32);\n         uint32_t LIS = CNType == MVT::i32 ? PPC::LIS : PPC::LIS8;\n         Base = SDValue(DAG.getMachineNode(LIS, DL, CNType, Base), 0);\n         break;\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=powerpc"
+      ],
+      "file": "llvm/test/CodeGen/PowerPC/pr127298.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @foo() {\nEntry:\n  %0 = load volatile i8, ptr inttoptr (i32 -559038737 to ptr), align 1\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

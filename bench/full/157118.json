@@ -1,0 +1,61 @@
+{
+  "base_commit": "5eaf1295418da71551730d8dab87dcde795f57a0",
+  "bug_id": "157118",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/TargetInstrInfo.cpp": [
+        "canCombine"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/TargetInstrInfo.cpp": [
+        [
+          996,
+          1002
+        ]
+      ]
+    },
+    "components": [
+      "TargetInstrInfo"
+    ],
+    "fix_commit": "77db18a1e19c2a04df0210befcab1d66f44a7512"
+  },
+  "issue": {
+    "author": "ostannard",
+    "body": "This AArch64 code triggers an assertion failure in `Machine InstCombiner` at all optimisation levels except -O0:\n```c\n#include <arm_neon.h>\n\nuint8x8_t test_vaba_u8(uint8x8_t a, uint8x8_t b, uint8x8_t c) {\n  asm volatile(\"\" : \"+w\" (a));\n  return vaba_u8(a, b, c);\n}\n```\n\n```\n$ /work/build/bin/clang -c test.c -O1\nclang: /work/llvm-project/llvm/include/llvm/CodeGen/MachineOperand.h:369: llvm::Register llvm::MachineOperand::getReg() const: Assertion `isReg() && \"This is not a register operand!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.      Program arguments: /work/build/bin/clang -c test.c -O1\n1.      <eof> parser at end of file\n2.      Code generation\n3.      Running pass 'Function Pass Manager' on module 'test.c'.\n4.      Running pass 'Machine InstCombiner' on function '@test_vaba_u8'\n #0 0x0000aaaaaf640a14 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/work/build/bin/clang+0x4ba0a14)\n #1 0x0000aaaaaf63e4bc llvm::sys::RunSignalHandlers() (/work/build/bin/clang+0x4b9e4bc)\n #2 0x0000aaaaaf5ae420 CrashRecoverySignalHandler(int) CrashRecoveryContext.cpp:0:0\n #3 0x0000fffff7ffb8f8 (linux-vdso.so.1+0x8f8)\n #4 0x0000fffff7b5f1f0 __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x0000fffff7b1a67c gsignal ./signal/../sysdeps/posix/raise.c:27:6\n #6 0x0000fffff7b07130 abort ./stdlib/abort.c:81:7\n #7 0x0000fffff7b13fd4 __assert_fail_base ./assert/assert.c:91:7\n #8 0x0000fffff7b1404c (/lib/aarch64-linux-gnu/libc.so.6+0x3404c)\n #9 0x0000aaaaaee7227c llvm::TargetInstrInfo::getAccumulatorChain(llvm::MachineInstr*, llvm::SmallVectorImpl<llvm::Register>&) const (/work/build/bin/clang+0x43d227c)\n#10 0x0000aaaaaee724bc llvm::TargetInstrInfo::getAccumulatorReassociationPatterns(llvm::MachineInstr&, llvm::SmallVectorImpl<unsigned int>&) const (/work/build/bin/clang+0x43d24bc)\n#11 0x0000aaaaaee72fb0 llvm::TargetInstrInfo::getMachineCombinerPatterns(llvm::MachineInstr&, llvm::SmallVectorImpl<unsigned int>&, bool) const (/work/build/bin/clang+0x43d2fb0)\n#12 0x0000aaaaae3d9614 llvm::AArch64InstrInfo::getMachineCombinerPatterns(llvm::MachineInstr&, llvm::SmallVectorImpl<unsigned int>&, bool) const AArch64InstrInfo.cpp:0:0\n#13 0x0000aaaaaeb2546c (anonymous namespace)::MachineCombiner::runOnMachineFunction(llvm::MachineFunction&) MachineCombiner.cpp:0:0\n#14 0x0000aaaaaeb6f23c llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/work/build/bin/clang+0x40cf23c)\n#15 0x0000aaaaaf112834 llvm::FPPassManager::runOnFunction(llvm::Function&) (/work/build/bin/clang+0x4672834)\n#16 0x0000aaaaaf11a004 llvm::FPPassManager::runOnModule(llvm::Module&) (/work/build/bin/clang+0x467a004)\n#17 0x0000aaaaaf1131fc llvm::legacy::PassManagerImpl::run(llvm::Module&) (/work/build/bin/clang+0x46731fc)\n#18 0x0000aaaaafd6d2c8 clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/work/build/bin/clang+0x52cd2c8)\n#19 0x0000aaaaafd81698 clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/work/build/bin/clang+0x52e1698)\n#20 0x0000aaaab1749610 clang::ParseAST(clang::Sema&, bool, bool) (/work/build/bin/clang+0x6ca9610)\n#21 0x0000aaaab0233520 clang::FrontendAction::Execute() (/work/build/bin/clang+0x5793520)\n#22 0x0000aaaab01b62e0 clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/work/build/bin/clang+0x57162e0)\n#23 0x0000aaaab0333bc0 clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/work/build/bin/clang+0x5893bc0)\n#24 0x0000aaaaaddf3484 cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/work/build/bin/clang+0x3353484)\n#25 0x0000aaaaaddefeb0 ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&) driver.cpp:0:0\n#26 0x0000aaaab003ba50 void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::$_1>(long) Job.cpp:0:0\n#27 0x0000aaaaaf5ae068 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/work/build/bin/clang+0x4b0e068)\n#28 0x0000aaaab003aeec clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (/work/build/bin/clang+0x559aeec)\n#29 0x0000aaaab0000900 clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/work/build/bin/clang+0x5560900)\n#30 0x0000aaaab0000af0 clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/work/build/bin/clang+0x5560af0)\n#31 0x0000aaaab0016c0c clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/work/build/bin/clang+0x5576c0c)\n#32 0x0000aaaaaddef20c clang_main(int, char**, llvm::ToolContext const&) (/work/build/bin/clang+0x334f20c)\n#33 0x0000aaaaaddfe494 main (/work/build/bin/clang+0x335e494)\n#34 0x0000fffff7b073fc __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#35 0x0000fffff7b074cc call_init ./csu/../csu/libc-start.c:128:20\n#36 0x0000fffff7b074cc __libc_start_main ./csu/../csu/libc-start.c:379:5\n#37 0x0000aaaaadded8f0 _start (/work/build/bin/clang+0x334d8f0)\nclang: error: clang frontend command failed with exit code 134 (use -v to see invocation)\nclang version 22.0.0git (https://github.com/llvm/llvm-project.git ff9b296b86ebf0603fa3577726a4a46416f80b0a)\nTarget: aarch64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /work/build/bin\nBuild config: +assertions\nclang: note: diagnostic msg: \n********************\n\nPLEASE ATTACH THE FOLLOWING FILES TO THE BUG REPORT:\nPreprocessed source(s) and associated run script(s) are located at:\nclang: note: diagnostic msg: /tmp/test-0a61d6.c\nclang: note: diagnostic msg: /tmp/test-0a61d6.sh\nclang: note: diagnostic msg: \n\n********************\n```",
+    "comments": [],
+    "labels": [
+      "llvm:codegen",
+      "crash-on-valid",
+      "generated by fuzzer"
+    ],
+    "title": "[AArch64] Assertion \"This is not a register operand!\" with AdvSIMD intrinsic and inline asm"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/157118",
+  "knowledge_cutoff": "2025-09-05T14:52:59Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 77db18a1e19c2a04df0210befcab1d66f44a7512\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Fri Sep 5 22:00:12 2025 -0700\n\n    [TargetInstrInfo][AArch64] Don't assume register came from operand 0 in canCombine (#157210)\n    \n    We already have the register number from the user operand. Use it\n    instead of assuming it must be operand 0 of the producing instruction.\n    \n    Fixes #157118\n\ndiff --git a/llvm/lib/CodeGen/TargetInstrInfo.cpp b/llvm/lib/CodeGen/TargetInstrInfo.cpp\nindex 7ba65f0418a6..0d7b128fc736 100644\n--- a/llvm/lib/CodeGen/TargetInstrInfo.cpp\n+++ b/llvm/lib/CodeGen/TargetInstrInfo.cpp\n@@ -996,7 +996,7 @@ static bool canCombine(MachineBasicBlock &MBB, MachineOperand &MO,\n       (MI->getOpcode() != CombineOpc && CombineOpc != 0))\n     return false;\n   // Must only used by the user we combine with.\n-  if (!MRI.hasOneNonDBGUse(MI->getOperand(0).getReg()))\n+  if (!MRI.hasOneNonDBGUse(MO.getReg()))\n     return false;\n \n   return true;\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64 < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/pr157118.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <8 x i8> @test_vaba_u8(<8 x i8> noundef %a, <8 x i8> noundef %b, <8 x i8> noundef %c) {\nentry:\n  %0 = tail call <8 x i8> asm sideeffect \"\", \"=w,0\"(<8 x i8> %a)\n  %vabd.i = tail call <8 x i8> @llvm.aarch64.neon.uabd.v8i8(<8 x i8> %b, <8 x i8> %c)\n  %add.i = add <8 x i8> %vabd.i, %0\n  ret <8 x i8> %add.i\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

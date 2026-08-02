@@ -1,0 +1,69 @@
+{
+  "base_commit": "0eb4bd27d1ab15ea6b078ac386be01ae13d261a9",
+  "bug_id": "138208",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/CodeGenPrepare.cpp": [
+        "CodeGenPrepare::optimizeMemoryInst",
+        "IsNonLocalValue"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/CodeGenPrepare.cpp": [
+        [
+          5771,
+          5776
+        ],
+        [
+          5895,
+          5905
+        ],
+        [
+          5910,
+          5915
+        ]
+      ]
+    },
+    "components": [
+      "CodeGenPrepare"
+    ],
+    "fix_commit": "59c6d70ed8120b8864e5f796e2bf3de5518a0ef0"
+  },
+  "issue": {
+    "author": "aeubanks",
+    "body": "```\n$ cat a.ll\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-grtev4-linux-gnu\"\n\ndeclare void @g(ptr)\n\ndefine void @f(ptr %arg) {\nbb:\n  %getelementptr = getelementptr i8, ptr %arg, i64 -64\n  %getelementptr1 = getelementptr i8, ptr %arg, i64 -56\n  call void @g(ptr %getelementptr)\n  br label %bb3\n\nbb3:\n  %load = load ptr, ptr %getelementptr, align 8\n  %load4 = load i32, ptr %getelementptr1, align 8\n  %load5 = load ptr, ptr %getelementptr, align 8\n  %add = add i32 1, 0\n  %icmp = icmp eq i32 %add, 0\n  br i1 %icmp, label %bb7, label %bb7\n\nbb7:\n  ret void\n}\n\n$ opt -p 'require<profile-summary>,codegenprepare' a.ll -cgpp-huge-func=0 -disable-output  \nInstruction does not dominate all uses!\n  %sunkaddr1 = getelementptr i8, ptr %arg, i64 -64\n  %load = load ptr, ptr %sunkaddr1, align 8\nLLVM ERROR: Broken module found, compilation aborted!\n```\n\nseems like the GEP we create [here](https://github.com/llvm/llvm-project/blob/a76936f1c01c7cadbce8ea6553af758d0f614b6a/llvm/lib/CodeGen/CodeGenPrepare.cpp#L6059) is getting inserted right before `%load5` to use in that load, but then we end up reusing that one [here](https://github.com/llvm/llvm-project/blob/a76936f1c01c7cadbce8ea6553af758d0f614b6a/llvm/lib/CodeGen/CodeGenPrepare.cpp#L5909) for `%load` in a later iteration",
+    "comments": [],
+    "labels": [
+      "llvm:codegen",
+      "crash-on-valid"
+    ],
+    "title": "Codegenprepare creates invalid IR"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/138208",
+  "knowledge_cutoff": "2025-05-01T22:05:50Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/CodeGenPrepare"
+  ],
+  "patch": "commit 59c6d70ed8120b8864e5f796e2bf3de5518a0ef0\nAuthor: weiguozhi <57237827+weiguozhi@users.noreply.github.com>\nDate:   Thu May 15 09:27:25 2025 -0700\n\n    [CodeGenPrepare] Make sure instruction get from SunkAddrs is before MemoryInst (#139303)\n    \n    Function optimizeBlock may do optimizations on a block for multiple\n    times. In the first iteration of the loop, MemoryInst1 may generate a\n    sunk instruction and store it into SunkAddrs. In the second iteration of\n    the loop, MemoryInst2 may use the same address and then it can reuse the\n    sunk instruction stored in SunkAddrs, but MemoryInst2 may be before\n    MemoryInst1 and the corresponding sunk instruction. In order to avoid\n    use before def error, we need to find appropriate insert position for the\n     sunk instruction.\n    \n    Fixes #138208.\n\ndiff --git a/llvm/lib/CodeGen/CodeGenPrepare.cpp b/llvm/lib/CodeGen/CodeGenPrepare.cpp\nindex 2c53a9c27ccb..76f27623c865 100644\n--- a/llvm/lib/CodeGen/CodeGenPrepare.cpp\n+++ b/llvm/lib/CodeGen/CodeGenPrepare.cpp\n@@ -5771,6 +5771,35 @@ static bool IsNonLocalValue(Value *V, BasicBlock *BB) {\n   return false;\n }\n \n+// Find an insert position of Addr for MemoryInst. We can't guarantee MemoryInst\n+// is the first instruction that will use Addr. So we need to find the first\n+// user of Addr in current BB.\n+static BasicBlock::iterator findInsertPos(Value *Addr, Instruction *MemoryInst,\n+                                          Value *SunkAddr) {\n+  if (Addr->hasOneUse())\n+    return MemoryInst->getIterator();\n+\n+  // We already have a SunkAddr in current BB, but we may need to insert cast\n+  // instruction after it.\n+  if (SunkAddr) {\n+    if (Instruction *AddrInst = dyn_cast<Instruction>(SunkAddr))\n+      return std::next(AddrInst->getIterator());\n+  }\n+\n+  // Find the first user of Addr in current BB.\n+  Instruction *Earliest = MemoryInst;\n+  for (User *U : Addr->users()) {\n+    Instruction *UserInst = dyn_cast<Instruction>(U);\n+    if (UserInst && UserInst->getParent() == MemoryInst->getParent()) {\n+      if (isa<PHINode>(UserInst) || UserInst->isDebugOrPseudoInst())\n+        continue;\n+      if (UserInst->comesBefore(Earliest))\n+        Earliest = UserInst;\n+    }\n+  }\n+  return Earliest->getIterator();\n+}\n+\n /// Sink addressing mode computation immediate before MemoryInst if doing so\n /// can be done without increasing register pressure.  The need for the\n /// register pressure constraint means this can end up being an all or nothing\n@@ -5895,11 +5924,6 @@ bool CodeGenPrepare::optimizeMemoryInst(Instruction *MemoryInst, Value *Addr,\n     return Modified;\n   }\n \n-  // Insert this computation right after this user.  Since our caller is\n-  // scanning from the top of the BB to the bottom, reuse of the expr are\n-  // guaranteed to happen later.\n-  IRBuilder<> Builder(MemoryInst);\n-\n   // Now that we determined the addressing expression we want to use and know\n   // that we have to sink it into this block.  Check to see if we have already\n   // done this for some other load/store instr in this block.  If so, reuse\n@@ -5910,6 +5934,13 @@ bool CodeGenPrepare::optimizeMemoryInst(Instruction *MemoryInst, Value *Addr,\n \n   Value *SunkAddr = SunkAddrVH.pointsToAliveValue() ? SunkAddrVH : nullptr;\n   Type *IntPtrTy = DL->getIntPtrType(Addr->getType());\n+\n+  // The current BB may be optimized multiple times, we can't guarantee the\n+  // reuse of Addr happens later, call findInsertPos to find an appropriate\n+  // insert position.\n+  IRBuilder<> Builder(MemoryInst->getParent(),\n+                      findInsertPos(Addr, MemoryInst, SunkAddr));\n+\n   if (SunkAddr) {\n     LLVM_DEBUG(dbgs() << \"CGP: Reusing nonlocal addrmode: \" << AddrMode\n                       << \" for \" << *MemoryInst << \"\\n\");\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -S -p 'require<profile-summary>,codegenprepare' -cgpp-huge-func=0 < %s"
+      ],
+      "file": "llvm/test/Transforms/CodeGenPrepare/X86/sink-addr-reuse.ll",
+      "tests": [
+        {
+          "test_body": "\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-grtev4-linux-gnu\"\n\ndeclare void @g(ptr)\n\n; %load and %load5 use the same address, %load5 is optimized first, %load is\n; optimized later and reuse the same address computation instruction. We must\n; make sure not to generate use before def error.\n\ndefine void @f(ptr %arg) {\n;\nbb:\n  %getelementptr = getelementptr i8, ptr %arg, i64 -64\n  %getelementptr1 = getelementptr i8, ptr %arg, i64 -56\n  call void @g(ptr %getelementptr)\n  br label %bb3\n\nbb3:\n  %load = load ptr, ptr %getelementptr, align 8\n  %load4 = load i32, ptr %getelementptr1, align 8\n  %load5 = load ptr, ptr %getelementptr, align 8\n  %add = add i32 1, 0\n  %icmp = icmp eq i32 %add, 0\n  br i1 %icmp, label %bb7, label %bb7\n\nbb7:\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

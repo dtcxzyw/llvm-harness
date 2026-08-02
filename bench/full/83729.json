@@ -1,0 +1,60 @@
+{
+  "base_commit": "8f878c501886e6dc8b0cf062320a803593972bed",
+  "bug_id": "83729",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "AArch64TargetLowering::AArch64TargetLowering"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          1131,
+          1136
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "65058a8d732c3c41664a4dad1a1ae2a504d5c98e"
+  },
+  "issue": {
+    "author": "calebzulawski",
+    "body": "[godbolt](https://llvm.godbolt.org/#g:!((g:!((g:!((h:codeEditor,i:(filename:'1',fontScale:14,fontUsePx:'0',j:1,lang:llvm,selection:(endColumn:20,endLineNumber:2,positionColumn:20,positionLineNumber:2,selectionStartColumn:20,selectionStartLineNumber:2,startColumn:20,startLineNumber:2),source:'define+%3C1+x+double%3E+@log_v1f64(%3C1+x+double%3E+%25x)+%7B%0A++%25r+%3D+tail+call+%3C1+x+double%3E+@llvm.log(%3C1+x+double%3E+%25x)%0A++ret+%3C1+x+double%3E+%25r%0A%7D'),l:'5',n:'0',o:'LLVM+IR+source+%231',t:'0')),k:33.333333333333336,l:'4',n:'0',o:'',s:0,t:'0'),(g:!((h:compiler,i:(compiler:llctrunk,filters:(b:'0',binary:'1',binaryObject:'1',commentOnly:'0',debugCalls:'1',demangle:'0',directives:'0',execute:'1',intel:'0',libraryCode:'0',trim:'1'),flagsViewOpen:'1',fontScale:14,fontUsePx:'0',j:1,lang:llvm,libs:!(),options:'-O3+-march%3Daarch64',overrides:!(),selection:(endColumn:1,endLineNumber:1,positionColumn:1,positionLineNumber:1,selectionStartColumn:1,selectionStartLineNumber:1,startColumn:1,startLineNumber:1),source:1),l:'5',n:'0',o:'+llc+(trunk)+(Editor+%231)',t:'0')),k:33.333333333333336,l:'4',m:100,n:'0',o:'',s:0,t:'0'),(g:!((h:output,i:(compilerName:'opt+(assertions+trunk)',editorid:1,fontScale:14,fontUsePx:'0',j:1,wrap:'1'),l:'5',n:'0',o:'Output+of+llc+(trunk)+(Compiler+%231)',t:'0')),k:33.33333333333333,l:'4',n:'0',o:'',s:0,t:'0')),l:'2',m:100,n:'0',o:'',t:'0')),version:4)\r\n\r\ndetected in Rust `std::simd`: https://github.com/rust-lang/portable-simd/actions/runs/8131232601/job/22220325413?pr=401\r\n```\r\ndefine <1 x double> @log_v1f64(<1 x double> %x) {\r\n  %r = tail call <1 x double> @llvm.log(<1 x double> %x)\r\n  ret <1 x double> %r\r\n}\r\n```\r\nerrors with:\r\n```\r\nLLVM ERROR: Cannot select: 0x8e90990: v1f64 = flog 0x8e90920\r\n  0x8e90920: v1f64,ch = CopyFromReg 0x8e0d200, Register:v1f64 %0\r\n    0x8e908b0: v1f64 = Register %0\r\nIn function: log_v1f64\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -O3 -march=aarch64 <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@log_v1f64'\r\n #0 0x00000000035db368 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-trunk/bin/llc+0x35db368)\r\n #1 0x00000000035d8cdc SignalHandler(int) Signals.cpp:0:0\r\n #2 0x00007f85ae842520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x00007f85ae8969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x00007f85ae842476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x00007f85ae8287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x000000000071c894 llvm::RISCVISAInfo::updateCombination() (.cold) RISCVISAInfo.cpp:0:0\r\n #7 0x00000000033ac904 llvm::SelectionDAGISel::CannotYetSelect(llvm::SDNode*) (/opt/compiler-explorer/clang-trunk/bin/llc+0x33ac904)\r\n #8 0x00000000033b28f5 llvm::SelectionDAGISel::SelectCodeCommon(llvm::SDNode*, unsigned char const*, unsigned int) (/opt/compiler-explorer/clang-trunk/bin/llc+0x33b28f5)\r\n #9 0x0000000000b0f1ed (anonymous namespace)::AArch64DAGToDAGISel::Select(llvm::SDNode*) AArch64ISelDAGToDAG.cpp:0:0\r\n#10 0x00000000033a9e87 llvm::SelectionDAGISel::DoInstructionSelection() (/opt/compiler-explorer/clang-trunk/bin/llc+0x33a9e87)\r\n#11 0x00000000033b71d5 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-trunk/bin/llc+0x33b71d5)\r\n#12 0x00000000033b9e88 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x33b9e88)\r\n#13 0x00000000033bc669 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (.part.0) SelectionDAGISel.cpp:0:0\r\n#14 0x0000000002734790 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#15 0x0000000002c4ce42 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2c4ce42)\r\n#16 0x0000000002c4cfc1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2c4cfc1)\r\n#17 0x0000000002c4ebe0 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2c4ebe0)\r\n#18 0x000000000081ad84 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#19 0x000000000072e78e main (/opt/compiler-explorer/clang-trunk/bin/llc+0x72e78e)\r\n#20 0x00007f85ae829d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#21 0x00007f85ae829e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#22 0x000000000081297e _start (/opt/compiler-explorer/clang-trunk/bin/llc+0x81297e)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```",
+    "comments": [],
+    "labels": [
+      "backend:AArch64",
+      "crash-on-valid"
+    ],
+    "title": "Error when selecting llvm.log for <1 x double> on aarch64"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/83729",
+  "knowledge_cutoff": "2024-03-03T15:59:37Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 65058a8d732c3c41664a4dad1a1ae2a504d5c98e\nAuthor: Takuya Shimizu <shimizu2486@gmail.com>\nDate:   Sun Mar 17 11:28:32 2024 +0900\n\n    [AArch64][SelectionDAG] Expand v1f64-typed sin,cos,pow,log,exp intrinsics (#83745)\n    \n    This patch makes NEON-enabled AArch64 backend expand the `sin, cos, pow,\n    log, log2, log10, exp, exp2, exp10` intrinsics for `v1f64` data type,\n    all of which caused selection failure before this patch.\n    Fixes https://github.com/llvm/llvm-project/issues/83729\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex 7720e0a46c8e..92f59dbf1e9e 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -1131,6 +1131,9 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,\n           ISD::FMUL,           ISD::FDIV,           ISD::FMA,\n           ISD::FNEG,           ISD::FABS,           ISD::FCEIL,\n           ISD::FSQRT,          ISD::FFLOOR,         ISD::FNEARBYINT,\n+          ISD::FSIN,           ISD::FCOS,           ISD::FPOW,\n+          ISD::FLOG,           ISD::FLOG2,          ISD::FLOG10,\n+          ISD::FEXP,           ISD::FEXP2,          ISD::FEXP10,\n           ISD::FRINT,          ISD::FROUND,         ISD::FROUNDEVEN,\n           ISD::FTRUNC,         ISD::FMINNUM,        ISD::FMAXNUM,\n           ISD::FMINIMUM,       ISD::FMAXIMUM,       ISD::STRICT_FADD,\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64"
+      ],
+      "file": "<issue-body>",
+      "tests": [
+        {
+          "test_body": "define <1 x double> @log_v1f64(<1 x double> %x) {\r\n  %r = tail call <1 x double> @llvm.log(<1 x double> %x)\r\n  ret <1 x double> %r\r\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

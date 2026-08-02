@@ -1,0 +1,64 @@
+{
+  "base_commit": "2bd441cff296c74ebe984b2e8442ee9962361b35",
+  "bug_id": "177925",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "performSignExtendInRegCombine"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          27867,
+          27876
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "ffb7a9f0ec80d5b12aa440d8446d2379827100f4"
+  },
+  "issue": {
+    "author": "sjoerdmeijer",
+    "body": "This IR:\n\n```\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine <vscale x 16 x i16> @_Z1dPb(<vscale x 16 x i8> %wide.masked.gather) #0 {\nentry:\n  %0 = trunc <vscale x 16 x i8> %wide.masked.gather to <vscale x 16 x i1>\n  %1 = sext <vscale x 16 x i1> %0 to <vscale x 16 x i16>\n  ret <vscale x 16 x i16> %1\n}\n\nattributes #0 = { \"target-cpu\"=\"grace\" }\n```\n\nRuns into this assert:\n\n```\nllc: /root/llvm-project/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:27778: llvm::SDValue performSignExtendInRegCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&, llvm::SelectionDAG&): Assertion `(EltTy == MVT::i8 || EltTy == MVT::i16 || EltTy == MVT::i32) && \"Sign extending from an invalid type\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@_Z1dPb'\n #0 0x000000000425b998 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x425b998)\n #1 0x0000000004258874 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007ca134442520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007ca1344969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007ca134442476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007ca1344287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007ca13442871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007ca134439e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000000b33fbf performSignExtendInRegCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&, llvm::SelectionDAG&) AArch64ISelLowering.cpp:0:0\n #9 0x0000000000bd3a3c llvm::AArch64TargetLowering::PerformDAGCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xbd3a3c)\n#10 0x0000000003e7849f (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n```\n\nSee also: https://godbolt.org/z/5a99YqvcG\n\nThis is generated from this source code-reproducer:\n\n```\n#include <algorithm>\nunsigned short a;\nvoid d(bool b[]) {\n#pragma clang loop vectorize_predicate(enable)\n  for (int c(-118); c < 21; c += 3)\n    a = std::min(a, (unsigned short)(b[c] ? -01 : 0));\n}\n```",
+    "comments": [],
+    "labels": [
+      "backend:AArch64",
+      "crash-on-valid"
+    ],
+    "title": "[AArch64] performSignExtendInRegCombine assert \"Sign extending from an invalid type\""
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/177925",
+  "knowledge_cutoff": "2026-01-26T10:55:43Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit ffb7a9f0ec80d5b12aa440d8446d2379827100f4\nAuthor: Sander de Smalen <sander.desmalen@arm.com>\nDate:   Fri Jan 30 08:26:35 2026 +0000\n\n    [AArch64] Fix sign-extend-inreg combine for i1 types (#177976)\n    \n    This fixes https://github.com/llvm/llvm-project/issues/177925\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex 3f2b73db8dee..2775ddcff353 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -27867,10 +27867,10 @@ performSignExtendInRegCombine(SDNode *N, TargetLowering::DAGCombinerInfo &DCI,\n     SDValue ExtOp = Src->getOperand(0);\n     auto VT = cast<VTSDNode>(N->getOperand(1))->getVT();\n     EVT EltTy = VT.getVectorElementType();\n-    (void)EltTy;\n \n-    assert((EltTy == MVT::i8 || EltTy == MVT::i16 || EltTy == MVT::i32) &&\n-           \"Sign extending from an invalid type\");\n+    if (EltTy.getSizeInBits() >\n+        ExtOp.getValueType().getScalarType().getSizeInBits())\n+      return SDValue();\n \n     EVT ExtVT = VT.getDoubleNumVectorElementsVT(*DAG.getContext());\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64--linux-gnu -mattr=+sve < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/sve-sext-zext.ll",
+      "tests": [
+        {
+          "test_body": "define <vscale x 16 x i16> @sext_inreg_i2_to_i16_from_i8(<vscale x 16 x i8> %a) {\n  %a.trunc = trunc <vscale x 16 x i8> %a to <vscale x 16 x i2>\n  %a.sextinreg = sext <vscale x 16 x i2> %a.trunc to <vscale x 16 x i16>\n  ret <vscale x 16 x i16> %a.sextinreg\n}\n",
+          "test_name": "sext_inreg_i2_to_i16_from_i8"
+        },
+        {
+          "test_body": "define <vscale x 16 x i16> @sext_inreg_i1_to_i16_from_i8(<vscale x 16 x i8> %a) {\n  %a.trunc = trunc <vscale x 16 x i8> %a to <vscale x 16 x i1>\n  %a.sextinreg = sext <vscale x 16 x i1> %a.trunc to <vscale x 16 x i16>\n  ret <vscale x 16 x i16> %a.sextinreg\n}\n",
+          "test_name": "sext_inreg_i1_to_i16_from_i8"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

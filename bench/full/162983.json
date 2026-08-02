@@ -1,0 +1,65 @@
+{
+  "base_commit": "eaa6a28757edea72d97e245125f8e1128b0bdef2",
+  "bug_id": "162983",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "performUADDVAddCombine"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          19093,
+          19099
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "e5827e7b90d8edb5eb98e39b37a7d59f71074be5"
+  },
+  "issue": {
+    "author": "sjoerdmeijer",
+    "body": "This IR reproducer:\n\n```\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine i64 @_Z1ePA2_A2_x(<2 x i32> %0) #0 {\n  %2 = sdiv <2 x i32> splat (i32 1), %0\n  %3 = sext <2 x i32> %2 to <2 x i64>\n  %4 = add <2 x i64> %3, %3\n  %5 = tail call i64 @llvm.vector.reduce.add.v2i64(<2 x i64> %4)\n  ret i64 %5\n}\n\ndeclare i64 @llvm.vector.reduce.add.v2i64(<2 x i64>) #1\n\nattributes #0 = { \"target-cpu\"=\"grace\" }\nattributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }\n```\n\nresults in this crash:\n\n```\nLLVM ERROR: Possible incorrect use of EVT::getVectorNumElements() for scalable vector. Scalable flag may be dropped, use EVT::getVectorElementCount() instead\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@_Z1ePA2_A2_x'\n #0 0x0000000003be2f38 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3be2f38)\n #1 0x0000000003be0104 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007c96dd242520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007c96dd2969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007c96dd242476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007c96dd2287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00000000007ba680 llvm::json::operator==(llvm::json::Value const&, llvm::json::Value const&) (.cold) JSON.cpp:0:0\n #7 0x0000000003b2c6c9 (/opt/compiler-explorer/clang-trunk/bin/llc+0x3b2c6c9)\n #8 0x0000000000afa481 (/opt/compiler-explorer/clang-trunk/bin/llc+0xafa481)\n #9 0x0000000000c82ffb performUADDVAddCombine(llvm::SDValue, llvm::SelectionDAG&) (.isra.0) AArch64ISelLowering.cpp:0:0\n#10 0x0000000000c8943f performUADDVCombine(llvm::SDNode*, llvm::SelectionDAG&) AArch64ISelLowering.cpp:0:0\n#11 0x0000000000d0fd6d llvm::AArch64TargetLowering::PerformDAGCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&) const (/opt/compiler-explorer/clang-trunk/bin/llc+0xd0fd6d)\n#12 0x000000000383911d (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#13 0x000000000383a53d (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n```\n\nSee also: https://godbolt.org/z/eWGocKGqb\n\nThe IR reproducer comes from this C reproducer:\n\n```\nlong long a;\nshort b;\nint c;\nshort *d;\nvoid e(long long f[][2][2]) {\n  for (short g;;)\n    for (long h = 0; h < 22; h++) {\n      a -= ~(c / d[g]);\n      b = f[2][2][h] > 0;\n    }\n}\n```\n\nSee also: https://godbolt.org/z/nqzKvcbj5",
+    "comments": [
+      {
+        "author": "sjoerdmeijer",
+        "body": "CC: @paulwalker-arm , @david-arm, @davemgreen , @sdesmalen-arm "
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "crash"
+    ],
+    "title": "[AArch64] incorrect use of EVT::getVectorNumElements()"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/162983",
+  "knowledge_cutoff": "2025-10-11T08:16:19Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit e5827e7b90d8edb5eb98e39b37a7d59f71074be5\nAuthor: David Green <david.green@arm.com>\nDate:   Sun Oct 12 08:53:25 2025 +0100\n\n    [AArch64] Protect against scalable vectors in performUADDVAddCombine.\n    \n    Fixes #162983\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex fbce3b0efbb7..69651168f853 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -19093,7 +19093,8 @@ static SDValue performUADDVAddCombine(SDValue A, SelectionDAG &DAG) {\n     SDValue Ext1 = Op1.getOperand(0);\n     if (Ext0.getOpcode() != ISD::EXTRACT_SUBVECTOR ||\n         Ext1.getOpcode() != ISD::EXTRACT_SUBVECTOR ||\n-        Ext0.getOperand(0) != Ext1.getOperand(0))\n+        Ext0.getOperand(0) != Ext1.getOperand(0) ||\n+        Ext0.getOperand(0).getValueType().isScalableVector())\n       return SDValue();\n     // Check that the type is twice the add types, and the extract are from\n     // upper/lower parts of the same source.\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64-unknown-linux-gnu"
+      ],
+      "file": "<issue-body>",
+      "tests": [
+        {
+          "test_body": "target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine i64 @_Z1ePA2_A2_x(<2 x i32> %0) #0 {\n  %2 = sdiv <2 x i32> splat (i32 1), %0\n  %3 = sext <2 x i32> %2 to <2 x i64>\n  %4 = add <2 x i64> %3, %3\n  %5 = tail call i64 @llvm.vector.reduce.add.v2i64(<2 x i64> %4)\n  ret i64 %5\n}\n\ndeclare i64 @llvm.vector.reduce.add.v2i64(<2 x i64>) #1\n\nattributes #0 = { \"target-cpu\"=\"grace\" }\nattributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

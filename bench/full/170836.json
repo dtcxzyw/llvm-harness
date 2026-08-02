@@ -1,0 +1,65 @@
+{
+  "base_commit": "49b77e3b45555b022d0a0e2aac239708d706ae10",
+  "bug_id": "170836",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp": [
+        "BoUpSLP::getScalarsVectorizationState"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp": [
+        [
+          10613,
+          10618
+        ]
+      ]
+    },
+    "components": [
+      "SLPVectorizer"
+    ],
+    "fix_commit": "a6e7c38ea6310ef8d8e6ba0d8158d7d1f4e28f5b"
+  },
+  "issue": {
+    "author": "sjoerdmeijer",
+    "body": "This IR:\n\n```\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine void @_Z1ev(<16 x i1> %0) {\nentry:\n  br label %vector.body\n\nvector.body:                                      ; preds = %vector.body, %entry\n  %vec.phi = phi <16 x i16> [ zeroinitializer, %entry ], [ %2, %vector.body ]\n  %vec.phi40 = phi <16 x i16> [ zeroinitializer, %entry ], [ %4, %vector.body ]\n  %1 = select i1 false, <16 x i16> zeroinitializer, <16 x i16> zeroinitializer\n  %2 = mul <16 x i16> zeroinitializer, %1\n  %3 = select <16 x i1> %0, <16 x i16> zeroinitializer, <16 x i16> zeroinitializer\n  %4 = mul <16 x i16> %3, zeroinitializer\n  br label %vector.body\n}\n```\n\ncompiled with `opt -passes=slp-vectorizer  -S -slp-revec`,\ntriggers this assert:\n\n```\nopt: /root/llvm-project/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp:11580: void llvm::slpvectorizer::BoUpSLP::buildTreeRec(llvm::ArrayRef<llvm::Value*>, unsigned int, const llvm::slpvectorizer::BoUpSLP::EdgeInfo&, unsigned int): Assertion `(allConstant(VLRef) || allSameType(VLRef)) && \"Invalid types!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/opt -o /app/output.s -S -passes=slp-vectorizer -S -slp-revec <source>\n1.\tRunning pass \"function(slp-vectorizer)\" on module \"<source>\"\n2.\tRunning pass \"slp-vectorizer\" on function \"_Z1ev\"\n #0 0x00000000059e50e8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x59e50e8)\n #1 0x00000000059e1f94 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x0000770d5d242520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x0000770d5d2969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x0000770d5d242476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x0000770d5d2287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x0000770d5d22871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x0000770d5d239e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x00000000037fde8e llvm::slpvectorizer::BoUpSLP::buildTreeRec(llvm::ArrayRef<llvm::Value*>, unsigned int, llvm::slpvectorizer::BoUpSLP::EdgeInfo const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x37fde8e)\n #9 0x00000000037fd248 llvm::slpvectorizer::BoUpSLP::buildTreeRec(llvm::ArrayRef<llvm::Value*>, unsigned int, llvm::slpvectorizer::BoUpSLP::EdgeInfo const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x37fd248)\n#10 0x00000000037fd248 llvm::slpvectorizer::BoUpSLP::buildTreeRec(llvm::ArrayRef<llvm::Value*>, unsigned int, llvm::slpvectorizer::BoUpSLP::EdgeInfo const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x37fd248)\n#11 0x00000000037fe2c6 llvm::slpvectorizer::BoUpSLP::buildTreeRec(llvm::ArrayRef<llvm::Value*>, unsigned int, llvm::slpvectorizer::BoUpSLP::EdgeInfo const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x37fe2c6)\n#12 0x0000000003834c0d llvm::SLPVectorizerPass::tryToVectorizeList(llvm::ArrayRef<llvm::Value*>, llvm::slpvectorizer::BoUpSLP&, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x3834c0d)\n#13 0x00000000038398ef bool tryToVectorizeSequence<llvm::Value>(llvm::SmallVectorImpl<llvm::Value*>&, llvm::function_ref<bool (llvm::Value*, llvm::Value*)>, llvm::function_ref<bool (llvm::ArrayRef<llvm::Value*>, llvm::Value*)>, llvm::function_ref<bool (llvm::ArrayRef<llvm::Value*>, bool)>, bool, llvm::slpvectorizer::BoUpSLP&) (.constprop.0) SLPVectorizer.cpp:0:0\n#14 0x000000000383abfc llvm::SLPVectorizerPass::vectorizeChainsInBlock(llvm::BasicBlock*, llvm::slpvectorizer::BoUpSLP&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x383abfc)\n#15 0x0000000003842c06 llvm::SLPVectorizerPass::runImpl(llvm::Function&, llvm::ScalarEvolution*, llvm::TargetTransformInfo*, llvm::TargetLibraryInfo*, llvm::AAResults*, llvm::LoopInfo*, llvm::DominatorTree*, llvm::AssumptionCache*, llvm::DemandedBits*, llvm::OptimizationRemarkEmitter*) (.part.0) SLPVectorizer.cpp:0:0\n#16 0x000000000384382b llvm::SLPVectorizerPass::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x384382b)\n\n```\n\nSee also: https://godbolt.org/z/szTYP1PrP\n\nSame comment as I made in #170828, I am slightly surprised that the vectors are already that wide, but that's what the loop vectorizer seems to be producing. \n\nThis IR was reproduced from this source code reproducer:\n\n```\nshort a, b;\nint c;\nchar *d;\nvoid e() {\n  for (; c; c++) {\n    a *= d[9] ?: c;\n    b *= d[c] ? 10301777303764690586 : 0;\n  }\n}\n```\n",
+    "comments": [
+      {
+        "author": "sjoerdmeijer",
+        "body": "CC: @alexey-bataev \n\nWith this issues and #170828, I have now raised two tickets related to revectorisation. @rj-jesus: maybe picking one of these issues is a good first step if we want some exposure to revectorisation and get a bit more familiar. I don't know which one would be better, I haven't looked into this at all yet. "
+      }
+    ],
+    "labels": [
+      "llvm:SLPVectorizer",
+      "crash-on-valid"
+    ],
+    "title": "[SLP][Revec] Assertion `(allConstant(VLRef) || allSameType(VLRef)) && \"Invalid types!\"'"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/170836",
+  "knowledge_cutoff": "2025-12-05T11:16:53Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/SLPVectorizer"
+  ],
+  "patch": "commit a6e7c38ea6310ef8d8e6ba0d8158d7d1f4e28f5b\nAuthor: Alexey Bataev <a.bataev@outlook.com>\nDate:   Sun Mar 1 06:55:44 2026 -0800\n\n    [SLP]Do not vectorize select nodes with scalar and vector conditions\n    \n    If the select nodes contains selects with mixed scalar/vector\n    conditions, such nodes should not be revectorized.\n    \n    Fixes #170836\n\ndiff --git a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp\nindex ee49aad13454..cbaaa10bb224 100644\n--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp\n+++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp\n@@ -10613,6 +10613,23 @@ BoUpSLP::TreeEntry::EntryState BoUpSLP::getScalarsVectorizationState(\n     return TreeEntry::Vectorize;\n   }\n   case Instruction::Select:\n+    if (SLPReVec) {\n+      SmallPtrSet<Type *, 4> CondTypes;\n+      for (Value *V : VL) {\n+        Value *Cond;\n+        if (!match(V, m_Select(m_Value(Cond), m_Value(), m_Value())) &&\n+            !match(V, m_ZExt(m_Value(Cond))))\n+          continue;\n+        CondTypes.insert(Cond->getType());\n+      }\n+      if (CondTypes.size() > 1) {\n+        LLVM_DEBUG(\n+            dbgs()\n+            << \"SLP: Gathering select with different condition types.\\n\");\n+        return TreeEntry::NeedToGather;\n+      }\n+    }\n+    [[fallthrough]];\n   case Instruction::FNeg:\n   case Instruction::Add:\n   case Instruction::FAdd:\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -passes=slp-vectorizer -S -slp-revec -mtriple=aarch64-unknown-linux-gnu < %s"
+      ],
+      "file": "llvm/test/Transforms/SLPVectorizer/AArch64/revec-select-scalar-vector-cond.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @test(<16 x i1> %0) {\n;\nentry:\n  br label %vector.body\n\nvector.body:                                      ; preds = %vector.body, %entry\n  %vec.phi = phi <16 x i16> [ zeroinitializer, %entry ], [ %2, %vector.body ]\n  %vec.phi40 = phi <16 x i16> [ zeroinitializer, %entry ], [ %4, %vector.body ]\n  %1 = select i1 false, <16 x i16> zeroinitializer, <16 x i16> zeroinitializer\n  %2 = mul <16 x i16> zeroinitializer, %1\n  %3 = select <16 x i1> %0, <16 x i16> zeroinitializer, <16 x i16> zeroinitializer\n  %4 = mul <16 x i16> %3, zeroinitializer\n  br label %vector.body\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

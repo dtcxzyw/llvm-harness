@@ -1,0 +1,85 @@
+{
+  "base_commit": "55e4c6d95dad7954e15af5da1672b7108f358e71",
+  "bug_id": "142830",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/CodeGenPrepare.cpp": [
+        "CodeGenPrepare::optimizeMemoryInst"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/CodeGenPrepare.cpp": [
+        [
+          5945,
+          5952
+        ]
+      ]
+    },
+    "components": [
+      "CodeGenPrepare"
+    ],
+    "fix_commit": "dde30a47313bf52fef02bbcb1de931a8d725659f"
+  },
+  "issue": {
+    "author": "alexfh",
+    "body": "A recent commit (around  62fd4d18e52e61fe1e67cbf9d1c4355a34f84325 - 24b97756decb7bf0e26dcf0e30a7a9aaf27f417c, but I haven't yet pinpointed the culprit) introduced a crash in LLVM: https://gcc.godbolt.org/z/YT8dcvY9e\n\n```\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\n%struct.foo = type { %struct.eggs }\n%struct.eggs = type { [2 x float] }\n\ndefine float @wibble.1(ptr %arg) {\nbb:\n  %load = load float, ptr %arg, align 4\n  ret float %load\n}\n\ndefine i64 @foo.2() {\nbb:\n  %load = load i64, ptr inttoptr (i64 8 to ptr), align 8\n  ret i64 %load\n}\n\ndefine ptr @ham.3(ptr %arg, i64 %arg1) {\nbb:\n  %load = load ptr, ptr %arg, align 8\n  %getelementptr = getelementptr %struct.foo, ptr %load, i64 %arg1\n  ret ptr %getelementptr\n}\n\ndefine float @wombat(ptr %arg) {\nbb:\n  %call = call float @eggs(ptr %arg)\n  ret float %call\n}\n\ndefine float @eggs(ptr %arg) {\nbb:\n  %call = call float @barney(ptr %arg)\n  ret float %call\n}\n\ndefine float @barney(ptr %arg) {\nbb:\n  %load = load float, ptr %arg, align 4\n  ret float %load\n}\n\ndefine float @bar.4(ptr %arg) {\nbb:\n  %call = call float @wombat.5(ptr %arg)\n  ret float %call\n}\n\ndefine float @wombat.5(ptr %arg) {\nbb:\n  %call = call float @wombat(ptr %arg)\n  %fneg = fneg float %call\n  ret float %fneg\n}\n\ndefine <2 x float> @barney.6(ptr %arg, ptr %arg1) {\nbb:\n  %load = load float, ptr %arg1, align 4\n  %call = call float @wibble.1(ptr %arg)\n  %fsub = fsub float %load, %call\n  %fcmp = fcmp oeq float %fsub, 0.000000e+00\n  br i1 %fcmp, label %bb2, label %bb3\n\nbb2:                                              ; preds = %bb3, %bb\n  ret <2 x float> zeroinitializer\n\nbb3:                                              ; preds = %bb\n  %call4 = call float @wibble.1(ptr %arg)\n  %fsub5 = fsub float 0.000000e+00, %call4\n  %fmul = fmul float %fsub5, 0.000000e+00\n  %fcmp6 = fcmp olt float %fmul, 0.000000e+00\n  br i1 %fcmp6, label %bb7, label %bb2\n\nbb7:                                              ; preds = %bb3\n  %load8 = load <2 x float>, ptr %arg, align 4\n  ret <2 x float> %load8\n}\n\ndefine double @snork(ptr %arg, ptr %arg1) {\nbb:\n  %alloca = alloca %struct.foo, align 4\n  %call = call <2 x float> @barney.6(ptr %arg, ptr %arg1)\n  store <2 x float> %call, ptr %alloca, align 4\n  %call2 = call float @bar.4(ptr %alloca)\n  %fpext = fpext float %call2 to double\n  ret double %fpext\n}\n\ndefine double @pluto(ptr %arg) {\nbb:\n  br label %bb1\n\nbb1:                                              ; preds = %bb4, %bb\n  %phi = phi i32 [ 0, %bb ], [ %add, %bb4 ]\n  %phi2 = phi double [ 1.000000e+00, %bb ], [ %select, %bb4 ]\n  %zext = zext i32 %phi to i64\n  %call = call i64 @foo.2()\n  %icmp = icmp ugt i64 %call, %zext\n  br i1 %icmp, label %bb4, label %bb3\n\nbb3:                                              ; preds = %bb1\n  ret double %phi2\n\nbb4:                                              ; preds = %bb1\n  %call5 = call ptr @ham.3(ptr %arg, i64 %zext)\n  %add = add nsw i32 %phi, 1\n  %zext6 = zext i32 %add to i64\n  %call7 = call i64 @foo.2()\n  %urem = urem i64 %zext6, %call7\n  %call8 = call ptr @ham.3(ptr %arg, i64 %urem)\n  %call9 = call double @snork(ptr %call5, ptr %call8)\n  %fcmp = fcmp ogt double %phi2, 0.000000e+00\n  %select = select i1 %fcmp, double %call9, double 0.000000e+00\n  br label %bb1\n}\n```\n\n```\nInstruction does not dominate all uses!\n  %indvars.iv.next = add i64 %indvars.iv, 1\n  %sunkaddr16 = mul i64 %indvars.iv.next, 8\nin function pluto\nfatal error: error in backend: Broken function found, compilation aborted!\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/clang++ -gdwarf-4 -g -o /app/output.s -mllvm --x86-asm-syntax=intel -fno-verbose-asm -S --gcc-toolchain=/opt/compiler-explorer/gcc-snapshot -fcolor-diagnostics -fno-crash-diagnostics -xir -O3 <source>\n1.\tCode generation\n2.\tRunning pass 'Function Pass Manager' on module '<source>'.\n3.\tRunning pass 'Module Verifier' on function '@pluto'\n #0 0x0000000003fd31e8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3fd31e8)\n #1 0x0000000003fd0e74 llvm::sys::CleanupOnSignal(unsigned long) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3fd0e74)\n #2 0x0000000003f16136 llvm::CrashRecoveryContext::HandleExit(int) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3f16136)\n #3 0x0000000003fc861e llvm::sys::Process::Exit(int, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3fc861e)\n #4 0x0000000000db7010 LLVMErrorHandler(void*, char const*, bool) cc1_main.cpp:0:0\n #5 0x0000000003f20f13 llvm::report_fatal_error(llvm::Twine const&, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3f20f13)\n #6 0x0000000003f21071 (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3f21071)\n #7 0x00000000039c7fe2 (anonymous namespace)::VerifierLegacyPass::runOnFunction(llvm::Function&) Verifier.cpp:0:0\n #8 0x0000000003911bbf llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3911bbf)\n #9 0x0000000003911f71 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3911f71)\n#10 0x0000000003912811 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3912811)\n#11 0x0000000004291169 clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4291169)\n#12 0x0000000004988ac1 clang::CodeGenAction::ExecuteAction() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4988ac1)\n#13 0x0000000004c81405 clang::FrontendAction::Execute() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4c81405)\n#14 0x0000000004bfea3e clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4bfea3e)\n#15 0x0000000004d735c9 clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4d735c9)\n#16 0x0000000000db970f cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xdb970f)\n#17 0x0000000000db031a ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&) driver.cpp:0:0\n#18 0x00000000049ef259 void llvm::function_ref<void()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::'lambda'()>(long) Job.cpp:0:0\n#19 0x0000000003f16074 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3f16074)\n#20 0x00000000049ef86f clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (.part.0) Job.cpp:0:0\n#21 0x00000000049b13bd clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x49b13bd)\n#22 0x00000000049b244e clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x49b244e)\n#23 0x00000000049ba545 clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x49ba545)\n#24 0x0000000000db5c1f clang_main(int, char**, llvm::ToolContext const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xdb5c1f)\n#25 0x0000000000c3a524 main (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xc3a524)\n#26 0x00007437c8629d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#27 0x00007437c8629e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#28 0x0000000000dafdc5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xdafdc5)\nclang++: error: clang frontend command failed with exit code 70 (use -v to see invocation)\nCompiler returned: 70\n```\n\n",
+    "comments": [
+      {
+        "author": "alexfh",
+        "body": "@fhahn @lukel97 "
+      },
+      {
+        "author": "topperc",
+        "body": "opt-bisect-limit says that it fails after CodeGenPrepare"
+      },
+      {
+        "author": "alexfh",
+        "body": "The culprit is 24b97756decb7bf0e26dcf0e30a7a9aaf27f417c and the later recommit (f98bdd94e61721ebe11108956e63510692db34b2) doesn't help."
+      },
+      {
+        "author": "fhahn",
+        "body": "I don't think the patch is at fault, AFAICT the IR after peeling is valid: https://llvm.godbolt.org/z/5han5TYzK"
+      },
+      {
+        "author": "fhahn",
+        "body": "This is a bug in CodeGenPrepare: https://gcc.godbolt.org/z/3fWT6W6MP"
+      },
+      {
+        "author": "fhahn",
+        "body": "CGP fix: https://github.com/llvm/llvm-project/pull/142949"
+      }
+    ],
+    "labels": [
+      "llvm:codegen",
+      "crash-on-valid"
+    ],
+    "title": "LLVM crash \"Instruction does not dominate all uses\" introduced recently"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/142830",
+  "knowledge_cutoff": "2025-06-04T18:30:49Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/CodeGenPrepare"
+  ],
+  "patch": "commit dde30a47313bf52fef02bbcb1de931a8d725659f\nAuthor: Florian Hahn <flo@fhahn.com>\nDate:   Fri Jun 6 12:38:30 2025 +0100\n\n    [CGP] Bail out if (Base|Scaled)Reg does not dominate insert point. (#142949)\n    \n    (Base|Scaled)Reg may not dominate the chosen insert point, if there are\n    multiple uses of the address. Bail out if that's the case, otherwise we\n    will generate invalid IR.\n    \n    In some cases, we could probably adjust the insert point or hoist the\n    (Base|Scaled)Reg.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/142830.\n    \n    PR: https://github.com/llvm/llvm-project/pull/142949\n\ndiff --git a/llvm/lib/CodeGen/CodeGenPrepare.cpp b/llvm/lib/CodeGen/CodeGenPrepare.cpp\nindex 822ed6283117..32348a899683 100644\n--- a/llvm/lib/CodeGen/CodeGenPrepare.cpp\n+++ b/llvm/lib/CodeGen/CodeGenPrepare.cpp\n@@ -5945,8 +5945,17 @@ bool CodeGenPrepare::optimizeMemoryInst(Instruction *MemoryInst, Value *Addr,\n   // The current BB may be optimized multiple times, we can't guarantee the\n   // reuse of Addr happens later, call findInsertPos to find an appropriate\n   // insert position.\n-  IRBuilder<> Builder(MemoryInst->getParent(),\n-                      findInsertPos(Addr, MemoryInst, SunkAddr));\n+  auto InsertPos = findInsertPos(Addr, MemoryInst, SunkAddr);\n+\n+  // TODO: Adjust insert point considering (Base|Scaled)Reg if possible.\n+  if (!SunkAddr) {\n+    auto &DT = getDT(*MemoryInst->getFunction());\n+    if ((AddrMode.BaseReg && !DT.dominates(AddrMode.BaseReg, &*InsertPos)) ||\n+        (AddrMode.ScaledReg && !DT.dominates(AddrMode.ScaledReg, &*InsertPos)))\n+      return Modified;\n+  }\n+\n+  IRBuilder<> Builder(MemoryInst->getParent(), InsertPos);\n \n   if (SunkAddr) {\n     LLVM_DEBUG(dbgs() << \"CGP: Reusing nonlocal addrmode: \" << AddrMode\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -S -passes='require<profile-summary>,function(codegenprepare)' %s"
+      ],
+      "file": "llvm/test/Transforms/CodeGenPrepare/X86/sink-addrmode-reg-does-not-geps.ll",
+      "tests": [
+        {
+          "test_body": "\ntarget triple = \"x86_64-unknown-linux\"\n\ndeclare i1 @cond(float)\n\ndefine void @scaled_reg_does_not_dominate_insert_point(ptr %src) {\n;\nbb:\n  %gep.base = getelementptr i8, ptr %src, i64 8\n  br label %loop\n\nloop:\n  %iv = phi i64 [ 0, %bb ], [ %iv.next, %loop ]\n  %iv.shl = shl i64 %iv, 1\n  %gep.shl = getelementptr i8, ptr %gep.base, i64 %iv.shl\n  %gep.sub = getelementptr i8, ptr %gep.shl, i64 -8\n  %iv.next = add i64 %iv, 1\n  %l.0 = load float, ptr %gep.shl, align 4\n  %l.1 = load float, ptr %gep.sub, align 4\n  call i1 @cond(float %l.0)\n  %c = call i1 @cond(float %l.1)\n  br i1 %c, label %loop, label %exit\n\nexit:\n  ret void\n}\n\ndefine void @check_dt_after_modifying_cfg(ptr %dst, i64 %x, i8 %y, i8 %z) {\n;\nentry:\n  %offset = lshr i64 %x, 2\n  %gep.dst = getelementptr i8, ptr %dst, i64 %offset\n  %smin = tail call i8 @llvm.smin.i8(i8 %y, i8 0)\n  %cmp = icmp slt i8 %z, 0\n  %sel = select i1 %cmp, i8 0, i8 %smin\n  store i8 %sel, ptr %gep.dst, align 1\n  ret void\n}\n\ndeclare i8 @llvm.smin.i8(i8, i8) #0",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,73 @@
+{
+  "base_commit": "6dd67f8c8a0ff5d8b46a69f2316c41bb11536881",
+  "bug_id": "155762",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "combineAVX512SetCCToKMOV"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          56278,
+          56284
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "33b2c26560f7083755fd0fabe1f74cddf02eb0a4"
+  },
+  "issue": {
+    "author": "abhishek-kaushik22",
+    "body": "The assertion is hit when trying to compile this piece of IR\n```\ndefine <8 x i1> @i8_mask_extract_8(i8 %mask) {\n  %.splatinsert = insertelement <8 x i8> poison, i8 %mask, i64 0\n  %.splat = shufflevector <8 x i8> %.splatinsert, <8 x i8> poison, <8 x i32> zeroinitializer\n  %1 = and <8 x i8> %.splat, <i8 2, i8 4, i8 8, i8 16, i8 32, i8 64, i8 128, i8 poison>\n  %cmp.45 = icmp ne <8 x i8> %1, zeroinitializer\n  ret <8 x i1> %cmp.45\n}\n```\nGodbolt: https://godbolt.org/z/ahvf5dMcq\n```\nllc: /root/llvm-project/llvm/include/llvm/ADT/APInt.h:1368: void llvm::APInt::setBits(unsigned int, unsigned int): Assertion `hiBit <= BitWidth && \"hiBit out of range\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -mcpu=x86-64-v4 -debug <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@i8_mask_extract_8'\n #0 0x0000000003f7b3b8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f7b3b8)\n #1 0x0000000003f78264 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007cec2cc42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007cec2cc969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007cec2cc42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007cec2cc287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007cec2cc2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007cec2cc39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000000d20778 (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xd20778)\n #9 0x000000000239f592 combineSetCC(llvm::SDNode*, llvm::SelectionDAG&, llvm::TargetLowering::DAGCombinerInfo&, llvm::X86Subtarget const&) X86ISelLowering.cpp:0:0\n#10 0x00000000023fb0b2 llvm::X86TargetLowering::PerformDAGCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x23fb0b2)\n#11 0x0000000003baddd1 (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#12 0x0000000003baf6e0 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#13 0x0000000003bb1863 llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3bb1863)\n#14 0x0000000003d174bd llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3d174bd)\n#15 0x0000000003d1aa0d llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3d1aa0d)\n#16 0x0000000003d1be45 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3d1be45)\n#17 0x0000000003d075ef llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3d075ef)\n#18 0x0000000002ec2359 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#19 0x00000000034e719c llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x34e719c)\n#20 0x00000000034e7561 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x34e7561)\n#21 0x00000000034e7dcb llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x34e7dcb)\n#22 0x00000000008eac9d compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#23 0x00000000007ba91e main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7ba91e)\n#24 0x00007cec2cc29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#25 0x00007cec2cc29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#26 0x00000000008e1125 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8e1125)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\n\nThis is a regression from the previous release and the guilty commit is https://github.com/llvm/llvm-project/commit/17857d92416da5997262318a6f62fccad9c5a156.",
+    "comments": [],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid"
+    ],
+    "title": "Assertion `hiBit <= BitWidth && \"hiBit out of range\"` failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/155762",
+  "knowledge_cutoff": "2025-08-28T06:34:30Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 33b2c26560f7083755fd0fabe1f74cddf02eb0a4\nAuthor: Abhishek Kaushik <abhishek.kaushik@intel.com>\nDate:   Thu Aug 28 07:20:47 2025 -0700\n\n    [X86] Fix assertion in AVX512 setcc combine due to invalid APInt mask width (#155775)\n    \n    The AVX512 setcc combine in X86ISelLowering was calling\n    `APInt::getLowBitsSet` with a mask width (`Len`) that could exceed the\n    bit width of the broadcasted scalar operand\n    (`BroadcastOpVT.getSizeInBits()`), leading to assertion failures.\n    \n    This patch replaces `Len` with the number of defined (non-undef)\n    elements in the constant pool vector.\n    \n    This ensures the generated mask is valid and avoids crashes when the\n    constant pool contains more elements than the scalar bit width can\n    represent.\n    \n    Fixes #155762\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex ab21cf534b30..7749ef82ee3d 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -56278,7 +56278,13 @@ static SDValue combineAVX512SetCCToKMOV(EVT VT, SDValue Op0, ISD::CondCode CC,\n \n   SDValue Masked = BroadcastOp;\n   if (N != 0) {\n-    APInt Mask = APInt::getLowBitsSet(BroadcastOpVT.getSizeInBits(), Len);\n+    unsigned BroadcastOpBitWidth = BroadcastOpVT.getSizeInBits();\n+    unsigned NumDefinedElts = UndefElts.countTrailingZeros();\n+\n+    if (NumDefinedElts > BroadcastOpBitWidth)\n+      return SDValue();\n+\n+    APInt Mask = APInt::getLowBitsSet(BroadcastOpBitWidth, NumDefinedElts);\n     SDValue ShiftedValue = DAG.getNode(ISD::SRL, DL, BroadcastOpVT, BroadcastOp,\n                                        DAG.getConstant(N, DL, BroadcastOpVT));\n     Masked = DAG.getNode(ISD::AND, DL, BroadcastOpVT, ShiftedValue,\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v4",
+        "llc < %s -mtriple=x86_64-- -mcpu=knl"
+      ],
+      "file": "llvm/test/CodeGen/X86/kmov.ll",
+      "tests": [
+        {
+          "test_body": "define <8 x i1> @i8_mask_extract_7(i8 %mask) {\n  %.splatinsert = insertelement <8 x i8> poison, i8 %mask, i64 0\n  %.splat = shufflevector <8 x i8> %.splatinsert, <8 x i8> poison, <8 x i32> zeroinitializer\n  %1 = and <8 x i8> %.splat, <i8 2, i8 4, i8 8, i8 16, i8 32, i8 64, i8 -128, i8 poison>\n  %cmp.45 = icmp ne <8 x i8> %1, zeroinitializer\n  ret <8 x i1> %cmp.45\n}\n",
+          "test_name": "i8_mask_extract_7"
+        },
+        {
+          "test_body": "define <8 x i1> @invert_i8_mask_extract_7(i8 %mask) {\n  %.splatinsert = insertelement <8 x i8> poison, i8 %mask, i64 0\n  %.splat = shufflevector <8 x i8> %.splatinsert, <8 x i8> poison, <8 x i32> zeroinitializer\n  %1 = and <8 x i8> %.splat, <i8 2, i8 4, i8 8, i8 16, i8 32, i8 64, i8 -128, i8 poison>\n  %cmp.45 = icmp eq <8 x i8> %1, zeroinitializer\n  ret <8 x i1> %cmp.45\n}\n",
+          "test_name": "invert_i8_mask_extract_7"
+        },
+        {
+          "test_body": "define <8 x i1> @invert_i8_mask_extract_8(i8 %mask) {\n  %.splatinsert = insertelement <8 x i8> poison, i8 %mask, i64 0\n  %.splat = shufflevector <8 x i8> %.splatinsert, <8 x i8> poison, <8 x i32> zeroinitializer\n  %1 = and <8 x i8> %.splat, <i8 1, i8 2, i8 4, i8 8, i8 16, i8 32, i8 64, i8 -128>\n  %cmp.45 = icmp eq <8 x i8> %1, zeroinitializer\n  ret <8 x i1> %cmp.45\n}\n",
+          "test_name": "invert_i8_mask_extract_8"
+        },
+        {
+          "test_body": "define <4 x i1> @i16_mask_extract_4(i16 %mask) {\n  %.splatinsert = insertelement <4 x i16> poison, i16 %mask, i64 0\n  %.splat = shufflevector <4 x i16> %.splatinsert, <4 x i16> poison, <4 x i32> zeroinitializer\n  %1 = and <4 x i16> %.splat, <i16 1, i16 2, i16 4, i16 8>\n  %cmp.45 = icmp ne <4 x i16> %1, zeroinitializer\n  ret <4 x i1> %cmp.45\n}\n",
+          "test_name": "i16_mask_extract_4"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

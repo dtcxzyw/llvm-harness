@@ -1,0 +1,71 @@
+{
+  "base_commit": "6599c022be7c797cd0fafeea4c538e01aae78fd4",
+  "bug_id": "82606",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Analysis/Loads.cpp": [
+        "llvm::isSafeToLoadUnconditionally"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Analysis/Loads.cpp": [
+        [
+          364,
+          370
+        ],
+        [
+          414,
+          424
+        ]
+      ]
+    },
+    "components": [
+      "Loads"
+    ],
+    "fix_commit": "b0edc1c45284586fdb12edd666f95d99f5f62b43"
+  },
+  "issue": {
+    "author": "OMaghiarIMG",
+    "body": "Hello, ran into the following error on a RISC-V build when setting optimization level to -O2:\r\n```\r\nfatal error: error in backend: Invalid size request on a scalable vector.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\r\nStack dump:\r\n0.      Program arguments: /home/omaghiar/riscv-gnu-toolchain/build/bin/clang++ -o tests/common.o -static -O2 -Wall -Wcast-qual -I. -march=rv64gcv_zba -c -MMD -MF tests/common.o.d tests/common.cpp\r\n1.      <eof> parser at end of file\r\n2.      Optimizer\r\n #0 0x000055a9ba5d5ebf llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1c7bebf)\r\n #1 0x000055a9ba5d3f0c llvm::sys::CleanupOnSignal(unsigned long) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1c79f0c)\r\n #2 0x000055a9ba5223d7 llvm::CrashRecoveryContext::HandleExit(int) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1bc83d7)\r\n #3 0x000055a9ba5cb382 llvm::sys::Process::Exit(int, bool) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1c71382)\r\n #4 0x000055a9b9608b56 (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0xcaeb56)\r\n #5 0x000055a9ba52980a llvm::report_fatal_error(llvm::Twine const&, bool) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1bcf80a)\r\n #6 0x000055a9ba52999e (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1bcf99e)\r\n #7 0x000055a9ba57761d (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1c1d61d)\r\n #8 0x000055a9ba577644 llvm::TypeSize::operator unsigned long() const (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1c1d644)\r\n #9 0x000055a9b99d03e4 llvm::isSafeToLoadUnconditionally(llvm::Value*, llvm::Align, llvm::APInt&, llvm::DataLayout const&, llvm::Instruction*, llvm::AssumptionCache*, llvm::DominatorTree const*, llvm::TargetLibraryInfo const*) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x10763e4)\r\n#10 0x000055a9b99d1d0d llvm::isSafeToLoadUnconditionally(llvm::Value*, llvm::Type*, llvm::Align, llvm::DataLayout const&, llvm::Instruction*, llvm::AssumptionCache*, llvm::DominatorTree const*, llvm::TargetLibraryInfo const*) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1077d0d)\r\n#11 0x000055a9bbdcf380 (anonymous namespace)::VectorCombine::widenSubvectorLoad(llvm::Instruction&) VectorCombine.cpp:0:0\r\n#12 0x000055a9bbddaa37 llvm::VectorCombinePass::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x3480a37)\r\n#13 0x000055a9bb847d26 llvm::detail::PassModel<llvm::Function, llvm::VectorCombinePass, llvm::PreservedAnalyses, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x2eedd26)\r\n#14 0x000055a9ba821ca4 llvm::detail::PassModel<llvm::Function, llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>, llvm::PreservedAnalyses, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1ec7ca4)\r\n#15 0x000055a9ba0f9e5e llvm::ModuleToFunctionPassAdaptor::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x179fe5e)\r\n#16 0x000055a9ba81c0c6 llvm::detail::PassModel<llvm::Module, llvm::ModuleToFunctionPassAdaptor, llvm::PreservedAnalyses, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1ec20c6)\r\n#17 0x000055a9ba0f6900 llvm::PassManager<llvm::Module, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x179c900)\r\n#18 0x000055a9ba82dfe8 (anonymous namespace)::EmitAssemblyHelper::RunOptimizationPipeline(clang::BackendAction, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>&, std::unique_ptr<llvm::ToolOutputFile, std::default_delete<llvm::ToolOutputFile>>&, clang::BackendConsumer*) BackendUtil.cpp:0:0\r\n#19 0x000055a9ba83131b clang::EmitBackendOutput(clang::DiagnosticsEngine&, clang::HeaderSearchOptions const&, clang::CodeGenOptions const&, clang::TargetOptions const&, clang::LangOptions const&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1ed731b)\r\n#20 0x000055a9bae0cc2e clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x24b2c2e)\r\n#21 0x000055a9bca36099 clang::ParseAST(clang::Sema&, bool, bool) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x40dc099)\r\n#22 0x000055a9bae0c005 clang::CodeGenAction::ExecuteAction() (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x24b2005)\r\n#23 0x000055a9bb09f3b1 clang::FrontendAction::Execute() (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x27453b1)\r\n#24 0x000055a9bb01a2db clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x26c02db)\r\n#25 0x000055a9bb17f50b clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x282550b)\r\n#26 0x000055a9b960a81d cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0xcb081d)\r\n#27 0x000055a9b960331d ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&) driver.cpp:0:0\r\n#28 0x000055a9bae5506d void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::'lambda'()>(long) Job.cpp:0:0\r\n#29 0x000055a9ba5222c7 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x1bc82c7)\r\n#30 0x000055a9bae5550c clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (.part.0) Job.cpp:0:0\r\n#31 0x000055a9bae1bc5e clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x24c1c5e)\r\n#32 0x000055a9bae1c62d clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x24c262d)\r\n#33 0x000055a9bae26bdc clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0x24ccbdc)\r\n#34 0x000055a9b9607c11 clang_main(int, char**, llvm::ToolContext const&) (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0xcadc11)\r\n#35 0x000055a9b9555f1b main (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0xbfbf1b)\r\n#36 0x00007f9ab2956083 __libc_start_main /build/glibc-wuryBv/glibc-2.31/csu/../csu/libc-start.c:342:3\r\n#37 0x000055a9b9602ade _start (/home/omaghiar/riscv-gnu-toolchain/build/bin/clang+++0xca8ade)\r\nclang++: error: clang frontend command failed with exit code 70 (use -v to see invocation)\r\nclang version 18.1.0rc (https://github.com/llvm/llvm-project.git 6c90f8dd546334b01c9a86387950e8c72d459f1e)\r\nTarget: riscv64-unknown-linux-gnu\r\nThread model: posix\r\nInstalledDir: /home/omaghiar/riscv-gnu-toolchain/build/bin\r\nclang++: note: diagnostic msg: \r\n********************\r\n\r\nPLEASE ATTACH THE FOLLOWING FILES TO THE BUG REPORT:\r\nPreprocessed source(s) and associated run script(s) are located at:\r\nclang++: note: diagnostic msg: /tmp/common-9cdfcc.cpp\r\nclang++: note: diagnostic msg: /tmp/common-9cdfcc.sh\r\nclang++: note: diagnostic msg: \r\n\r\n********************\r\nmake: *** [Makefile:61: tests/common.o] Error 1\r\n```\r\n\r\nTested on main(bc1c86b810e518a8e3fa90d5c26908c43788873d) and release/18.x(6c90f8dd546334b01c9a86387950e8c72d459f1e) branches.\r\nAttached preprocessed file:\r\n[common.txt](https://github.com/llvm/llvm-project/files/14372209/common.txt)\r\n`clang++ -x c++-cpp-output -O2 -march=rv64gcv -c common.txt`\r\n\r\n### Full context:\r\nBuilding the neon2rvv project(https://github.com/howjmay/neon2rvv) with riscv-gnu-toolchain. Clang version newer than 17 required for latest RVV intrinsics API changes. Clang works when building with -O0/O1 but fails with -O2.\r\n```\r\ngit clone https://github.com/howjmay/neon2rvv.git\r\ncd neon2rvv\r\n# set -O2 in Makefile#L20\r\nexport CROSS_COMPILE=/path/to/toolchain/riscv64-unknown-linux-gnu-\r\nmake CC=clang CXX=clang++\r\n```",
+    "comments": [
+      {
+        "author": "OMaghiarIMG",
+        "body": "Attached preprocessed source and associated run script:\r\n[common-3ccbc6.zip](https://github.com/llvm/llvm-project/files/14372628/common-3ccbc6.zip)\r\n"
+      }
+    ],
+    "labels": [
+      "release:backport",
+      "crash-on-valid",
+      "llvm:analysis"
+    ],
+    "title": "[RISC-V] Clang crashes when building with optimization level 2"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/82606",
+  "knowledge_cutoff": "2024-02-22T10:22:20Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/VectorCombine"
+  ],
+  "patch": "commit b0edc1c45284586fdb12edd666f95d99f5f62b43\nAuthor: Luke Lau <luke@igalia.com>\nDate:   Fri Feb 23 01:49:19 2024 +0800\n\n    [Loads] Fix crash in isSafeToLoadUnconditionally with scalable accessed type (#82650)\n    \n    This fixes #82606 by updating isSafeToLoadUnconditionally to handle\n    fixed sized loads from a scalable accessed type.\n\ndiff --git a/llvm/lib/Analysis/Loads.cpp b/llvm/lib/Analysis/Loads.cpp\nindex 6bf0d2f56eb4..5916d2ab48ec 100644\n--- a/llvm/lib/Analysis/Loads.cpp\n+++ b/llvm/lib/Analysis/Loads.cpp\n@@ -364,7 +364,7 @@ bool llvm::isSafeToLoadUnconditionally(Value *V, Align Alignment, APInt &Size,\n \n   if (Size.getBitWidth() > 64)\n     return false;\n-  const uint64_t LoadSize = Size.getZExtValue();\n+  const TypeSize LoadSize = TypeSize::getFixed(Size.getZExtValue());\n \n   // Otherwise, be a little bit aggressive by scanning the local block where we\n   // want to check to see if the pointer is already being loaded or stored\n@@ -414,11 +414,11 @@ bool llvm::isSafeToLoadUnconditionally(Value *V, Align Alignment, APInt &Size,\n \n     // Handle trivial cases.\n     if (AccessedPtr == V &&\n-        LoadSize <= DL.getTypeStoreSize(AccessedTy))\n+        TypeSize::isKnownLE(LoadSize, DL.getTypeStoreSize(AccessedTy)))\n       return true;\n \n     if (AreEquivalentAddressValues(AccessedPtr->stripPointerCasts(), V) &&\n-        LoadSize <= DL.getTypeStoreSize(AccessedTy))\n+        TypeSize::isKnownLE(LoadSize, DL.getTypeStoreSize(AccessedTy)))\n       return true;\n   }\n   return false;\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt < %s -passes=vector-combine -S -mtriple=riscv32 -mattr=+v",
+        "opt < %s -passes=vector-combine -S -mtriple=riscv64 -mattr=+v"
+      ],
+      "file": "llvm/test/Transforms/VectorCombine/RISCV/load-widening.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @fixed_load_scalable_src(ptr %p) {\n;\nentry:\n  store <vscale x 4 x i16> zeroinitializer, ptr %p\n  %0 = load <4 x i16>, ptr %p\n  %1 = shufflevector <4 x i16> %0, <4 x i16> zeroinitializer, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison>\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

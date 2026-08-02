@@ -1,0 +1,61 @@
+{
+  "base_commit": "dc23869f98452ca2c4086f12bb431a8d6fdb8169",
+  "bug_id": "154492",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "X86TargetLowering::SimplifyDemandedVectorEltsForTargetNode"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          44195,
+          44202
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "d770567a514716cdb250a2dee635435c22622e34"
+  },
+  "issue": {
+    "author": "nikic",
+    "body": "```llvm\n; RUN: llc -mattr=+avx512f < %s\ndefine <16 x i32> @test() {\n  %res = call <16 x i32> @llvm.x86.avx512.mask.cvttps2udq.512(<16 x float> zeroinitializer, <16 x i32> zeroinitializer, i16 255, i32 4)\n  ret <16 x i32> %res\n}\n```\nResults in:\n```\nLLVM ERROR: Cannot select: t28: v8i32 = X86ISD::CVTTP2UI t27\n  t27: v8f32 = BUILD_VECTOR ConstantFP:f32<0.000000e+00>, ConstantFP:f32<0.000000e+00>, ConstantFP:f32<0.000000e+00>, ConstantFP:f32<0.000000e+00>, ConstantFP:f32<0.000000e+00>, ConstantFP:f32<0.000000e+00>, ConstantFP:f32<0.000000e+00>, ConstantFP:f32<0.000000e+00>\n```\n\nNote that CVTTP2UI originally had v16i32 result and was narrowed to v8i32, so it now requires `+avx512vl` as well, leading to a selection failure.",
+    "comments": [],
+    "labels": [
+      "backend:X86",
+      "crash"
+    ],
+    "title": "[x86] LLVM ERROR: Cannot select: t28: v8i32 = X86ISD::CVTTP2UI t27"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/154492",
+  "knowledge_cutoff": "2025-08-20T08:55:41Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit d770567a514716cdb250a2dee635435c22622e34\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Wed Aug 20 12:18:10 2025 +0100\n\n    [X86] SimplifyDemandedVectorEltsForTargetNode - don't split X86ISD::CVTTP2UI nodes without AVX512VL (#154504)\n    \n    Unlike CVTTP2SI, CVTTP2UI is only available on AVX512 targets, so we\n    don't fallback to the AVX1 variant when we split a 512-bit vector, so we\n    can only use the 128/256-bit variants if we have AVX512VL.\n    \n    Fixes #154492\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex 8c3380b0c61d..2c726a9f7f6c 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -44195,8 +44195,12 @@ bool X86TargetLowering::SimplifyDemandedVectorEltsForTargetNode(\n     }\n       // Conversions.\n       // TODO: Add more CVT opcodes when we have test coverage.\n-    case X86ISD::CVTTP2SI:\n     case X86ISD::CVTTP2UI: {\n+      if (!Subtarget.hasVLX())\n+        break;\n+      [[fallthrough]];\n+    }\n+    case X86ISD::CVTTP2SI: {\n       if (Op.getOperand(0).getValueType().getVectorElementType() == MVT::f16 &&\n           !Subtarget.hasVLX())\n         break;\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-- -mattr=+avx512f",
+        "llc < %s -mtriple=x86_64-- -mattr=+avx512vl"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr154492.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <16 x i32> @PR154492() {\n; AVX512F-LABEL: PR154492:\n; AVX512F:       # %bb.0:\n; AVX512F-NEXT:    vxorps %xmm0, %xmm0, %xmm0\n; AVX512F-NEXT:    vcvttps2udq %zmm0, %zmm0\n; AVX512F-NEXT:    vmovaps %ymm0, %ymm0\n; AVX512F-NEXT:    retq\n;\n; AVX512VL-LABEL: PR154492:\n; AVX512VL:       # %bb.0:\n; AVX512VL-NEXT:    vxorps %xmm0, %xmm0, %xmm0\n; AVX512VL-NEXT:    vcvttps2udq %ymm0, %ymm0\n; AVX512VL-NEXT:    retq\n  %res = call <16 x i32> @llvm.x86.avx512.mask.cvttps2udq.512(<16 x float> zeroinitializer, <16 x i32> zeroinitializer, i16 255, i32 4)\n  ret <16 x i32> %res\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

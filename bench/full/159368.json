@@ -1,0 +1,61 @@
+{
+  "base_commit": "5f29cdc175f61924c97de10450667f144dd9d195",
+  "bug_id": "159368",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Transforms/Utils/VNCoercion.cpp": [
+        "VNCoercion::canCoerceMustAliasedValueToLoad",
+        "isFirstClassAggregateOrScalableType"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Transforms/Utils/VNCoercion.cpp": [
+        [
+          10,
+          16
+        ]
+      ]
+    },
+    "components": [
+      "VNCoercion"
+    ],
+    "fix_commit": "f5f0930c4715749df5a92f2b055647450f5308d4"
+  },
+  "issue": {
+    "author": "k-arrows",
+    "body": "Reproducer:\nhttps://godbolt.org/z/v41osa8TY\n\nBacktrace:\n```console\nopt: /root/llvm-project/llvm/include/llvm/Support/TypeSize.h:201: constexpr llvm::details::FixedOrScalableQuantity<LeafTy, ValueTy>::ScalarTy llvm::details::FixedOrScalableQuantity<LeafTy, ValueTy>::getFixedValue() const [with LeafTy = llvm::TypeSize; ValueTy = long unsigned int; llvm::details::FixedOrScalableQuantity<LeafTy, ValueTy>::ScalarTy = long unsigned int]: Assertion `(!isScalable() || isZero()) && \"Request for a fixed element count on a scalable object\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/opt -o /app/output.s -S -aa-pipeline=globals-aa -passes=gvn <source>\n1.\tRunning pass \"function(gvn<>)\" on module \"<source>\"\n2.\tRunning pass \"gvn<>\" on function \"test_alloca_store_reload\"\n #0 0x00000000058b6c38 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x58b6c38)\n #1 0x00000000058b3ae4 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007d4315442520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007d43154969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007d4315442476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007d43154287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007d431542871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007d4315439e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000004bf6fb4 (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x4bf6fb4)\n #9 0x000000000455c739 llvm::GVNPass::AnalyzeLoadAvailability(llvm::LoadInst*, llvm::MemDepResult, llvm::Value*) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x455c739)\n#10 0x00000000045690f7 llvm::GVNPass::processLoad(llvm::LoadInst*) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x45690f7)\n#11 0x000000000456b7b0 llvm::GVNPass::processInstruction(llvm::Instruction*) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x456b7b0)\n#12 0x000000000456c14b llvm::GVNPass::processBlock(llvm::BasicBlock*) (.part.0) GVN.cpp:0:0\n#13 0x000000000456c9e1 llvm::GVNPass::runImpl(llvm::Function&, llvm::AssumptionCache&, llvm::DominatorTree&, llvm::TargetLibraryInfo const&, llvm::AAResults&, llvm::MemoryDependenceResults*, llvm::LoopInfo&, llvm::OptimizationRemarkEmitter*, llvm::MemorySSA*) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x456c9e1)\n#14 0x000000000456dda0 llvm::GVNPass::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x456dda0)\n#15 0x0000000000eeab9e llvm::detail::PassModel<llvm::Function, llvm::GVNPass, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0xeeab9e)\n#16 0x000000000569e1f1 llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x569e1f1)\n#17 0x0000000000eeadbe llvm::detail::PassModel<llvm::Function, llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0xeeadbe)\n#18 0x000000000569c75a llvm::ModuleToFunctionPassAdaptor::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x569c75a)\n#19 0x000000000096fb6e llvm::detail::PassModel<llvm::Module, llvm::ModuleToFunctionPassAdaptor, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x96fb6e)\n#20 0x000000000569c111 llvm::PassManager<llvm::Module, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x569c111)\n#21 0x0000000000979d28 llvm::runPassPipeline(llvm::StringRef, llvm::Module&, llvm::TargetMachine*, llvm::TargetLibraryInfoImpl*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::StringRef, llvm::ArrayRef<llvm::PassPlugin>, llvm::ArrayRef<std::function<void (llvm::PassBuilder&)>>, llvm::opt_tool::OutputKind, llvm::opt_tool::VerifierKind, bool, bool, bool, bool, bool, bool, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x979d28)\n#22 0x000000000096dee9 optMain (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x96dee9)\n#23 0x00007d4315429d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#24 0x00007d4315429e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#25 0x0000000000965035 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x965035)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [],
+    "labels": [
+      "crash",
+      "llvm:GVN"
+    ],
+    "title": "[GVN] Assertion `(!isScalable() || isZero()) && \"Request for a fixed element count on a scalable object\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/159368",
+  "knowledge_cutoff": "2025-09-17T14:16:19Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/GVN"
+  ],
+  "patch": "commit f5f0930c4715749df5a92f2b055647450f5308d4\nAuthor: Madhur Amilkanthwar <madhura@nvidia.com>\nDate:   Wed Mar 4 10:54:16 2026 +0530\n\n    [GVN] Fix crash when svcount is used with globals-aa (#184347)\n    \n    When -globals-aa is used, `analyzeLoadAvailiability` calls\n    `analyzeLoadClobberringStore` which in turn calls\n    `isFirstClassAggregateOrScalableType` which is using\n    `isa<ScalableVectorType>`. Ideally it should use type's isScalableType()\n    method.\n    \n    The crash does not occur when default (BasicAA) is used because\n    `analyzeLoadAvailiability` function does not take the load clobbering\n    path as BasicAA returns `Def`.\n    \n    Fixes #159368\n\ndiff --git a/llvm/lib/Transforms/Utils/VNCoercion.cpp b/llvm/lib/Transforms/Utils/VNCoercion.cpp\nindex 03306daeeafc..0dabd065b672 100644\n--- a/llvm/lib/Transforms/Utils/VNCoercion.cpp\n+++ b/llvm/lib/Transforms/Utils/VNCoercion.cpp\n@@ -10,7 +10,7 @@ using namespace llvm;\n using namespace VNCoercion;\n \n static bool isFirstClassAggregateOrScalableType(Type *Ty) {\n-  return Ty->isStructTy() || Ty->isArrayTy() || isa<ScalableVectorType>(Ty);\n+  return Ty->isStructTy() || Ty->isArrayTy() || Ty->isScalableTy();\n }\n \n /// Return true if coerceAvailableValueToLoadType will succeed.\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -passes=gvn -aa-pipeline=globals-aa -S < %s"
+      ],
+      "file": "llvm/test/Transforms/GVN/svcount-access.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine target(\"aarch64.svcount\") @test_alloca_store_reload(target(\"aarch64.svcount\") %val) nounwind {\n;\n  %ptr = alloca target(\"aarch64.svcount\"), align 1\n  store target(\"aarch64.svcount\") %val, ptr %ptr\n  %res = load target(\"aarch64.svcount\"), ptr %ptr\n  ret target(\"aarch64.svcount\") %res\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

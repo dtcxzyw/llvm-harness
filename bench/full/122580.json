@@ -1,0 +1,66 @@
+{
+  "base_commit": "d291e459093be6df542c1770b26ff2e1bf1e6949",
+  "bug_id": "122580",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "LowerCTPOP"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          32172,
+          32177
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "b622cc67d0af9326b9e4f1f91d8be790c57dd86c"
+  },
+  "issue": {
+    "author": "dtcxzyw",
+    "body": "Reproducer: https://godbolt.org/z/eqMMqPavq\n```\n; bin/llc reduced.ll -o -\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\n@g_180 = external global i8\n@g_1032 = external global [2 x i32]\n\ndefine i32 @test(ptr %0) {\nentry:\n  %.b577 = load i1, ptr @g_180, align 4\n  %1 = select i1 %.b577, i32 1, i32 878456582\n  store i32 0, ptr @g_1032, align 4\n  %.b576 = load i1, ptr @g_180, align 4\n  %2 = select i1 %.b576, i32 1, i32 878456582\n  %or542.1.i = or i32 %2, %1\n  store i32 0, ptr @g_1032, align 4\n  %.b575 = load i1, ptr @g_180, align 4\n  %3 = select i1 %.b575, i32 1, i32 878456582\n  %or542.2.i = or i32 %3, %or542.1.i\n  %or542.3.i = or i32 %or542.2.i, 1\n  store i32 %or542.3.i, ptr %0, align 4\n  %4 = load i32, ptr %0, align 4\n  %div.i1796.i = sdiv i32 %4, 1096912269\n  %5 = tail call i32 @llvm.ctpop.i32(i32 %div.i1796.i)\n  ret i32 %5\n}\n```\n```\nllc: /root/llvm-project/llvm/lib/Target/X86/X86ISelLowering.cpp:32177: llvm::SDValue LowerCTPOP(llvm::SDValue, const llvm::X86Subtarget&, llvm::SelectionDAG&): Assertion `(LZ + TZ) < Known.getBitWidth() && \"Illegal shifted mask\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@test'\n #0 0x0000000003ca0728 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ca0728)\n #1 0x0000000003c9e12c SignalHandler(int) Signals.cpp:0:0\n #2 0x0000713ac9442520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x0000713ac94969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x0000713ac9442476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x0000713ac94287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x0000713ac942871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x0000713ac9439e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x000000000204f30f LowerCTPOP(llvm::SDValue, llvm::X86Subtarget const&, llvm::SelectionDAG&) X86ISelLowering.cpp:0:0\n #9 0x000000000218da52 llvm::X86TargetLowering::LowerOperation(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x218da52)\n#10 0x0000000003938110 (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) (.part.0) LegalizeDAG.cpp:0:0\n#11 0x000000000393bc16 llvm::SelectionDAG::Legalize() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x393bc16)\n#12 0x0000000003a53dcd llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a53dcd)\n#13 0x0000000003a574b9 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a574b9)\n#14 0x0000000003a58760 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a58760)\n#15 0x0000000003a4910f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a4910f)\n#16 0x0000000002bda179 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#17 0x00000000031e250f llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x31e250f)\n#18 0x00000000031e28c1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x31e28c1)\n#19 0x00000000031e3161 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x31e3161)\n#20 0x000000000089fc50 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#21 0x0000000000788a0e main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x788a0e)\n#22 0x0000713ac9429d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#23 0x0000713ac9429e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#24 0x0000000000896525 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x896525)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "Failure to constant fold (via KnownBits)"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid",
+      "generated by fuzzer"
+    ],
+    "title": "[X86][ISel] Assertion `(LZ + TZ) < Known.getBitWidth() && \"Illegal shifted mask\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/122580",
+  "knowledge_cutoff": "2025-01-11T06:38:13Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit b622cc67d0af9326b9e4f1f91d8be790c57dd86c\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Sat Jan 11 13:41:44 2025 +0000\n\n    [X86] LowerCTPOP - check if the operand is a constant when collecting KnownBits\n    \n    Under certain circumstances, lowering of other instructions can result in computeKnownBits being able to detect a constant that it couldn't previously.\n    \n    Fixes #122580\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex fbfcfc700ed6..596139d08457 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -32172,6 +32172,8 @@ static SDValue LowerCTPOP(SDValue N, const X86Subtarget &Subtarget,\n     // allowing us to shift the active bits down if necessary to fit into the\n     // special cases below.\n     KnownBits Known = DAG.computeKnownBits(Op);\n+    if (Known.isConstant())\n+      return DAG.getConstant(Known.getConstant().popcount(), DL, VT);\n     unsigned LZ = Known.countMinLeadingZeros();\n     unsigned TZ = Known.countMinTrailingZeros();\n     assert((LZ + TZ) < Known.getBitWidth() && \"Illegal shifted mask\");\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-unknown"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr122580.ll",
+      "tests": [
+        {
+          "test_body": "\n@g_180 = external global i8\n@g_1032 = external global [2 x i32]\n\ndefine i32 @PR122580(ptr %0) {\nentry:\n  %.b577 = load i1, ptr @g_180, align 4\n  %1 = select i1 %.b577, i32 1, i32 878456582\n  store i32 0, ptr @g_1032, align 4\n  %.b576 = load i1, ptr @g_180, align 4\n  %2 = select i1 %.b576, i32 1, i32 878456582\n  %or542.1.i = or i32 %2, %1\n  store i32 0, ptr @g_1032, align 4\n  %.b575 = load i1, ptr @g_180, align 4\n  %3 = select i1 %.b575, i32 1, i32 878456582\n  %or542.2.i = or i32 %3, %or542.1.i\n  %or542.3.i = or i32 %or542.2.i, 1\n  store i32 %or542.3.i, ptr %0, align 4\n  %4 = load i32, ptr %0, align 4\n  %div.i1796.i = sdiv i32 %4, 1096912269\n  %5 = tail call i32 @llvm.ctpop.i32(i32 %div.i1796.i)\n  ret i32 %5\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

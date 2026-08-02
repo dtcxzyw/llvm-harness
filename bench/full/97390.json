@@ -1,0 +1,60 @@
+{
+  "base_commit": "33112cbf59d838d25a4bf2a8c539d1aceda191c7",
+  "bug_id": "97390",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "RISCVTargetLowering::lowerSELECT"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          7685,
+          7691
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "ffc459de7540eaf9bdbcb7b7cc2376fd7e9e7f11"
+  },
+  "issue": {
+    "author": "Yunzezhu94",
+    "body": "Here is a simple reduced case:\r\n`int a = (a ? 4 : 8) / (8 ? -5141143369814759789L : 0);`\r\nWhen compiling this case with order \r\n`clang++  -std=c++11 -march=rv64imafdc -mabi=lp64d -w -O0 -o a.o -c a.cpp`\r\nIt reports error: llvm-project/llvm/include/llvm/CodeGen/SelectionDAGNodes.h:960: const llvm::SDValue& llvm::SDNode::getOperand(unsigned int) const: Assertion `Num < NumOperands && \"Invalid child # of SDNode!\"' failed.\r\n\r\nIt is because for certain cases foldBinOpIntoSelectIfProfitable may return a constant node when trueVal and falseVal of the select inst have the same value, at this time in following lowerSELECT it reports error that operands cannot be get from a constant node.",
+    "comments": [],
+    "labels": [
+      "backend:RISC-V",
+      "crash-on-valid"
+    ],
+    "title": "[RISCV] Node returned by foldBinOpIntoSelectIfProfitable reports error in lowerSELECT"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/97390",
+  "knowledge_cutoff": "2024-07-02T07:17:30Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit ffc459de7540eaf9bdbcb7b7cc2376fd7e9e7f11\nAuthor: Yunzezhu94 <93851382+Yunzezhu94@users.noreply.github.com>\nDate:   Fri Jul 5 10:55:36 2024 +0800\n\n    [RISCV] Add a check in lowerSELECT after foldBinOpIntoSelectIfProfitable (#97391)\n    \n    In certain case foldBinOpIntoSelectIfProfitable may return a constant\n    node, the node will be lowered in lowerSELECT and lead to crash.\n    This patch fix the bug by adding an extra check before lowerSELECT that\n    do lowerSELECT as before when foldBinOpIntoSelectIfProfitable returns a\n    select node, and return the node directly when\n    foldBinOpIntoSelectIfProfitable returns a constant node.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/97390\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 45368a01a0a7..c0a9ecf4f4c1 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -7685,7 +7685,11 @@ SDValue RISCVTargetLowering::lowerSELECT(SDValue Op, SelectionDAG &DAG) const {\n       if (SDValue NewSel = foldBinOpIntoSelectIfProfitable(*Op->use_begin(),\n                                                            DAG, Subtarget)) {\n         DAG.ReplaceAllUsesWith(BinOp, &NewSel);\n-        return lowerSELECT(NewSel, DAG);\n+        // Opcode check is necessary because foldBinOpIntoSelectIfProfitable\n+        // may return a constant node and cause crash in lowerSELECT.\n+        if (NewSel.getOpcode() == ISD::SELECT)\n+          return lowerSELECT(NewSel, DAG);\n+        return NewSel;\n       }\n     }\n   }\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=riscv64 -mattr=+m < %s"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/fold-binop-into-select-return-constant.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine i64 @fold_binop_into_select_return_constant(i1 %c) {\nentry:\n  %select1 = select i1 %c, i32 4, i32 8\n  %select2 = sext i32 %select1 to i64\n  %div1 = sdiv i64 %select2, -5141143369814759789\n  ret i64 %div1\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

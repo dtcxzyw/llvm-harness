@@ -1,0 +1,61 @@
+{
+  "base_commit": "2db7110be77e2107cd3269bdbd59ebf7f1a10f9e",
+  "bug_id": "173924",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "combineArithReduction"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          47262,
+          47268
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "7da282fd3820126183e2bfcaa9ea5c45096397ce"
+  },
+  "issue": {
+    "author": "Rexicon226",
+    "body": "https://llc.godbolt.org/z/MzMnqMjax\n\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux5.10.0-gnu2.39.0\"\n\ndefine i256 @bar(<8 x i256> %0) #0 {\nEntry:\n  %1 = and <8 x i256> %0, splat (i256 1)\n  %2 = call i256 @llvm.vector.reduce.add.v8i256(<8 x i256> %1)\n  ret i256 %2\n}\n\n; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)\ndeclare i256 @llvm.vector.reduce.add.v8i256(<8 x i256>) #1\n\nattributes #0 = { \"target-cpu\"=\"znver5\" }\nattributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }\n\n```\n\n```\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.      Program arguments: llc-21 reduced.ll\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\n2.      Running pass 'X86 DAG->DAG Instruction Selection' on function '@bar'\n #0 0x00007e15df4fc91f llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x44fc91f)\n #1 0x00007e15df4fa1c7 llvm::sys::RunSignalHandlers() (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x44fa1c7)\n #2 0x00007e15df4fd6fa (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x44fd6fa)\n #3 0x00007e15da845330 (/lib/x86_64-linux-gnu/libc.so.6+0x45330)\n #4 0x00007e15dfbbc26c llvm::EVT::isExtendedFixedLengthVector() const (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x4bbc26c)\n #5 0x00007e15dfe3cd91 llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDValue, llvm::SDNodeFlags) (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x4e3cd91)\n #6 0x00007e15e2ae83ab (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x7ae83ab)\n #7 0x00007e15e2a51a35 (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x7a51a35)\n #8 0x00007e15e2a4d202 (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x7a4d202)\n #9 0x00007e15dfc1f9fb (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x4c1f9fb)\n#10 0x00007e15dfc1e0c9 llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x4c1e0c9)\n#11 0x00007e15dfe6d4cd llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x4e6d4cd)\n#12 0x00007e15dfe6cee8 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x4e6cee8)\n#13 0x00007e15dfe6b06f llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x4e6b06f)\n#14 0x00007e15dfe693e1 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x4e693e1)\n#15 0x00007e15df942239 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x4942239)\n#16 0x00007e15df66f01f llvm::FPPassManager::runOnFunction(llvm::Function&) (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x466f01f)\n#17 0x00007e15df674e4d llvm::FPPassManager::runOnModule(llvm::Module&) (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x4674e4d)\n#18 0x00007e15df66f77d llvm::legacy::PassManagerImpl::run(llvm::Module&) (/usr/lib/llvm-21/bin/../lib/libLLVM.so.21.1+0x466f77d)\n#19 0x0000650d48dfce35 (/usr/lib/llvm-21/bin/llc+0x1be35)\n#20 0x0000650d48dfa7cf main (/usr/lib/llvm-21/bin/llc+0x197cf)\n#21 0x00007e15da82a1ca __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#22 0x00007e15da82a28b call_init ./csu/../csu/libc-start.c:128:20\n#23 0x00007e15da82a28b __libc_start_main ./csu/../csu/libc-start.c:347:5\n#24 0x0000650d48df6f05 _start (/usr/lib/llvm-21/bin/llc+0x15f05)\nSegmentation fault (core dumped)\n```",
+    "comments": [],
+    "labels": [
+      "backend:X86",
+      "crash"
+    ],
+    "title": "x86 DAG isel crash"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/173924",
+  "knowledge_cutoff": "2025-12-29T20:25:04Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 7da282fd3820126183e2bfcaa9ea5c45096397ce\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Tue Dec 30 12:28:24 2025 +0000\n\n    [X86] combineArithReduction - avoid PSADBW expansion for 128 bit integers and larger (#173979)\n    \n    Fixes #173924\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex aefe861a62a5..a12582afa7c3 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -47262,7 +47262,7 @@ static SDValue combineArithReduction(SDNode *ExtElt, SelectionDAG &DAG,\n   // sum+zext v8i8 subvectors to vXi64, then perform the reduction.\n   // TODO: See if its worth avoiding vXi16/i32 truncations?\n   if (Opc == ISD::ADD && NumElts >= 4 && EltSizeInBits >= 16 &&\n-      DAG.computeKnownBits(Rdx).getMaxValue().ule(255) &&\n+      EltSizeInBits <= 64 && DAG.computeKnownBits(Rdx).getMaxValue().ule(255) &&\n       (EltSizeInBits == 16 || Rdx.getOpcode() == ISD::ZERO_EXTEND ||\n        Subtarget.hasAVX512())) {\n     if (Rdx.getValueType() == MVT::v8i16) {\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v3",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v4"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr173924.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine i256 @PR173924(<8 x i256> %a0) {\n  %m = and <8 x i256> %a0, splat (i256 1)\n  %r = call i256 @llvm.vector.reduce.add.v8i256(<8 x i256> %m)\n  ret i256 %r\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

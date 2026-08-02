@@ -1,0 +1,67 @@
+{
+  "base_commit": "3c0f5045e103a9d7fd7eb59a0e0b201cb26ccb97",
+  "bug_id": "177923",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "combineX86FPLogicOp"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          55772,
+          55785
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "c5e6257351d541b65f97fd687b4c70b3adcde1f5"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/eee7PTqGo\nTestcase:\n```\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\ndefine double @func_1() {\nentry:\n  %shuffle6.bc.i = bitcast <8 x i16> <i16 undef, i16 undef, i16 undef, i16 undef, i16 0, i16 0, i16 0, i16 0> to <2 x double>\n  %shuffle6.extract.i = extractelement <2 x double> %shuffle6.bc.i, i64 0\n  %0 = bitcast double %shuffle6.extract.i to <4 x i16>\n  %1 = or <4 x i16> <i16 1, i16 1, i16 1, i16 1>, %0\n  %2 = bitcast <4 x i16> %1 to double\n  ret double %2\n}\n```\n\nDump:\n```\nLLVM ERROR: Cannot select: 0x3f471b40: v2i64 = BUILD_VECTOR Constant:i64<-1>, Constant:i64<-1>\nIn function: func_1\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@func_1'\n #0 0x0000000003c6a268 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3c6a268)\n #1 0x0000000003c67454 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x000070fe26e42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000070fe26e969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000070fe26e42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000070fe26e287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00000000007b7b23 llvm::json::operator==(llvm::json::Value const&, llvm::json::Value const&) (.cold) JSON.cpp:0:0\n #7 0x0000000003a02cda llvm::SelectionDAGISel::CannotYetSelect(llvm::SDNode*) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3a02cda)\n #8 0x0000000003a08c65 llvm::SelectionDAGISel::SelectCodeCommon(llvm::SDNode*, unsigned char const*, unsigned int) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3a08c65)\n #9 0x000000000208581a (anonymous namespace)::X86DAGToDAGISel::Select(llvm::SDNode*) X86ISelDAGToDAG.cpp:0:0\n#10 0x00000000039ffdc4 llvm::SelectionDAGISel::DoInstructionSelection() (/opt/compiler-explorer/clang-trunk/bin/llc+0x39ffdc4)\n#11 0x0000000003a0ce72 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-trunk/bin/llc+0x3a0ce72)\n#12 0x0000000003a0f8ea llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3a0f8ea)\n#13 0x0000000003a11a95 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3a11a95)\n#14 0x00000000039ff961 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x39ff961)\n#15 0x0000000002ce3a8d llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2ce3a8d)\n#16 0x0000000003243212 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3243212)\n#17 0x00000000032434a1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x32434a1)\n#18 0x0000000003244d17 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3244d17)\n#19 0x00000000008f3aef compileModule(char**, llvm::SmallVectorImpl<llvm::PassPlugin>&, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#20 0x00000000007c74cc main (/opt/compiler-explorer/clang-trunk/bin/llc+0x7c74cc)\n#21 0x000070fe26e29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#22 0x000070fe26e29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#23 0x00000000008ea045 _start (/opt/compiler-explorer/clang-trunk/bin/llc+0x8ea045)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "```\nOptimized legalized selection DAG: %bb.0 'func_1:entry'\nSelectionDAG has 11 nodes:\n  t0: ch,glue = EntryToken\n        t30: i64 = X86ISD::Wrapper TargetConstantPool:i64<<8 x i16> <i16 1, i16 1, i16 1, i16 1, i16 undef, i16 undef, i16 undef, i16 undef>> 0\n      t34: f64,ch = load<(load (s64) from constant-pool, align 16)> t0, t30, undef:i64\n    t17: f64 = X86ISD::FOR undef:f64, t34\n  t14: ch,glue = CopyToReg t0, Register:f64 $xmm0, t17\n  t15: ch = X86ISD::RET_GLUE t14, TargetConstant:i32<0>, Register:f64 $xmm0, t14:1\n```\nWe don't canonicalise / fold away the undef while its still a X86ISD::FOR node, so it waits until DAGToDAGISel and then starts constant folding.... `FOR(undef,x) -> OR(undef,x) -> OR(x,undef) -> -1`"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid",
+      "generated by fuzzer"
+    ],
+    "title": "[X86] LLVM ERROR: Cannot select: v2i64 = BUILD_VECTOR Constant:i64<-1>, Constant:i64<-1>"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/177923",
+  "knowledge_cutoff": "2026-01-26T10:43:41Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit c5e6257351d541b65f97fd687b4c70b3adcde1f5\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Mon Jan 26 13:30:12 2026 +0000\n\n    [X86] combineX86FPLogicOp - attempt to fold FAND/FOR/FXOR scalar nodes if they are constant or contain UNDEFs (#177947)\n    \n    Fixes #177923\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex c13ec3a72281..29a91b1d4304 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -55772,14 +55772,26 @@ SDValue X86TargetLowering::getNegatedExpression(SDValue Op, SelectionDAG &DAG,\n static SDValue combineX86FPLogicOp(SDNode *N, SelectionDAG &DAG,\n                                    const X86Subtarget &Subtarget) {\n   MVT VT = N->getSimpleValueType(0);\n-  // If we have integer vector types available, use the integer opcodes.\n-  if (!VT.isVector() || !Subtarget.hasSSE2())\n+  SDValue Op0 = N->getOperand(0);\n+  SDValue Op1 = N->getOperand(1);\n+\n+  // Check if this will constant fold as a generic op.\n+  bool WillFold = false;\n+  if (DAG.getTargetLoweringInfo().isCommutativeBinOp(N->getOpcode())) {\n+    WillFold |= Op0.isUndef() || Op1.isUndef();\n+    WillFold |= Op0.getOpcode() == ISD::ConstantFP &&\n+                Op1.getOpcode() == ISD::ConstantFP;\n+  }\n+\n+  // If this will fold away or we have integer vector types available, use the\n+  // integer opcodes.\n+  if (!WillFold && (!VT.isVector() || !Subtarget.hasSSE2()))\n     return SDValue();\n \n   SDLoc dl(N);\n-  MVT IntVT = VT.changeVectorElementTypeToInteger();\n-  SDValue Op0 = DAG.getBitcast(IntVT, N->getOperand(0));\n-  SDValue Op1 = DAG.getBitcast(IntVT, N->getOperand(1));\n+  MVT IntVT = VT.changeTypeToInteger();\n+  Op0 = DAG.getBitcast(IntVT, Op0);\n+  Op1 = DAG.getBitcast(IntVT, Op1);\n   unsigned IntOpcode;\n   switch (N->getOpcode()) {\n   // clang-format off\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=i686-unknown-unknown",
+        "llc < %s -mtriple=x86_64-unknown-unknown"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr177923.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine double @PR177923_and() nounwind {\n; X86-LABEL: PR177923_and:\n; X86:       # %bb.0:\n; X86-NEXT:    pushl %ebp\n; X86-NEXT:    movl %esp, %ebp\n; X86-NEXT:    andl $-8, %esp\n; X86-NEXT:    subl $8, %esp\n; X86-NEXT:    movl $0, {{[0-9]+}}(%esp)\n; X86-NEXT:    movl $0, (%esp)\n; X86-NEXT:    fldl (%esp)\n; X86-NEXT:    movl %ebp, %esp\n; X86-NEXT:    popl %ebp\n; X86-NEXT:    retl\n;\n; X64-LABEL: PR177923_and:\n; X64:       # %bb.0:\n; X64-NEXT:    xorps %xmm0, %xmm0\n; X64-NEXT:    retq\n  %bc0 = bitcast <8 x i16> <i16 undef, i16 undef, i16 undef, i16 undef, i16 0, i16 0, i16 0, i16 0> to <2 x double>\n  %elt = extractelement <2 x double> %bc0, i64 0\n  %bc1 = bitcast double %elt to <4 x i16>\n  %and = and <4 x i16> <i16 1, i16 1, i16 1, i16 1>, %bc1\n  %res = bitcast <4 x i16> %and to double\n  ret double %res\n}\n\ndefine double @PR177923_or() nounwind {\n; X86-LABEL: PR177923_or:\n; X86:       # %bb.0:\n; X86-NEXT:    pushl %ebp\n; X86-NEXT:    movl %esp, %ebp\n; X86-NEXT:    andl $-8, %esp\n; X86-NEXT:    subl $8, %esp\n; X86-NEXT:    movl $-1, {{[0-9]+}}(%esp)\n; X86-NEXT:    movl $-1, (%esp)\n; X86-NEXT:    fldl (%esp)\n; X86-NEXT:    movl %ebp, %esp\n; X86-NEXT:    popl %ebp\n; X86-NEXT:    retl\n;\n; X64-LABEL: PR177923_or:\n; X64:       # %bb.0:\n; X64-NEXT:    movsd {{.*#+}} xmm0 = [NaN,0.0E+0]\n; X64-NEXT:    retq\n  %bc0 = bitcast <8 x i16> <i16 undef, i16 undef, i16 undef, i16 undef, i16 0, i16 0, i16 0, i16 0> to <2 x double>\n  %elt = extractelement <2 x double> %bc0, i64 0\n  %bc1 = bitcast double %elt to <4 x i16>\n  %or = or <4 x i16> <i16 1, i16 1, i16 1, i16 1>, %bc1\n  %res = bitcast <4 x i16> %or to double\n  ret double %res\n}\n\ndefine double @PR177923_xor() nounwind {\n; X86-LABEL: PR177923_xor:\n; X86:       # %bb.0:\n; X86-NEXT:    fldz\n; X86-NEXT:    retl\n;\n; X64-LABEL: PR177923_xor:\n; X64:       # %bb.0:\n; X64-NEXT:    retq\n  %bc0 = bitcast <8 x i16> <i16 undef, i16 undef, i16 undef, i16 undef, i16 0, i16 0, i16 0, i16 0> to <2 x double>\n  %elt = extractelement <2 x double> %bc0, i64 0\n  %bc1 = bitcast double %elt to <4 x i16>\n  %xor = xor <4 x i16> <i16 1, i16 1, i16 1, i16 1>, %bc1\n  %res = bitcast <4 x i16> %xor to double\n  ret double %res\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

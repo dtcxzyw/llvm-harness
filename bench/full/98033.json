@@ -1,0 +1,86 @@
+{
+  "base_commit": "ce8c43fe274f3f090cad2342af6032176efb846f",
+  "bug_id": "98033",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp": [
+        "NVPTXTargetLowering::LowerLOADi1",
+        "NVPTXTargetLowering::NVPTXTargetLowering"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp": [
+        [
+          629,
+          634
+        ],
+        [
+          2920,
+          2928
+        ]
+      ]
+    },
+    "components": [
+      "NVPTX"
+    ],
+    "fix_commit": "b2dcf62c514d3c9c143c85bd029d22098b92c38d"
+  },
+  "issue": {
+    "author": "d0k",
+    "body": "```\r\ntarget datalayout = \"e-i64:64-i128:128-v16:16-v32:32-n16:32:64\"\r\ntarget triple = \"nvptx64\"\r\n\r\ndefine void @loop_slice_fusion_5(ptr noalias readonly %0) {\r\n._crit_edge:\r\n  %1 = load i1, ptr %0, align 1\r\n  %2 = zext i1 %1 to i32\r\n  %3 = add i32 %2, 1\r\n  %4 = and i32 %3, 1\r\n  store i32 %4, ptr null, align 2\r\n  ret void\r\n}\r\n\r\n!nvvm.annotations = !{!0, !1}\r\n\r\n!0 = !{ptr @loop_slice_fusion_5, !\"kernel\", i32 1}\r\n!1 = !{ptr @loop_slice_fusion_5, !\"reqntidx\", i32 128}\r\n```\r\n\r\n```\r\n$ llc < t.ll -mcpu=sm_80\r\n\r\nUnhandled source type\r\nUNREACHABLE executed at llvm/lib/Target/NVPTX/NVPTXISelDAGToDAG.cpp:3808!\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.      Program arguments: llc -mcpu=sm_80 -debug\r\n1.      Running pass 'Function Pass Manager' on module '<stdin>'.\r\n2.      Running pass 'NVPTX DAG->DAG Pattern Instruction Selection' on function '@loop_slice_fusion_5'\r\n #0 0x00005606095885d4 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (llc+0x69e15d4)\r\n #1 0x000056060958617e llvm::sys::RunSignalHandlers() (llc+0x69df17e)\r\n #2 0x0000560609588978 SignalHandler(int) Signals.cpp:0:0\r\n #3 0x00007f1a26e5a510 (/lib/x86_64-linux-gnu/libc.so.6+0x3c510)\r\n #4 0x00007f1a26ea816c __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\r\n #5 0x00007f1a26e5a472 raise ./signal/../sysdeps/posix/raise.c:27:6\r\n #6 0x00007f1a26e444b2 abort ./stdlib/abort.c:81:7\r\n #7 0x00005606094f2e30 llvm::install_out_of_memory_new_handler() (llc+0x694be30)\r\n #8 0x00005606077c221d llvm::NVPTXDAGToDAGISel::GetConvertOpcode(llvm::MVT, llvm::MVT, llvm::LoadSDNode*) NVPTXISelDAGToDAG.cpp:0:0\r\n #9 0x00005606077bcd05 llvm::NVPTXDAGToDAGISel::tryLDGLDU(llvm::SDNode*) NVPTXISelDAGToDAG.cpp:0:0\r\n#10 0x00005606077b892f llvm::NVPTXDAGToDAGISel::tryLoad(llvm::SDNode*) NVPTXISelDAGToDAG.cpp:0:0\r\n#11 0x00005606077b8747 llvm::NVPTXDAGToDAGISel::Select(llvm::SDNode*) NVPTXISelDAGToDAG.cpp:0:0\r\n#12 0x000056060938eb9f llvm::SelectionDAGISel::DoInstructionSelection() (llc+0x67e7b9f)\r\n#13 0x000056060938dba9 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (llc+0x67e6ba9)\r\n#14 0x000056060938b50c llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (llc+0x67e450c)\r\n#15 0x00005606093887aa llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (llc+0x67e17aa)\r\n#16 0x0000560609386146 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (llc+0x67df146)\r\n#17 0x000056060868bec2 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (llc+0x5ae4ec2)\r\n#18 0x0000560608b9e5bc llvm::FPPassManager::runOnFunction(llvm::Function&) (llc+0x5ff75bc)\r\n#19 0x0000560608ba6c22 llvm::FPPassManager::runOnModule(llvm::Module&) (llc+0x5fffc22)\r\n#20 0x0000560608b9f137 llvm::legacy::PassManagerImpl::run(llvm::Module&) (llc+0x5ff8137)\r\n#21 0x00005606069dccf3 main (llc+0x3e35cf3)\r\n#22 0x00007f1a26e456ca __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\r\n#23 0x00007f1a26e45785 call_init ./csu/../csu/libc-start.c:128:20\r\n#24 0x00007f1a26e45785 __libc_start_main ./csu/../csu/libc-start.c:347:5\r\n#25 0x00005606069d6c21 _start (llc+0x3e2fc21)\r\n```",
+    "comments": [
+      {
+        "author": "mjulian31",
+        "body": "@d0k - this issue should now be fixed by my commit #99392. Please check if you are still seeing the bug."
+      },
+      {
+        "author": "d0k",
+        "body": "Issue is gone, thanks."
+      }
+    ],
+    "labels": [
+      "llvm:crash",
+      "backend:NVPTX"
+    ],
+    "title": "[NVPTX] Unhandled source type UNREACHABLE executed at NVPTXISelDAGToDAG.cpp:3808!"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/98033",
+  "knowledge_cutoff": "2024-07-08T15:24:36Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/NVPTX"
+  ],
+  "patch": "commit b2dcf62c514d3c9c143c85bd029d22098b92c38d\nAuthor: Meredith Julian <35236176+mjulian31@users.noreply.github.com>\nDate:   Thu Jul 18 10:29:24 2024 -0700\n\n    [NVPTX] fix emission for i1 load and extload (#99392)\n    \n    Currently, an illegal 2-byte load from a 1-byte global variable is being\n    generated. This change instead generates a 1-byte load and zero-extends\n    it to i16 register. This was always the intended behavior of the\n    function.\n    \n    In addition, an i1 ext load of any kind needs to be promoted. A missing\n    setLoadExtAction for ISD::EXTLOAD was causing an \"Unhandled source type\"\n    unreachable due to an illegal i1 ext load during ISelDAGtoDAG (see below\n    bug).\n    \n    Bug https://github.com/llvm/llvm-project/issues/98033.\n\ndiff --git a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp\nindex a2181b478c26..bc23998455a6 100644\n--- a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp\n+++ b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp\n@@ -629,6 +629,7 @@ NVPTXTargetLowering::NVPTXTargetLowering(const NVPTXTargetMachine &TM,\n   for (MVT VT : MVT::integer_valuetypes()) {\n     setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i1, Promote);\n     setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i1, Promote);\n+    setLoadExtAction(ISD::EXTLOAD, VT, MVT::i1, Promote);\n     setTruncStoreAction(VT, MVT::i1, Expand);\n   }\n \n@@ -2920,9 +2921,10 @@ SDValue NVPTXTargetLowering::LowerLOADi1(SDValue Op, SelectionDAG &DAG) const {\n   assert(LD->getExtensionType() == ISD::NON_EXTLOAD);\n   assert(Node->getValueType(0) == MVT::i1 &&\n          \"Custom lowering for i1 load only\");\n-  SDValue newLD = DAG.getLoad(MVT::i16, dl, LD->getChain(), LD->getBasePtr(),\n-                              LD->getPointerInfo(), LD->getAlign(),\n-                              LD->getMemOperand()->getFlags());\n+  SDValue newLD = DAG.getExtLoad(ISD::ZEXTLOAD, dl, MVT::i16, LD->getChain(),\n+                                 LD->getBasePtr(), LD->getPointerInfo(),\n+                                 MVT::i8, LD->getAlign(),\n+                                 LD->getMemOperand()->getFlags());\n   SDValue result = DAG.getNode(ISD::TRUNCATE, dl, MVT::i1, newLD);\n   // The legalizer (the caller) is expecting two values from the legalized\n   // load, so we build a MergeValues node for it. See ExpandUnalignedLoad()\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -march=nvptx64 -mcpu=sm_50"
+      ],
+      "file": "llvm/test/CodeGen/NVPTX/i1-ext-load.ll",
+      "tests": [
+        {
+          "test_body": "\n\ntarget triple = \"nvptx-nvidia-cuda\"\n\ndefine void @foo(ptr noalias readonly %ptr, ptr noalias %retval) {\n  %ld = load i1, ptr %ptr, align 1\n  %zext = zext i1 %ld to i32\n  %add = add i32 %zext, 1\n  %and = and i32 %add, 1\n  store i32 %and, ptr %retval\n  ret void\n}\n\n!nvvm.annotations = !{!0}\n\n!0 = !{ptr @foo, !\"kernel\", i32 1}",
+          "test_name": "<module>"
+        }
+      ]
+    },
+    {
+      "commands": [
+        "llc < %s -march=nvptx64 -mcpu=sm_20"
+      ],
+      "file": "llvm/test/CodeGen/NVPTX/i1-load-lower.ll",
+      "tests": [
+        {
+          "test_body": "\n\ntarget triple = \"nvptx-nvidia-cuda\"\n\n@i1g = addrspace(1) global i1 false, align 2\n\ndefine void @foo() {\n  %tmp = load i1, ptr addrspace(1) @i1g, align 2\n  br i1 %tmp, label %if.end, label %if.then\n\nif.then:\n  store i1 true, ptr addrspace(1) @i1g, align 2\n  br label %if.end\n\nif.end:\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

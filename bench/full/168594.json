@@ -1,0 +1,68 @@
+{
+  "base_commit": "f3d8a5cf5bc058328004bd0905ab4974f09fc131",
+  "bug_id": "168594",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelDAGToDAG.cpp": [
+        "X86DAGToDAGISel::PreprocessISelDAG"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelDAGToDAG.cpp": [
+        [
+          1004,
+          1010
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "9c2bbfe4a46e2d58294b6bb3e3a3584ade6a3304"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/fWTr6E55h\n\nTestcase:\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\ndefine <8 x i16> @backsmith_pure_1() {\nentry:\n  %0 = tail call <8 x i16> @llvm.x86.sse2.pavg.w(<8 x i16> splat (i16 1), <8 x i16> zeroinitializer)\n  %sub = sub <8 x i16> zeroinitializer, %0\n  ret <8 x i16> %sub\n}\n\n; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)\ndeclare <8 x i16> @llvm.x86.sse2.pavg.w(<8 x i16>, <8 x i16>) #0\n\nattributes #0 = { nocallback nofree nosync nounwind willreturn memory(none) }\n```\n\nllc output:\n```\nLLVM ERROR: Cannot select: t20: v8i16 = BUILD_VECTOR Constant:i16<-1>, Constant:i16<-1>, Constant:i16<-1>, Constant:i16<-1>, Constant:i16<-1>, Constant:i16<-1>, Constant:i16<-1>, Constant:i16<-1>\nIn function: backsmith_pure_1\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -O0 <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@backsmith_pure_1'\n #0 0x00000000041a29e8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x41a29e8)\n #1 0x000000000419f894 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x0000784542e42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x0000784542e969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x0000784542e42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x0000784542e287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00000000007bef3e llvm::json::operator==(llvm::json::Value const&, llvm::json::Value const&) (.cold) JSON.cpp:0:0\n #7 0x0000000003f2cef1 llvm::SelectionDAGISel::CannotYetSelect(llvm::SDNode*) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f2cef1)\n #8 0x0000000003f338d9 llvm::SelectionDAGISel::SelectCodeCommon(llvm::SDNode*, unsigned char const*, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f338d9)\n #9 0x00000000022fd197 (anonymous namespace)::X86DAGToDAGISel::Select(llvm::SDNode*) X86ISelDAGToDAG.cpp:0:0\n#10 0x0000000003f28d4b llvm::SelectionDAGISel::DoInstructionSelection() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f28d4b)\n#11 0x0000000003f38158 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f38158)\n#12 0x0000000003f3b348 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f3b348)\n#13 0x0000000003f3cdc5 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f3cdc5)\n#14 0x0000000003f2853f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f2853f)\n#15 0x0000000003090789 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#16 0x00000000036da9c6 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36da9c6)\n#17 0x00000000036dad71 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36dad71)\n#18 0x00000000036db5df llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36db5df)\n#19 0x00000000008f821f compileModule(char**, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#20 0x00000000007c5db9 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c5db9)\n#21 0x0000784542e29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#22 0x0000784542e29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#23 0x00000000008ed4c5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8ed4c5)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\n\ncc @RKSimon @phoebewang ",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "X86DAGToDAGISel does a very late `ADD/SUB(X,1) -> SUB/ADD(X,-1)` fold - peeking through constant pools to find the 1 constant, but it doesn't consider that the new op might be constant foldable, resulting in an illegal constant BUILD_VECTOR"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid"
+    ],
+    "title": "[X86] llc crashed at -O0/O1/O2/O3: Cannot select: t20: v8i16 = BUILD_VECTOR"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/168594",
+  "knowledge_cutoff": "2025-11-18T19:04:03Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 9c2bbfe4a46e2d58294b6bb3e3a3584ade6a3304\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Wed Nov 19 16:18:28 2025 +0000\n\n    [X86] X86ISelDAGToDAG - don't let ADD/SUB(X,1) -> SUB/ADD(X,-1) constant fold (#168726)\n    \n    This late into lowering we don't have a good way to handle constant build_vector lowering\n    \n    Fixes #168594\n\ndiff --git a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\nindex 6c16fcfb282e..2b5a63aa6692 100644\n--- a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\n+++ b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp\n@@ -1004,7 +1004,8 @@ void X86DAGToDAGISel::PreprocessISelDAG() {\n     if ((N->getOpcode() == ISD::ADD || N->getOpcode() == ISD::SUB) &&\n         N->getSimpleValueType(0).isVector() && !mayPreventLoadFold()) {\n       APInt SplatVal;\n-      if (X86::isConstantSplat(N->getOperand(1), SplatVal) &&\n+      if (!ISD::isBuildVectorOfConstantSDNodes(N->getOperand(0).getNode()) &&\n+          X86::isConstantSplat(N->getOperand(1), SplatVal) &&\n           SplatVal.isOne()) {\n         SDLoc DL(N);\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v2",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v3",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v4"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr168594.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <8 x i16> @PR168594() {\n; SSE-LABEL: PR168594:\n; SSE:       # %bb.0:\n; SSE-NEXT:    pxor %xmm0, %xmm0\n; SSE-NEXT:    psubw {{\\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0\n; SSE-NEXT:    retq\n;\n; AVX-LABEL: PR168594:\n; AVX:       # %bb.0:\n; AVX-NEXT:    vpxor %xmm0, %xmm0, %xmm0\n; AVX-NEXT:    vpsubw {{\\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0, %xmm0\n; AVX-NEXT:    retq\n  %call = call <8 x i16> @llvm.x86.sse2.pavg.w(<8 x i16> splat (i16 1), <8 x i16> zeroinitializer)\n  %sub = sub <8 x i16> zeroinitializer, %call\n  ret <8 x i16> %sub\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,135 @@
+{
+  "base_commit": "c7a54bfd1d25330199c96dd0a46cef1644b1b1ce",
+  "bug_id": "87154",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/PrologEpilogInserter.cpp": [
+        "PEI::replaceFrameIndices"
+      ],
+      "llvm/lib/Target/X86/X86FrameLowering.cpp": [
+        "X86FrameLowering::getFrameIndexReference",
+        "X86FrameLowering::processFunctionBeforeFrameFinalized"
+      ],
+      "llvm/lib/Target/X86/X86RegisterInfo.cpp": [
+        "X86RegisterInfo::eliminateFrameIndex"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/PrologEpilogInserter.cpp": [
+        [
+          1553,
+          1559
+        ]
+      ],
+      "llvm/lib/Target/X86/X86FrameLowering.cpp": [
+        [
+          24,
+          29
+        ],
+        [
+          2616,
+          2622
+        ],
+        [
+          4140,
+          4145
+        ]
+      ],
+      "llvm/lib/Target/X86/X86RegisterInfo.cpp": [
+        [
+          13,
+          18
+        ],
+        [
+          24,
+          29
+        ],
+        [
+          905,
+          911
+        ],
+        [
+          956,
+          965
+        ]
+      ],
+      "llvm/lib/Target/X86/X86RegisterInfo.h": [
+        [
+          13,
+          18
+        ],
+        [
+          176,
+          181
+        ]
+      ]
+    },
+    "components": [
+      "PrologEpilogInserter",
+      "X86"
+    ],
+    "fix_commit": "0abb7791614947bc24931dd851ade31d02496977"
+  },
+  "issue": {
+    "author": "DigOrDog",
+    "body": "# Description\r\nThe following code crashes X86 backend with \"Assertion `(!Is64Bit || isInt<32>((long long)FIOffset + Imm)) && \"Requesting 64-bit offset in 32-bit immediate!\"' failed.\"\r\n\r\n# Minimal Reproduction\r\nhttps://godbolt.org/z/h57r6bMsq\r\n\r\n## code\r\n```java\r\ndefine void @f(i16 %LGV2, i1 %LGV3) {\r\nBB:\r\n  %A = alloca i1, i33 2147483648, align 1\r\n  %G = getelementptr i1, ptr %A, i16 %LGV2\r\n  %G4 = getelementptr i1, ptr %G, i32 -2147483648\r\n  store i1 %LGV3, ptr %G4, align 1\r\n  ret void\r\n}\r\n```\r\n\r\n## Stack Trace\r\n```\r\nllc: /root/llvm-project/llvm/lib/Target/X86/X86RegisterInfo.cpp:950: virtual bool llvm::X86RegisterInfo::eliminateFrameIndex(llvm::MachineBasicBlock::iterator, int, unsigned int, llvm::RegScavenger*) const: Assertion `(!Is64Bit || isInt<32>((long long)FIOffset + Imm)) && \"Requesting 64-bit offset in 32-bit immediate!\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -mtriple=x86_64 -mattr=+avx512f -O=0 <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'Prologue/Epilogue Insertion & Frame Finalization' on function '@f'\r\n #0 0x000000000392d5d8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x392d5d8)\r\n #1 0x000000000392ad2c SignalHandler(int) Signals.cpp:0:0\r\n #2 0x00007f2edc842520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x00007f2edc8969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x00007f2edc842476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x00007f2edc8287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x00007f2edc82871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\r\n #7 0x00007f2edc839e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n #8 0x0000000001cf0fb0 llvm::X86RegisterInfo::eliminateFrameIndex(llvm::MachineInstrBundleIterator<llvm::MachineInstr, false>, int, unsigned int, llvm::RegScavenger*) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x1cf0fb0)\r\n #9 0x0000000002ac734c (anonymous namespace)::PEI::runOnMachineFunction(llvm::MachineFunction&) PrologEpilogInserter.cpp:0:0\r\n#10 0x0000000002946051 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#11 0x0000000002f04a33 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f04a33)\r\n#12 0x0000000002f04c71 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f04c71)\r\n#13 0x0000000002f054d5 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f054d5)\r\n#14 0x0000000000823e0c compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#15 0x0000000000722fd6 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x722fd6)\r\n#16 0x00007f2edc829d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#17 0x00007f2edc829e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#18 0x000000000081a92e _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x81a92e)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "This should be addressed when #84114 gets fixed + re-committed"
+      },
+      {
+        "author": "DigOrDog",
+        "body": "> This should be addressed when #84114 gets fixed + re-committed\r\n \r\nThank you for your previous response regarding the issue I reported. I noticed that #84114, which was anticipated to address my concern, has been fixed and re-committed. However, I'm still experiencing the original problem I reported.\r\n\r\nCould you please take another look at it? Perhaps there might be another underlying cause that wasn't addressed by the fix for #84114. I'm happy to provide any additional information or assistance needed to help diagnose the issue further."
+      },
+      {
+        "author": "RKSimon",
+        "body": "AFAICT #84114 has not been recommitted - the PR is closed because github won't let us reopen PRs that have been committed."
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash"
+    ],
+    "title": "virtual bool llvm::X86RegisterInfo::eliminateFrameIndex(llvm::MachineBasicBlock::iterator, int, unsigned int, llvm::RegScavenger*) const: Assertion `(!Is64Bit || isInt<32>((long long)FIOffset + Imm)) && \"Requesting 64-bit offset in 32-bit immediate!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/87154",
+  "knowledge_cutoff": "2024-03-30T12:55:09Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 0abb7791614947bc24931dd851ade31d02496977\nAuthor: Wesley Wiser <wwiser@gmail.com>\nDate:   Mon Aug 19 10:31:20 2024 -0500\n\n    [LLVM] [X86] Fix integer overflows in frame layout for huge frames (#101840)\n    \n    Fix 32-bit integer overflows in the X86 target frame layout when dealing\n    with frames larger than 4gb. When this occurs, we'll scavenge a scratch\n    register to be able to hold the correct stack offset for frame locals.\n    \n    This completes reapplying #84114.\n    \n    Fixes #48911\n    Fixes #75944\n    Fixes #87154\n\ndiff --git a/llvm/lib/CodeGen/PrologEpilogInserter.cpp b/llvm/lib/CodeGen/PrologEpilogInserter.cpp\nindex ee03eaa8ae52..c03ea5878052 100644\n--- a/llvm/lib/CodeGen/PrologEpilogInserter.cpp\n+++ b/llvm/lib/CodeGen/PrologEpilogInserter.cpp\n@@ -1553,7 +1553,7 @@ void PEI::replaceFrameIndices(MachineBasicBlock *BB, MachineFunction &MF,\n       // If this instruction has a FrameIndex operand, we need to\n       // use that target machine register info object to eliminate\n       // it.\n-      TRI.eliminateFrameIndex(MI, SPAdj, i);\n+      TRI.eliminateFrameIndex(MI, SPAdj, i, RS);\n \n       // Reset the iterator if we were at the beginning of the BB.\n       if (AtBeginning) {\ndiff --git a/llvm/lib/Target/X86/X86FrameLowering.cpp b/llvm/lib/Target/X86/X86FrameLowering.cpp\nindex 8404f2231680..d850f4fd7683 100644\n--- a/llvm/lib/Target/X86/X86FrameLowering.cpp\n+++ b/llvm/lib/Target/X86/X86FrameLowering.cpp\n@@ -24,6 +24,7 @@\n #include \"llvm/CodeGen/MachineInstrBuilder.h\"\n #include \"llvm/CodeGen/MachineModuleInfo.h\"\n #include \"llvm/CodeGen/MachineRegisterInfo.h\"\n+#include \"llvm/CodeGen/RegisterScavenging.h\"\n #include \"llvm/CodeGen/WinEHFuncInfo.h\"\n #include \"llvm/IR/DataLayout.h\"\n #include \"llvm/IR/EHPersonalities.h\"\n@@ -2616,7 +2617,7 @@ StackOffset X86FrameLowering::getFrameIndexReference(const MachineFunction &MF,\n   // object.\n   // We need to factor in additional offsets applied during the prologue to the\n   // frame, base, and stack pointer depending on which is used.\n-  int Offset = MFI.getObjectOffset(FI) - getOffsetOfLocalArea();\n+  int64_t Offset = MFI.getObjectOffset(FI) - getOffsetOfLocalArea();\n   const X86MachineFunctionInfo *X86FI = MF.getInfo<X86MachineFunctionInfo>();\n   unsigned CSSize = X86FI->getCalleeSavedFrameSize();\n   uint64_t StackSize = MFI.getStackSize();\n@@ -4140,6 +4141,14 @@ void X86FrameLowering::processFunctionBeforeFrameFinalized(\n   // emitPrologue if it gets called and emits CFI.\n   MF.setHasWinCFI(false);\n \n+  MachineFrameInfo &MFI = MF.getFrameInfo();\n+  // If the frame is big enough that we might need to scavenge a register to\n+  // handle huge offsets, reserve a stack slot for that now.\n+  if (!isInt<32>(MFI.estimateStackSize(MF))) {\n+    int FI = MFI.CreateStackObject(SlotSize, Align(SlotSize), false);\n+    RS->addScavengingFrameIndex(FI);\n+  }\n+\n   // If we are using Windows x64 CFI, ensure that the stack is always 8 byte\n   // aligned. The format doesn't support misaligned stack adjustments.\n   if (MF.getTarget().getMCAsmInfo()->usesWindowsCFI())\ndiff --git a/llvm/lib/Target/X86/X86RegisterInfo.cpp b/llvm/lib/Target/X86/X86RegisterInfo.cpp\nindex 638eb1c4f11e..79ee9ecfdf3c 100644\n--- a/llvm/lib/Target/X86/X86RegisterInfo.cpp\n+++ b/llvm/lib/Target/X86/X86RegisterInfo.cpp\n@@ -13,6 +13,7 @@\n //===----------------------------------------------------------------------===//\n \n #include \"X86RegisterInfo.h\"\n+#include \"MCTargetDesc/X86BaseInfo.h\"\n #include \"X86FrameLowering.h\"\n #include \"X86MachineFunctionInfo.h\"\n #include \"X86Subtarget.h\"\n@@ -24,6 +25,7 @@\n #include \"llvm/CodeGen/MachineFunction.h\"\n #include \"llvm/CodeGen/MachineFunctionPass.h\"\n #include \"llvm/CodeGen/MachineRegisterInfo.h\"\n+#include \"llvm/CodeGen/RegisterScavenging.h\"\n #include \"llvm/CodeGen/TargetFrameLowering.h\"\n #include \"llvm/CodeGen/TargetInstrInfo.h\"\n #include \"llvm/CodeGen/TileShapeInfo.h\"\n@@ -905,7 +907,7 @@ X86RegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,\n   int FrameIndex = MI.getOperand(FIOperandNum).getIndex();\n \n   // Determine base register and offset.\n-  int FIOffset;\n+  int64_t FIOffset;\n   Register BasePtr;\n   if (MI.isReturn()) {\n     assert((!hasStackRealignment(MF) ||\n@@ -956,10 +958,34 @@ X86RegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,\n   }\n \n   if (MI.getOperand(FIOperandNum+3).isImm()) {\n-    // Offset is a 32-bit integer.\n-    int Imm = (int)(MI.getOperand(FIOperandNum + 3).getImm());\n-    int Offset = FIOffset + Imm;\n-    assert((!Is64Bit || isInt<32>((long long)FIOffset + Imm)) &&\n+    int64_t Imm = MI.getOperand(FIOperandNum + 3).getImm();\n+    int64_t Offset = FIOffset + Imm;\n+    bool FitsIn32Bits = isInt<32>(Offset);\n+    // If the offset will not fit in a 32-bit displacement,\n+    // then for 64-bit targets, scavenge a register to hold it.\n+    // Otherwise, for 32-bit targets, this is a bug!\n+    if (Is64Bit && !FitsIn32Bits) {\n+      assert(RS && \"RegisterScavenger was NULL\");\n+      const X86InstrInfo *TII = MF.getSubtarget<X86Subtarget>().getInstrInfo();\n+      const DebugLoc &DL = MI.getDebugLoc();\n+\n+      RS->enterBasicBlockEnd(MBB);\n+      RS->backward(std::next(II));\n+\n+      Register ScratchReg = RS->scavengeRegisterBackwards(\n+          X86::GR64RegClass, II, /*RestoreAfter=*/false, /*SPAdj=*/0,\n+          /*AllowSpill=*/true);\n+      assert(ScratchReg != 0 && \"scratch reg was 0\");\n+      RS->setRegUsed(ScratchReg);\n+\n+      BuildMI(MBB, II, DL, TII->get(X86::MOV64ri), ScratchReg).addImm(Offset);\n+\n+      MI.getOperand(FIOperandNum + 3).setImm(0);\n+      MI.getOperand(FIOperandNum + 2).setReg(ScratchReg);\n+\n+      return false;\n+    }\n+    assert((Is64Bit || FitsIn32Bits) &&\n            \"Requesting 64-bit offset in 32-bit immediate!\");\n     if (Offset != 0 || !tryOptimizeLEAtoMOV(II))\n       MI.getOperand(FIOperandNum + 3).ChangeToImmediate(Offset);\ndiff --git a/llvm/lib/Target/X86/X86RegisterInfo.h b/llvm/lib/Target/X86/X86RegisterInfo.h\nindex 7296a5f021e4..dd03a108fb8e 100644\n--- a/llvm/lib/Target/X86/X86RegisterInfo.h\n+++ b/llvm/lib/Target/X86/X86RegisterInfo.h\n@@ -13,6 +13,8 @@\n #ifndef LLVM_LIB_TARGET_X86_X86REGISTERINFO_H\n #define LLVM_LIB_TARGET_X86_X86REGISTERINFO_H\n \n+#include \"llvm/CodeGen/MachineFrameInfo.h\"\n+#include \"llvm/CodeGen/MachineFunction.h\"\n #include \"llvm/CodeGen/TargetRegisterInfo.h\"\n \n #define GET_REGINFO_HEADER\n@@ -176,6 +178,13 @@ public:\n                              SmallVectorImpl<MCPhysReg> &Hints,\n                              const MachineFunction &MF, const VirtRegMap *VRM,\n                              const LiveRegMatrix *Matrix) const override;\n+\n+  bool requiresRegisterScavenging(const MachineFunction &MF) const override {\n+    const MachineFrameInfo &MFI = MF.getFrameInfo();\n+\n+    // We need to register scavenge if the frame is very large.\n+    return !isInt<32>(MFI.estimateStackSize(MF));\n+  }\n };\n \n } // End llvm namespace\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -O0 -mtriple=x86_64 -mattr=+avx512f -verify-machineinstrs < %s"
+      ],
+      "file": "llvm/test/CodeGen/X86/avx512f-large-stack.ll",
+      "tests": [
+        {
+          "test_body": "define void @f(i16 %LGV2, i1 %LGV3) {\nBB:\n  %A = alloca i1, i33 2147483648, align 1\n  %G = getelementptr i1, ptr %A, i16 %LGV2\n  %G4 = getelementptr i1, ptr %G, i32 -2147483648\n  store i1 %LGV3, ptr %G4, align 1\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    },
+    {
+      "commands": [
+        "llc -O0 -mtriple=x86_64 -verify-machineinstrs < %s"
+      ],
+      "file": "llvm/test/CodeGen/X86/huge-stack.ll",
+      "tests": [
+        {
+          "test_body": "define void @foo() unnamed_addr {\n  %large1 = alloca [4294967295 x i8], align 1\n  %large2 = alloca [4294967295 x i8], align 1\n  %ptrLarge1 = getelementptr inbounds [4294967295 x i8], ptr %large1, i64 0, i64 0\n  store i8 42, ptr %ptrLarge1, align 1\n  %ptrLarge2 = getelementptr inbounds [4294967295 x i8], ptr %large2, i64 0, i64 0\n  store i8 43, ptr %ptrLarge2, align 1\n  ret void\n}\n",
+          "test_name": "foo"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

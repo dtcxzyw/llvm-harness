@@ -1,0 +1,81 @@
+{
+  "base_commit": "dd8cb3d4f120edcf5fc3939594ee086c44010274",
+  "bug_id": "92233",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/PowerPC/PPCISelLowering.cpp": [
+        "PPCTargetLowering::LowerBITCAST"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/PowerPC/PPCISelLowering.cpp": [
+        [
+          9338,
+          9344
+        ]
+      ]
+    },
+    "components": [
+      "PowerPC"
+    ],
+    "fix_commit": "2143b7cd7d184b3f3bc4a997ea925ab7574c93f9"
+  },
+  "issue": {
+    "author": "tgross35",
+    "body": "This only happens when 128-bit floats are involved. The reproduction comes from Rust:\r\n\r\n```rust\r\n#![feature(f128)]\r\n\r\n#[no_mangle]\r\npub fn entry(a: u128) -> f128 {\r\n    f128::from_bits(a)\r\n}\r\n```\r\n\r\nInvocation:\r\n\r\n```\r\n$ rustc transmute-lib.rs --target powerpc-unknown-linux-gnu -C linker=powerpc-linux-gnu-gcc -Ctarget-cpu=pwr9 -o transmute.rs.ppc.pwr9 --crate-type=lib\r\nIllegal instruction\r\n$ rustc -Vv\r\nrustc 1.80.0-nightly (9c9b56879 2024-05-05)\r\nbinary: rustc\r\ncommit-hash: 9c9b568792ef20d8459c745345dd3e79b7c7fa8c\r\ncommit-date: 2024-05-05\r\nhost: x86_64-unknown-linux-gnu\r\nrelease: 1.80.0-nightly\r\nLLVM version: 18.1.4\r\n```\r\n\r\nIR:\r\n\r\n```llvm\r\n; ModuleID = 'transmute_lib.1e179323af95c5c5-cgu.0'\r\nsource_filename = \"transmute_lib.1e179323af95c5c5-cgu.0\"\r\ntarget datalayout = \"E-m:e-p:32:32-Fn32-i64:64-n32\"\r\ntarget triple = \"powerpc-unknown-linux-gnu\"\r\n\r\n; core::f128::<impl f128>::from_bits\r\n; Function Attrs: inlinehint uwtable\r\ndefine internal fp128 @\"_ZN4core4f12822_$LT$impl$u20$f128$GT$9from_bits17hd411f033365ec7b5E\"(i128 %v) unnamed_addr #0 {\r\nstart:\r\n  %_0 = bitcast i128 %v to fp128\r\n  ret fp128 %_0\r\n}\r\n\r\n; Function Attrs: uwtable\r\ndefine fp128 @entry(i128 %a) unnamed_addr #1 {\r\nstart:\r\n; call core::f128::<impl f128>::from_bits\r\n  %_0 = call fp128 @\"_ZN4core4f12822_$LT$impl$u20$f128$GT$9from_bits17hd411f033365ec7b5E\"(i128 %a)\r\n  ret fp128 %_0\r\n}\r\n\r\nattributes #0 = { inlinehint uwtable \"probe-stack\"=\"inline-asm\" \"target-cpu\"=\"pwr9\" }\r\nattributes #1 = { uwtable \"probe-stack\"=\"inline-asm\" \"target-cpu\"=\"pwr9\" }\r\n\r\n!llvm.module.flags = !{!0}\r\n!llvm.ident = !{!1}\r\n\r\n!0 = !{i32 8, !\"PIC Level\", i32 2}\r\n!1 = !{!\"rustc version 1.80.0-nightly (9c9b56879 2024-05-05)\"}\r\n```\r\n\r\nBacktrace from GDB:\r\n\r\n```\r\n#0  0x00007fffeee2a599 in llvm::PPCTargetLowering::LowerOperation(llvm::SDValue, llvm::SelectionDAG&) const ()\r\n#1  0x00007ffff0227d99 in llvm::TargetLowering::LowerOperationWrapper(llvm::SDNode*, llvm::SmallVectorImpl<llvm::SDValue>&, llvm::SelectionDAG&) const ()\r\n#2  0x00007ffff0c68ac0 in llvm::DAGTypeLegalizer::ExpandIntegerOperand(llvm::SDNode*, unsigned int) [clone .cold] ()\r\n#3  0x00007ffff0389b36 in llvm::DAGTypeLegalizer::run() [clone .warm] ()\r\n#4  0x00007fffefb71b09 in llvm::SelectionDAGISel::CodeGenAndEmitDAG() ()\r\n#5  0x00007fffefbd92c2 in llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) ()\r\n#6  0x00007fffefb167ea in llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) ()\r\n#7  0x00007fffeede2b1e in (anonymous namespace)::PPCDAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) ()\r\n#8  0x00007fffefb0ee14 in llvm::FPPassManager::runOnFunction(llvm::Function&) ()\r\n#9  0x00007fffefb0e285 in llvm::FPPassManager::runOnModule(llvm::Module&) ()\r\n#10 0x00007ffff0074ca0 in llvm::legacy::PassManagerImpl::run(llvm::Module&) ()\r\n#11 0x00007ffff6b58d10 in LLVMRustWriteOutputFile ()\r\n#12 0x00007ffff6b58928 in rustc_codegen_llvm::back::write::write_output_file ()\r\n#13 0x00007ffff6b565af in rustc_codegen_llvm::back::write::codegen ()\r\n#14 0x00007ffff6b56285 in rustc_codegen_ssa::back::write::finish_intra_module_work::<rustc_codegen_llvm::LlvmCodegenBackend> ()\r\n#15 0x00007ffff6b59377 in std::sys_common::backtrace::__rust_begin_short_backtrace::<<rustc_codegen_llvm::LlvmCodegenBackend as rustc_codegen_ssa::traits::backend::ExtraBackendMethods>::spawn_named_thread<rustc_codegen_ssa::back::write::spawn_work<rustc_codegen_llvm::LlvmCodegenBackend>::{closure#0}, ()>::{closure#0}, ()> ()\r\n#16 0x00007ffff6b58e5b in <<std::thread::Builder>::spawn_unchecked_<<rustc_codegen_llvm::LlvmCodegenBackend as rustc_codegen_ssa::traits::backend::ExtraBackendMethods>::spawn_named_thread<rustc_codegen_ssa::back::write::spawn_work<rustc_codegen_llvm::LlvmCodegenBackend>::{closure#0}, ()>::{closure#0}, ()>::{closure#0}, ()> ()\r\n#17 0x00007ffff19997bb in alloc::boxed::{impl#48}::call_once<(), dyn core::ops::function::FnOnce<(), Output=()>, alloc::alloc::Global> ()\r\n#18 alloc::boxed::{impl#48}::call_once<(), alloc::boxed::Box<dyn core::ops::function::FnOnce<(), Output=()>, alloc::alloc::Global>, alloc::alloc::Global> ()\r\n#19 std::sys::pal::unix::thread::{impl#2}::new::thread_start () at library/std/src/sys/pal/unix/thread.rs:108\r\n```",
+    "comments": [
+      {
+        "author": "chenzheng1030",
+        "body": "I've fixed the crash in 3d8c2f0103556674a36b7252dd2f726912768527\r\n\r\nPlease note that __i128 is not supported in clang frontend for target powerpc-unknown-linux-gnu. See https://godbolt.org/z/M1onxvb5W\r\nI think the float 128 support especially ieee128 is not well tested on target powerpc-unknown-linux-gnu either.\r\n\r\nMaybe rust should also disable the __i128 support for target powerpc-unknown-linux-gnu"
+      },
+      {
+        "author": "tgross35",
+        "body": "> I've fixed the crash in 3d8c2f0103556674a36b7252dd2f726912768527\r\n\r\nGreat, thank you for the quick fix!\r\n\r\n> Please note that __i128 is not supported in clang frontend for target powerpc-unknown-linux-gnu. See https://godbolt.org/z/M1onxvb5W I think the float 128 support especially ieee128 is not well tested on target powerpc-unknown-linux-gnu either.\r\n> \r\n> Maybe rust should also disable the __i128 support for target powerpc-unknown-linux-gnu\r\n\r\nInteger types i128 and u128 have been around for years on all platforms without many big issues, so those won't be going anywhere (in fact, Clang could probably enable them on more targets based on this evidence). f128 support is indeed buggy almost everywhere - but it's currently an unstable feature and will be for a while, so we are just trying to identify what bugs exist before deciding what exactly will eventually be stabilized."
+      },
+      {
+        "author": "chenzheng1030",
+        "body": "> f128 support is indeed buggy almost everywhere - but it's currently an unstable feature and will be for a while, so we are just trying to identify what bugs exist before deciding what exactly will eventually be stabilized.\r\n\r\nThank you! If you are going to check the f128 support status in LLVM backend for powerpc-unknown-linux-gnu, I am glad to investigate issues you get."
+      },
+      {
+        "author": "tgross35",
+        "body": "Thank you :) If you are familiar with that platform, do you know if QEMU has some limitations with this target? I was hitting a SIGILL at `stxvd2x` in testing (https://github.com/rust-lang/compiler-builtins/pull/606#issuecomment-2105635926) but think this seems like a qemu problem rather than bad codegen."
+      },
+      {
+        "author": "chenzheng1030",
+        "body": "> Thank you :) If you are familiar with that platform, do you know if QEMU has some limitations with this target?\r\n\r\nUnfortunately I don't have much knowledge about the QEMU. For the SIGILL at stxvd2x, 1: Is the simulated target PWR7 or above? 2: Does the address match stxvd2x alignment requirement according to the PPC user manual?"
+      }
+    ],
+    "labels": [
+      "backend:PowerPC",
+      "crash"
+    ],
+    "title": "[PowerPC] SIGILL in `PPCTargetLowering` for `powerpc-unknown-linux-gnu` with pwr9 target feature"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/92233",
+  "knowledge_cutoff": "2024-05-15T09:42:01Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/PowerPC"
+  ],
+  "patch": "commit 2143b7cd7d184b3f3bc4a997ea925ab7574c93f9\nAuthor: Chen Zheng <czhengsz@cn.ibm.com>\nDate:   Mon May 20 03:10:08 2024 -0400\n\n    [PowerPC]perform bitcast lowering only at 64 bit\n    \n    Perform bitcast lowering requires 64-bit to be native supported,\n    However this is not true on 32-bit targets. Explicitly require\n    64-bit target.\n    \n    Fixes #92233\n\ndiff --git a/llvm/lib/Target/PowerPC/PPCISelLowering.cpp b/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\nindex ad86c393ba79..8450ce9e0e3b 100644\n--- a/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\n+++ b/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\n@@ -9338,7 +9338,7 @@ SDValue PPCTargetLowering::LowerBITCAST(SDValue Op, SelectionDAG &DAG) const {\n   if ((Op.getValueType() != MVT::f128) ||\n       (Op0.getOpcode() != ISD::BUILD_PAIR) ||\n       (Op0.getOperand(0).getValueType() != MVT::i64) ||\n-      (Op0.getOperand(1).getValueType() != MVT::i64))\n+      (Op0.getOperand(1).getValueType() != MVT::i64) || !Subtarget.isPPC64())\n     return SDValue();\n \n   return DAG.getNode(PPCISD::BUILD_FP128, dl, MVT::f128, Op0.getOperand(0),\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mcpu=pwr9 -verify-machineinstrs < %s -mtriple=powerpc-unknown-linux-gnu"
+      ],
+      "file": "llvm/test/CodeGen/PowerPC/pr92233.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine internal fp128 @f(i128 %v) nounwind {\nentry:\n  %cast = bitcast i128 %v to fp128\n  ret fp128 %cast\n}\n",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

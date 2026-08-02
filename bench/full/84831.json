@@ -1,0 +1,74 @@
+{
+  "base_commit": "66f88de80599ec4461b0fdac3d1e396b6e83052d",
+  "bug_id": "84831",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "DAGCombiner::visitUADDO_CARRYLike",
+        "combineCarryDiamond"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          3473,
+          3478
+        ],
+        [
+          3520,
+          3526
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "cb4453dc69d75064c9a82e9a6a9bf0d0ded4b204"
+  },
+  "issue": {
+    "author": "regehr",
+    "body": "`llc` is asserting out for me on this code when targeting either x86-64 or AArch64\r\n```llvm\r\ndefine i1 @f(i64 %0) {\r\n  %2 = icmp ult i64 0, %0\r\n  %3 = add i64 0, 1\r\n  %4 = icmp ult i64 %3, 0\r\n  %5 = zext i1 %2 to i64\r\n  %6 = add i64 %3, %5\r\n  %7 = icmp ult i64 %6, %3\r\n  %8 = zext i1 %4 to i63\r\n  %9 = zext i1 %7 to i63\r\n  %new0 = or i63 %8, %9\r\n  %last = trunc i63 %new0 to i1\r\n  ret i1 %last\r\n}\r\n```",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "https://clang.godbolt.org/z/76GE87h8z\r\n```txt\r\nCombining: t12: i63 = or t10, t11\r\nCreating new node: t20: i64,i1 = uaddo_carry Constant:i64<0>, Constant:i64<1>, t5\r\n ... into: t20: i64,i1 = uaddo_carry Constant:i64<0>, Constant:i64<1>, t5\r\nllc: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp:1761: void {anonymous}::DAGCombiner::Run(llvm::CombineLevel): Assertion `N->getValueType(0) == RV.getValueType() && N->getNumValues() == 1 && \"Type mismatch\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -debug <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@f'\r\n #0 0x00000000038fcf98 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x38fcf98)\r\n #1 0x00000000038fa6ec SignalHandler(int) Signals.cpp:0:0\r\n #2 0x00007f7d31e42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x00007f7d31e969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x00007f7d31e42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x00007f7d31e287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x00007f7d31e2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\r\n #7 0x00007f7d31e39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n #8 0x000000000356d1a7 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\r\n #9 0x000000000356e0ba llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::AAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x356e0ba)\r\n#10 0x00000000036c21d2 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36c21d2)\r\n#11 0x00000000036c5d15 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36c5d15)\r\n#12 0x00000000036c7787 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (.part.0) SelectionDAGISel.cpp:0:0\r\n#13 0x0000000001dc91ac (anonymous namespace)::X86DAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) X86ISelDAGToDAG.cpp:0:0\r\n#14 0x0000000002921a31 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#15 0x0000000002edc129 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2edc129)\r\n#16 0x0000000002edc361 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2edc361)\r\n#17 0x0000000002edcbb2 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2edcbb2)\r\n#18 0x000000000080e09c compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#19 0x0000000000720696 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x720696)\r\n#20 0x00007f7d31e29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#21 0x00007f7d31e29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#22 0x0000000000804bbe _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x804bbe)\r\nProgram terminated with signal: SIGSEGV\r\n```"
+      },
+      {
+        "author": "XChy",
+        "body": "I believe we should look into https://github.com/llvm/llvm-project/blob/e89b4bcf32b8f6ddce9d7e95659e9f092a55c021/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp#L3431\r\nI will work on this."
+      }
+    ],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "assertion failing in multiple backends N->getValueType(0) == RV.getValueType() && N->getNumValues() == 1 && \"Type mismatch\""
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/84831",
+  "knowledge_cutoff": "2024-03-11T21:04:14Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit cb4453dc69d75064c9a82e9a6a9bf0d0ded4b204\nAuthor: XChy <xxs_chy@outlook.com>\nDate:   Fri Mar 22 18:35:20 2024 +0800\n\n    [SelectionDAG] Prevent combination on inconsistent type in `combineCarryDiamond` (#84888)\n    \n    Fixes #84831\n    When matching carry pattern with `getAsCarry`, it may produce different\n    type of carryout. This patch checks such case and does early exit.\n    \n    I'm new to DAG, any suggestion is appreciated.\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex 7009f375df11..db81f9199170 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -3473,6 +3473,11 @@ static SDValue combineCarryDiamond(SelectionDAG &DAG, const TargetLowering &TLI,\n     return SDValue();\n   if (Opcode != ISD::UADDO && Opcode != ISD::USUBO)\n     return SDValue();\n+  // Guarantee identical type of CarryOut\n+  EVT CarryOutType = N->getValueType(0);\n+  if (CarryOutType != Carry0.getValue(1).getValueType() ||\n+      CarryOutType != Carry1.getValue(1).getValueType())\n+    return SDValue();\n \n   // Canonicalize the add/sub of A and B (the top node in the above ASCII art)\n   // as Carry0 and the add/sub of the carry in as Carry1 (the middle node).\n@@ -3520,7 +3525,7 @@ static SDValue combineCarryDiamond(SelectionDAG &DAG, const TargetLowering &TLI,\n   // TODO: match other operations that can merge flags (ADD, etc)\n   DAG.ReplaceAllUsesOfValueWith(Carry1.getValue(0), Merged.getValue(0));\n   if (N->getOpcode() == ISD::AND)\n-    return DAG.getConstant(0, DL, MVT::i1);\n+    return DAG.getConstant(0, DL, CarryOutType);\n   return Merged.getValue(1);\n }\n \n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-unknown"
+      ],
+      "file": "llvm/test/CodeGen/X86/addcarry.ll",
+      "tests": [
+        {
+          "test_body": "define i1 @pr84831(i64 %arg) {\n  %a = icmp ult i64 0, %arg\n  %add1 = add i64 0, 1\n  %carryout1 = icmp ult i64 %add1, 0\n  %b = zext i1 %a to i64\n  %add2 = add i64 %add1, %b\n  %carryout2 = icmp ult i64 %add2, %add1\n  %zc1 = zext i1 %carryout1 to i63\n  %zc2 = zext i1 %carryout2 to i63\n  %or = or i63 %zc1, %zc2\n  %trunc = trunc i63 %or to i1\n  ret i1 %trunc\n}\n",
+          "test_name": "pr84831"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

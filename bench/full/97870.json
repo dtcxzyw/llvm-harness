@@ -1,0 +1,158 @@
+{
+  "base_commit": "bf258dbd57eedb29e0914fe2e6b27619281b616c",
+  "bug_id": "97870",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {},
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64InstrInfo.td": [
+        [
+          4660,
+          4665
+        ],
+        [
+          4685,
+          4690
+        ],
+        [
+          4700,
+          4705
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "fc952b2a6933d746e843f468052c5a62469c2658"
+  },
+  "issue": {
+    "author": "DigOrDog",
+    "body": "# Description\r\nThe following code crashes aarch64 backend with SDAG.\r\nHowever, it's interesting to note that it compiles successfully when using -global-isel on AArch64, or on x86_64 and ARM architectures.\r\n\r\n# Minimal Reproduction\r\nhttps://godbolt.org/z/7WeaTdrhe\r\n\r\n## Code\r\n```\r\ndefine i32 @f(ptr %A, ptr %G3) {\r\nBB:\r\n  %G2 = getelementptr i8, ptr %G3, i64 168\r\n  %0 = ptrtoint ptr %G2 to i64\r\n  %CastPtrToI2 = trunc i64 %0 to i1\r\n  store bfloat 0xR0000, ptr %G2, align 2\r\n  store i1 %CastPtrToI2, ptr %A, align 1\r\n  ret i32 0\r\n}\r\n```\r\n\r\n## Stack Trace\r\n```\r\nLLVM ERROR: Cannot select: 0x9687300: i64,ch = store<(store (s16) into %ir.G2), <pre-inc>> 0x9602f28, ConstantFP:bf16<APFloat(0)>, 0x96871b0, Constant:i64<168>\r\n  0x9687370: bf16 = ConstantFP<APFloat(0)>\r\n  0x96871b0: i64,ch = CopyFromReg 0x9602f28, Register:i64 %1\r\n    0x9687140: i64 = Register %1\r\n  0x9687220: i64 = Constant<168>\r\nIn function: f\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -mtriple=aarch64 <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@f'\r\n #0 0x0000000003749078 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3749078)\r\n #1 0x0000000003746a1c SignalHandler(int) Signals.cpp:0:0\r\n #2 0x00007aa282042520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x00007aa2820969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x00007aa282042476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x00007aa2820287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x000000000072d846 llvm::UniqueStringSaver::save(llvm::StringRef) (.cold) StringSaver.cpp:0:0\r\n #7 0x000000000350c47c llvm::SelectionDAGISel::CannotYetSelect(llvm::SDNode*) (/opt/compiler-explorer/clang-trunk/bin/llc+0x350c47c)\r\n #8 0x00000000035138a5 llvm::SelectionDAGISel::SelectCodeCommon(llvm::SDNode*, unsigned char const*, unsigned int) (/opt/compiler-explorer/clang-trunk/bin/llc+0x35138a5)\r\n #9 0x0000000000ad925b (anonymous namespace)::AArch64DAGToDAGISel::Select(llvm::SDNode*) AArch64ISelDAGToDAG.cpp:0:0\r\n#10 0x00000000035099e4 llvm::SelectionDAGISel::DoInstructionSelection() (/opt/compiler-explorer/clang-trunk/bin/llc+0x35099e4)\r\n#11 0x0000000003518bf1 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-trunk/bin/llc+0x3518bf1)\r\n#12 0x000000000351b649 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x351b649)\r\n#13 0x000000000351d5b4 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x351d5b4)\r\n#14 0x000000000350d291 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x350d291)\r\n#15 0x000000000284919b llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#16 0x0000000002d83d22 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2d83d22)\r\n#17 0x0000000002d83ea1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2d83ea1)\r\n#18 0x0000000002d85b50 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2d85b50)\r\n#19 0x000000000084a9c4 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#20 0x00000000007403c6 main (/opt/compiler-explorer/clang-trunk/bin/llc+0x7403c6)\r\n#21 0x00007aa282029d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#22 0x00007aa282029e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#23 0x000000000084260e _start (/opt/compiler-explorer/clang-trunk/bin/llc+0x84260e)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```\r\n\r\n",
+    "comments": [
+      {
+        "author": "davemgreen",
+        "body": "Thanks for the report. There is a slightly shorter example here: https://godbolt.org/z/9Ybs89Ken. We probably need extra patterns for bf16 pre-inc store, similar to the ones for pre-inc fp16 stores. "
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "crash-on-valid"
+    ],
+    "title": "AArch64 with SDAG crashes when compiling"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/97870",
+  "knowledge_cutoff": "2024-07-06T01:38:23Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit fc952b2a6933d746e843f468052c5a62469c2658\nAuthor: David Green <david.green@arm.com>\nDate:   Thu Jan 23 21:52:20 2025 +0000\n\n    [AArch64] Add pre-index store patterns for bf16.\n    \n    These, like the postinc patterns, need adding very similarly to fp16.\n    \n    Fixes #97870\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.td b/llvm/lib/Target/AArch64/AArch64InstrInfo.td\nindex 8e575abf83d4..fa6385409f30 100644\n--- a/llvm/lib/Target/AArch64/AArch64InstrInfo.td\n+++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.td\n@@ -4660,6 +4660,10 @@ def STRQpre : StorePreIdx<0b00, 1, 0b10, FPR128Op, \"str\", pre_store, f128>;\n def STRBBpre : StorePreIdx<0b00, 0, 0b00, GPR32z, \"strb\", pre_truncsti8,  i32>;\n def STRHHpre : StorePreIdx<0b01, 0, 0b00, GPR32z, \"strh\", pre_truncsti16, i32>;\n \n+// bf16 pre-index store\n+def : Pat<(pre_store (bf16 FPR16:$Rt), GPR64sp:$addr, simm9:$off),\n+          (STRHpre FPR16:$Rt, GPR64sp:$addr, simm9:$off)>;\n+\n // truncstore i64\n def : Pat<(pre_truncsti32 GPR64:$Rt, GPR64sp:$addr, simm9:$off),\n   (STRWpre (EXTRACT_SUBREG GPR64:$Rt, sub_32), GPR64sp:$addr,\n@@ -4685,6 +4689,8 @@ def : Pat<(pre_store (v1f64 FPR64:$Rt), GPR64sp:$addr, simm9:$off),\n           (STRDpre FPR64:$Rt, GPR64sp:$addr, simm9:$off)>;\n def : Pat<(pre_store (v4f16 FPR64:$Rt), GPR64sp:$addr, simm9:$off),\n           (STRDpre FPR64:$Rt, GPR64sp:$addr, simm9:$off)>;\n+def : Pat<(pre_store (v4bf16 FPR64:$Rt), GPR64sp:$addr, simm9:$off),\n+          (STRDpre FPR64:$Rt, GPR64sp:$addr, simm9:$off)>;\n \n def : Pat<(pre_store (v16i8 FPR128:$Rt), GPR64sp:$addr, simm9:$off),\n           (STRQpre FPR128:$Rt, GPR64sp:$addr, simm9:$off)>;\n@@ -4700,6 +4706,8 @@ def : Pat<(pre_store (v2f64 FPR128:$Rt), GPR64sp:$addr, simm9:$off),\n           (STRQpre FPR128:$Rt, GPR64sp:$addr, simm9:$off)>;\n def : Pat<(pre_store (v8f16 FPR128:$Rt), GPR64sp:$addr, simm9:$off),\n           (STRQpre FPR128:$Rt, GPR64sp:$addr, simm9:$off)>;\n+def : Pat<(pre_store (v8bf16 FPR128:$Rt), GPR64sp:$addr, simm9:$off),\n+          (STRQpre FPR128:$Rt, GPR64sp:$addr, simm9:$off)>;\n \n //---\n // (immediate post-indexed)\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=arm64-eabi -mattr=+bf16",
+        "llc < %s -mtriple=aarch64 -mattr=+bf16"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/bf16.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine void @test_store(ptr %a, bfloat %b) #0 {\n  store bfloat %b, ptr %a, align 16\n  ret void\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_store"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine void @test_vec_store(ptr %a, <4 x bfloat> %b) #0 {\nentry:\n  store <4 x bfloat> %b, ptr %a, align 16\n  ret void\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_vec_store"
+        },
+        {
+          "test_body": "define ptr @test_store_post_v8bf16(<8 x bfloat> %val, ptr %ptr) {\n  store <8 x bfloat> %val, ptr %ptr, align 16\n  %next = getelementptr <8 x bfloat>, ptr %ptr, i32 1\n  ret ptr %next\n}\n",
+          "test_name": "test_store_post_v8bf16"
+        },
+        {
+          "test_body": "define { <4 x bfloat>, ptr } @test_load_post_v4bf16(ptr %ptr) {\n  %val = load <4 x bfloat>, ptr %ptr, align 8\n  %res.tmp = insertvalue { <4 x bfloat>, ptr } undef, <4 x bfloat> %val, 0\n  %next = getelementptr <4 x bfloat>, ptr %ptr, i32 1\n  %res = insertvalue { <4 x bfloat>, ptr } %res.tmp, ptr %next, 1\n  ret { <4 x bfloat>, ptr } %res\n}\n",
+          "test_name": "test_load_post_v4bf16"
+        },
+        {
+          "test_body": "define { <8 x bfloat>, ptr } @test_load_pre_v8bf16(ptr %ptr) {\n  %next = getelementptr <8 x bfloat>, ptr %ptr, i32 1\n  %val = load <8 x bfloat>, ptr %next, align 16\n  %res.tmp = insertvalue { <8 x bfloat>, ptr } undef, <8 x bfloat> %val, 0\n  %res = insertvalue { <8 x bfloat>, ptr } %res.tmp, ptr %next, 1\n  ret { <8 x bfloat>, ptr } %res\n}\n",
+          "test_name": "test_load_pre_v8bf16"
+        },
+        {
+          "test_body": "define ptr @test_store_post(bfloat %val, ptr %ptr) {\n  store bfloat %val, ptr %ptr, align 2\n  %next = getelementptr bfloat, ptr %ptr, i32 1\n  ret ptr %next\n}\n",
+          "test_name": "test_store_post"
+        },
+        {
+          "test_body": "define { bfloat, ptr } @test_load_post(ptr %ptr) {\n  %val = load bfloat, ptr %ptr, align 2\n  %res.tmp = insertvalue { bfloat, ptr } undef, bfloat %val, 0\n  %next = getelementptr bfloat, ptr %ptr, i32 1\n  %res = insertvalue { bfloat, ptr } %res.tmp, ptr %next, 1\n  ret { bfloat, ptr } %res\n}\n",
+          "test_name": "test_load_post"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine bfloat @test_load_offset1(ptr %p) #0 {\n  %g = getelementptr inbounds i8, ptr %p, i64 1\n  %tmp1 = load bfloat, ptr %g, align 2\n  ret bfloat %tmp1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_load_offset1"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <4 x bfloat> @test_vec_load(ptr %p) #0 {\n  %tmp1 = load <4 x bfloat>, ptr %p, align 16\n  ret <4 x bfloat> %tmp1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_vec_load"
+        },
+        {
+          "test_body": "define ptr @test_store_pre_v8bf16_trunc(ptr %ptr) {\n  %t = load <8 x bfloat>, ptr %ptr, align 16\n  %next = getelementptr <8 x bfloat>, ptr %ptr, i32 1\n  store <8 x bfloat> %t, ptr %next, align 16\n  ret ptr %next\n}\n",
+          "test_name": "test_store_pre_v8bf16_trunc"
+        },
+        {
+          "test_body": "define ptr @test_store_pre_v4bf16(<4 x bfloat> %val, ptr %ptr) {\n  %next = getelementptr <4 x bfloat>, ptr %ptr, i32 1\n  store <4 x bfloat> %val, ptr %next, align 8\n  ret ptr %next\n}\n",
+          "test_name": "test_store_pre_v4bf16"
+        },
+        {
+          "test_body": "define { <8 x bfloat>, ptr } @test_load_post_v8bf16(ptr %ptr) {\n  %val = load <8 x bfloat>, ptr %ptr, align 16\n  %res.tmp = insertvalue { <8 x bfloat>, ptr } undef, <8 x bfloat> %val, 0\n  %next = getelementptr <8 x bfloat>, ptr %ptr, i32 1\n  %res = insertvalue { <8 x bfloat>, ptr } %res.tmp, ptr %next, 1\n  ret { <8 x bfloat>, ptr } %res\n}\n",
+          "test_name": "test_load_post_v8bf16"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine bfloat @test_load(ptr %p) #0 {\n  %tmp1 = load bfloat, ptr %p, align 16\n  ret bfloat %tmp1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_load"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine bfloat @test_load_offset2(ptr %p) #0 {\n  %g = getelementptr inbounds i8, ptr %p, i64 2\n  %tmp1 = load bfloat, ptr %g, align 2\n  ret bfloat %tmp1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_load_offset2"
+        },
+        {
+          "test_body": "define { bfloat, ptr } @test_load_pre(ptr %ptr) {\n  %next = getelementptr bfloat, ptr %ptr, i32 1\n  %val = load bfloat, ptr %next, align 2\n  %res.tmp = insertvalue { bfloat, ptr } undef, bfloat %val, 0\n  %res = insertvalue { bfloat, ptr } %res.tmp, ptr %next, 1\n  ret { bfloat, ptr } %res\n}\n",
+          "test_name": "test_load_pre"
+        },
+        {
+          "test_body": "define ptr @test_store_pre(bfloat %val, ptr %ptr) {\n  %next = getelementptr bfloat, ptr %ptr, i32 1\n  store bfloat %val, ptr %next, align 2\n  ret ptr %next\n}\n",
+          "test_name": "test_store_pre"
+        },
+        {
+          "test_body": "define ptr @test_store_post_v4bf16(<4 x bfloat> %val, ptr %ptr) {\n  store <4 x bfloat> %val, ptr %ptr, align 8\n  %next = getelementptr <4 x bfloat>, ptr %ptr, i32 1\n  ret ptr %next\n}\n",
+          "test_name": "test_store_post_v4bf16"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine bfloat @test_bitcast_halftobfloat(half %a) #0 {\n  %r = bitcast half %a to bfloat\n  ret bfloat %r\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_bitcast_halftobfloat"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine void @test_store_negative_offset(ptr %a, bfloat %b) #0 {\nentry:\n  %0 = getelementptr inbounds bfloat, ptr %a, i64 -2\n  store bfloat %b, ptr %0, align 2\n  ret void\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_store_negative_offset"
+        },
+        {
+          "test_body": "define { <4 x bfloat>, ptr } @test_load_pre_v4bf16(ptr %ptr) {\n  %next = getelementptr <4 x bfloat>, ptr %ptr, i32 1\n  %val = load <4 x bfloat>, ptr %next, align 8\n  %res.tmp = insertvalue { <4 x bfloat>, ptr } undef, <4 x bfloat> %val, 0\n  %res = insertvalue { <4 x bfloat>, ptr } %res.tmp, ptr %next, 1\n  ret { <4 x bfloat>, ptr } %res\n}\n",
+          "test_name": "test_load_pre_v4bf16"
+        },
+        {
+          "test_body": "define ptr @test_store_pre_v8bf16(<8 x bfloat> %val, ptr %ptr) {\n  %next = getelementptr <8 x bfloat>, ptr %ptr, i32 1\n  store <8 x bfloat> %val, ptr %next, align 16\n  ret ptr %next\n}\n",
+          "test_name": "test_store_pre_v8bf16"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine half @test_bitcast_bfloattohalf(bfloat %a) #0 {\n  %r = bitcast bfloat %a to half\n  ret half %r\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_bitcast_bfloattohalf"
+        },
+        {
+          "test_body": "define <8 x bfloat> @test_build_vector_const() {\n  ret <8 x bfloat> splat (bfloat 0xR3F80)\n}\n",
+          "test_name": "test_build_vector_const"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

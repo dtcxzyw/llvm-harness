@@ -1,0 +1,65 @@
+{
+  "base_commit": "4dcc2f5db9d3a9d317aa1acde7adbbe9ec467cb2",
+  "bug_id": "118605",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "X86TargetLowering::LowerSETCC"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          24235,
+          24242
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "d6501dc88d5e040b31ffb83ebcf02c941c7c964f"
+  },
+  "issue": {
+    "author": "abhishek-kaushik22",
+    "body": "Compiler Explorer: https://godbolt.org/z/GTfqbqGef\n\n```\nLLVM ERROR: Cannot select: t30: i32 = X86ISD::UCOMX t3, ConstantFP:f80<APFloat(0)>\n  t3: f80,ch = load<(load (s80) from %fixed-stack.0, align 16)> t0, FrameIndex:i64<-1>, undef:i64\n    t1: i64 = FrameIndex<-1>\n    t2: i64 = undef\n  t4: f80 = ConstantFP<APFloat(0)>\nIn function: ldequals\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -mcpu=diamondrapids <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@ldequals'\n #0 0x0000000003c0a0c8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c0a0c8)\n #1 0x0000000003c07abc SignalHandler(int) Signals.cpp:0:0\n #2 0x000076cacee42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000076cacee969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000076cacee42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000076cacee287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x0000000000758ec1 (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x758ec1)\n #7 0x00000000039b4078 llvm::SelectionDAGISel::CannotYetSelect(llvm::SDNode*) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39b4078)\n #8 0x00000000039b9519 llvm::SelectionDAGISel::SelectCodeCommon(llvm::SDNode*, unsigned char const*, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39b9519)\n #9 0x0000000001fac011 (anonymous namespace)::X86DAGToDAGISel::Select(llvm::SDNode*) X86ISelDAGToDAG.cpp:0:0\n#10 0x00000000039b05eb llvm::SelectionDAGISel::DoInstructionSelection() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39b05eb)\n#11 0x00000000039bf9aa llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39bf9aa)\n#12 0x00000000039c2f29 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39c2f29)\n#13 0x00000000039c41e0 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39c41e0)\n#14 0x00000000039b4a8f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39b4a8f)\n#15 0x0000000002b70aa9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#16 0x0000000003175f8f llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3175f8f)\n#17 0x0000000003176341 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3176341)\n#18 0x0000000003176be1 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3176be1)\n#19 0x000000000086e8f8 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#20 0x000000000076069e main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x76069e)\n#21 0x000076cacee29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#22 0x000076cacee29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#23 0x000000000086522e _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x86522e)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid"
+    ],
+    "title": "LLVM ERROR: Cannot select: ... = X86ISD::UCOMX ..., ..."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/118605",
+  "knowledge_cutoff": "2024-12-04T08:58:10Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit d6501dc88d5e040b31ffb83ebcf02c941c7c964f\nAuthor: abhishek-kaushik22 <abhishek.kaushik@intel.com>\nDate:   Mon Dec 9 12:55:07 2024 +0800\n\n    [X86][AVX512] Check input-types to COMX (#118606)\n    \n    Supported types for COMX are f16, f32 and f64.\n    Without this check there's a crash on f80 types.\n    Fixes: https://github.com/llvm/llvm-project/issues/118605\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex fb8e791d8ec9..5c6b22896edd 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -24235,8 +24235,10 @@ SDValue X86TargetLowering::LowerSETCC(SDValue Op, SelectionDAG &DAG) const {\n   if (Subtarget.hasAVX10_2()) {\n     if (CC == ISD::SETOEQ || CC == ISD::SETUNE) {\n       auto NewCC = (CC == ISD::SETOEQ) ? X86::COND_E : (X86::COND_NE);\n-      return getSETCC(NewCC, DAG.getNode(X86ISD::UCOMX, dl, MVT::i32, Op0, Op1),\n-                      dl, DAG);\n+      assert(Op0.getSimpleValueType() != MVT::bf16 && \"Unsupported Type\");\n+      if (Op0.getSimpleValueType() != MVT::f80)\n+        return getSETCC(\n+            NewCC, DAG.getNode(X86ISD::UCOMX, dl, MVT::i32, Op0, Op1), dl, DAG);\n     }\n   }\n   // Handle floating point.\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx10.2-256",
+        "llc < %s -mtriple=i386-unknown-unknown -mattr=+avx10.2-256"
+      ],
+      "file": "llvm/test/CodeGen/X86/avx10_2-cmp.ll",
+      "tests": [
+        {
+          "test_body": "define i1 @dune_mem(ptr %xp, ptr %yp) {\n  %x = load double, ptr %xp, align 8\n  %y = load double, ptr %yp, align 8\n  %1 = fcmp une double %x, %y\n  ret i1 %1\n}\n",
+          "test_name": "dune_mem"
+        },
+        {
+          "test_body": "define i32 @PR118606(x86_fp80 %val1) {\nentry:\n  %cmp8 = fcmp oeq x86_fp80 %val1, 0xK00000000000000000000\n  %0 = select i1 %cmp8, x86_fp80 0xK3FFF8000000000000000, x86_fp80 0xK00000000000000000000\n  %cmp64 = fcmp ogt x86_fp80 %0, 0xK00000000000000000000\n  br i1 %cmp64, label %if.then66, label %if.end70\n\nif.then66:                                        ; preds = %entry\n  ret i32 0\n\nif.end70:                                         ; preds = %entry\n  ret i32 0\n}\n",
+          "test_name": "PR118606"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

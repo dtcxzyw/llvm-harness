@@ -1,0 +1,69 @@
+{
+  "base_commit": "77d1db6df757ff86c69661e02dd5b402e120e5f5",
+  "bug_id": "139308",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Analysis/MemorySSAUpdater.cpp": [
+        "MemorySSAUpdater::applyInsertUpdates"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Analysis/MemorySSAUpdater.cpp": [
+        [
+          1119,
+          1124
+        ],
+        [
+          1135,
+          1144
+        ]
+      ]
+    },
+    "components": [
+      "MemorySSAUpdater"
+    ],
+    "fix_commit": "05f1e313948768fdd8527969cd79809cbd0654ff"
+  },
+  "issue": {
+    "author": "zhendongsu",
+    "body": "Compiler Explorer: https://godbolt.org/z/rKfcxsjcx\n\nIt appears to be a recent regression as it doesn't reproduce with 20.1.0 and earlier.\n\n```\n[514] % clangtk -v\nclang version 21.0.0git (https://github.com/llvm/llvm-project.git 865fb9c1a50f8b836a8c9ee6f4d1cbe7cce59fc3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /local/home/suz/suz-local/software/local/clang-trunk/bin\nBuild config: +assertions\nFound candidate GCC installation: /usr/lib/gcc/x86_64-linux-gnu/11\nFound candidate GCC installation: /usr/lib/gcc/x86_64-linux-gnu/12\nSelected GCC installation: /usr/lib/gcc/x86_64-linux-gnu/12\nCandidate multilib: .;@m64\nSelected multilib: .;@m64\nFound CUDA installation: /usr/local/cuda, version 12.1\n[515] % \n[515] % clangtk -O3 small.c\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.\tProgram arguments: /local/home/suz/suz-local/software/local/clang-trunk/bin/clang-21 -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -dumpdir a- -disable-free -clear-ast-before-backend -main-file-name small.c -mrelocation-model pic -pic-level 2 -pic-is-pie -mframe-pointer=none -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/local/suz-local/software/emitesting/bugs/20250509-clangtk-m64-O3-build-150429/delta -fcoverage-compilation-dir=/local/suz-local/software/emitesting/bugs/20250509-clangtk-m64-O3-build-150429/delta -resource-dir /local/home/suz/suz-local/software/local/clang-trunk/lib/clang/21 -I /usr/local/include -I /local/suz-local/software/local/include -internal-isystem /local/home/suz/suz-local/software/local/clang-trunk/lib/clang/21/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-linux-gnu/12/../../../../x86_64-linux-gnu/include -internal-externc-isystem /usr/include/x86_64-linux-gnu -internal-externc-isystem /include -internal-externc-isystem /usr/include -O3 -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -fcolor-diagnostics -vectorize-loops -vectorize-slp -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o /tmp/small-b9cef3.o -x c small.c\n1.\t<eof> parser at end of file\n2.\tOptimizer\n3.\tRunning pass \"require<globals-aa>,function(invalidate<aa>),require<profile-summary>,cgscc(devirt<4>(inline,function-attrs<skip-non-recursive-function-attrs>,argpromotion,openmp-opt-cgscc,function<eager-inv;no-rerun>(sroa<modify-cfg>,early-cse<memssa>,speculative-execution<only-if-divergent-target>,jump-threading,correlated-propagation,simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;no-hoist-common-insts;no-hoist-loads-stores-with-cond-faulting;no-sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>,instcombine<max-iterations=1;no-verify-fixpoint>,aggressive-instcombine,libcalls-shrinkwrap,tailcallelim,simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;no-hoist-common-insts;no-hoist-loads-stores-with-cond-faulting;no-sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>,reassociate,constraint-elimination,loop-mssa(loop-instsimplify,loop-simplifycfg,licm<no-allowspeculation>,loop-rotate<header-duplication;no-prepare-for-lto>,licm<allowspeculation>,simple-loop-unswitch<nontrivial;trivial>),simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;no-hoist-common-insts;no-hoist-loads-stores-with-cond-faulting;no-sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>,instcombine<max-iterations=1;no-verify-fixpoint>,loop(loop-idiom,indvars,extra-simple-loop-unswitch-passes,loop-deletion,loop-unroll-full),sroa<modify-cfg>,vector-combine,mldst-motion<no-split-footer-bb>,gvn<>,sccp,bdce,instcombine<max-iterations=1;no-verify-fixpoint>,jump-threading,correlated-propagation,adce,memcpyopt,dse,move-auto-init,loop-mssa(licm<allowspeculation>),coro-elide,simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;hoist-common-insts;no-hoist-loads-stores-with-cond-faulting;sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>,instcombine<max-iterations=1;no-verify-fixpoint>),function-attrs,function(require<should-not-run-function-passes>),coro-split,coro-annotation-elide)),function(invalidate<should-not-run-function-passes>),cgscc(devirt<4>())\" on module \"small.c\"\n4.\tRunning pass \"cgscc(devirt<4>(inline,function-attrs<skip-non-recursive-function-attrs>,argpromotion,openmp-opt-cgscc,function<eager-inv;no-rerun>(sroa<modify-cfg>,early-cse<memssa>,speculative-execution<only-if-divergent-target>,jump-threading,correlated-propagation,simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;no-hoist-common-insts;no-hoist-loads-stores-with-cond-faulting;no-sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>,instcombine<max-iterations=1;no-verify-fixpoint>,aggressive-instcombine,libcalls-shrinkwrap,tailcallelim,simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;no-hoist-common-insts;no-hoist-loads-stores-with-cond-faulting;no-sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>,reassociate,constraint-elimination,loop-mssa(loop-instsimplify,loop-simplifycfg,licm<no-allowspeculation>,loop-rotate<header-duplication;no-prepare-for-lto>,licm<allowspeculation>,simple-loop-unswitch<nontrivial;trivial>),simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;no-hoist-common-insts;no-hoist-loads-stores-with-cond-faulting;no-sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>,instcombine<max-iterations=1;no-verify-fixpoint>,loop(loop-idiom,indvars,extra-simple-loop-unswitch-passes,loop-deletion,loop-unroll-full),sroa<modify-cfg>,vector-combine,mldst-motion<no-split-footer-bb>,gvn<>,sccp,bdce,instcombine<max-iterations=1;no-verify-fixpoint>,jump-threading,correlated-propagation,adce,memcpyopt,dse,move-auto-init,loop-mssa(licm<allowspeculation>),coro-elide,simplifycfg<bonus-inst-threshold=1;no-forward-switch-cond;switch-range-to-icmp;no-switch-to-lookup;keep-loops;hoist-common-insts;no-hoist-loads-stores-with-cond-faulting;sink-common-insts;speculate-blocks;simplify-cond-branch;no-speculate-unpredictables>,instcombine<max-iterations=1;no-verify-fixpoint>),function-attrs,function(require<should-not-run-function-passes>),coro-split,coro-annotation-elide))\" on module \"small.c\"\n5.\tRunning pass \"loop-mssa(loop-instsimplify,loop-simplifycfg,licm<no-allowspeculation>,loop-rotate<header-duplication;no-prepare-for-lto>,licm<allowspeculation>,simple-loop-unswitch<nontrivial;trivial>)\" on function \"main\"\n  #0 0x0000559100f25f20 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/local/home/suz/suz-local/software/local/clang-trunk/bin/clang-21+0x467df20)\n  #1 0x0000559100f2332f llvm::sys::RunSignalHandlers() (/local/home/suz/suz-local/software/local/clang-trunk/bin/clang-21+0x467b32f)\n  #2 0x0000559100f2347a SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n  #3 0x00007fc84856e520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n  #4 0x00005590ffe52266 getNewDefiningAccessForClone(llvm::MemoryAccess*, llvm::ValueMap<llvm::Value const*, llvm::WeakTrackingVH, llvm::ValueMapConfig<llvm::Value const*, llvm::sys::SmartMutex<false>>> const&, llvm::SmallDenseMap<llvm::MemoryPhi*, llvm::MemoryAccess*, 4u, llvm::DenseMapInfo<llvm::MemoryPhi*, void>, llvm::detail::DenseMapPair<llvm::MemoryPhi*, llvm::MemoryAccess*>>&, llvm::MemorySSA*, llvm::function_ref<bool (llvm::BasicBlock*)>) (.constprop.0) MemorySSAUpdater.cpp:0:0\n  #5 0x00005590ffe52409 getNewDefiningAccessForClone(llvm::MemoryAccess*, llvm::ValueMap<llvm::Value const*, llvm::WeakTrackingVH, llvm::ValueMapConfig<llvm::Value const*, llvm::sys::SmartMutex<false>>> const&, llvm::SmallDenseMap<llvm::MemoryPhi*, \n...\nclangtk: error: unable to execute command: Segmentation fault\nclangtk: error: clang frontend command failed due to signal (use -v to see invocation)\nclang version 21.0.0git (https://github.com/llvm/llvm-project.git 865fb9c1a50f8b836a8c9ee6f4d1cbe7cce59fc3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /local/home/suz/suz-local/software/local/clang-trunk/bin\nBuild config: +assertions\nclangtk: note: diagnostic msg: \n********************\n\nPLEASE ATTACH THE FOLLOWING FILES TO THE BUG REPORT:\nPreprocessed source(s) and associated run script(s) are located at:\nclangtk: note: diagnostic msg: /tmp/small-7806d4.c\nclangtk: note: diagnostic msg: /tmp/small-7806d4.sh\nclangtk: note: diagnostic msg: \n\n********************\n[516] % \n[516] % cat small.c\nint a, b, c, d, e;\nint main() {\n  while (e)\n    if (a) {\n      while (e) {\n        int *f = &c;\n        if (c)\n          __builtin_abort();\n        *f = 0;\n        if (b)\n          __builtin_abort();\n        e--;\n      }\n      if (d)\n        break;\n    }\n}\n```",
+    "comments": [
+      {
+        "author": "nikic",
+        "body": "Possibly a duplicate of https://github.com/llvm/llvm-project/issues/139103."
+      }
+    ],
+    "labels": [
+      "crash",
+      "llvm:analysis"
+    ],
+    "title": "clang crashes on valid code at -O3 on x86_64-linux-gnu: Segmentation fault"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/139308",
+  "knowledge_cutoff": "2025-05-09T18:48:23Z",
+  "lit_test_dir": [
+    "llvm/test/Analysis/MemorySSA"
+  ],
+  "patch": "commit 05f1e313948768fdd8527969cd79809cbd0654ff\nAuthor: Yingwei Zheng <dtcxzyw2333@gmail.com>\nDate:   Sat May 10 21:48:26 2025 +0800\n\n    [MemorySSAUpdater] Fix iterator invalidation bug in `applyInsertUpdates` (#139370)\n    \n    This patch defers resetting optimized accesses until all uses are\n    replaced, to avoid invalidating the iterator.\n    \n    Closes https://github.com/llvm/llvm-project/issues/139103.\n    Closes https://github.com/llvm/llvm-project/issues/139289.\n    Closes https://github.com/llvm/llvm-project/issues/139308.\n\ndiff --git a/llvm/lib/Analysis/MemorySSAUpdater.cpp b/llvm/lib/Analysis/MemorySSAUpdater.cpp\nindex aa9f0b6e100c..ecfecb03c375 100644\n--- a/llvm/lib/Analysis/MemorySSAUpdater.cpp\n+++ b/llvm/lib/Analysis/MemorySSAUpdater.cpp\n@@ -1119,6 +1119,9 @@ void MemorySSAUpdater::applyInsertUpdates(ArrayRef<CFGUpdate> Updates,\n     if (auto DefsList = MSSA->getWritableBlockDefs(BlockWithDefsToReplace)) {\n       for (auto &DefToReplaceUses : *DefsList) {\n         BasicBlock *DominatingBlock = DefToReplaceUses.getBlock();\n+        // We defer resetting optimized accesses until all uses are replaced, to\n+        // avoid invalidating the iterator.\n+        SmallVector<MemoryUseOrDef *, 4> ResetOptimized;\n         for (Use &U : llvm::make_early_inc_range(DefToReplaceUses.uses())) {\n           MemoryAccess *Usr = cast<MemoryAccess>(U.getUser());\n           if (MemoryPhi *UsrPhi = dyn_cast<MemoryPhi>(Usr)) {\n@@ -1135,10 +1138,13 @@ void MemorySSAUpdater::applyInsertUpdates(ArrayRef<CFGUpdate> Updates,\n                 assert(IDom && \"Block must have a valid IDom.\");\n                 U.set(GetLastDef(IDom->getBlock()));\n               }\n-              cast<MemoryUseOrDef>(Usr)->resetOptimized();\n+              ResetOptimized.push_back(cast<MemoryUseOrDef>(Usr));\n             }\n           }\n         }\n+\n+        for (auto *Usr : ResetOptimized)\n+          Usr->resetOptimized();\n       }\n     }\n   }\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -disable-output -passes=\"loop-mssa(licm,loop-rotate,licm,simple-loop-unswitch<nontrivial>),print<memoryssa>\" -verify-memoryssa < %s 2>&1"
+      ],
+      "file": "llvm/test/Analysis/MemorySSA/pr139103.ll",
+      "tests": [
+        {
+          "test_body": "\n; Make sure that we update MSSA correctly in this case.\n\n\ndefine void @test(ptr %p, i1 %cond) {\nentry:\n  br label %for.header\n\nfor.header:\n  br i1 false, label %exit.loopexit1, label %for.header2.preheader\n\nfor.header2.preheader:\n  br label %for.body\n\nfor.header2:\n  br i1 false, label %for.latch, label %for.body\n\nfor.body:\n  store i32 0, ptr %p, align 4\n  store i8 0, ptr %p, align 1\n  br i1 %cond, label %for.header2, label %exit.loopexit\n\nfor.latch:\n  br i1 false, label %for.inc, label %exit.loopexit1\n\nfor.inc:\n  br label %for.header\n\nexit.loopexit:\n  br label %exit\n\nexit.loopexit1:\n  br label %exit\n\nexit:\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

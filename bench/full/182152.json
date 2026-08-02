@@ -1,0 +1,70 @@
+{
+  "base_commit": "d0f50d55746aa27e6467cb2bce66596da9da065b",
+  "bug_id": "182152",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Transforms/Vectorize/VPlanConstruction.cpp": [
+        "VPlanTransforms::handleFindLastReductions"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Transforms/Vectorize/VPlanConstruction.cpp": [
+        [
+          1335,
+          1341
+        ]
+      ]
+    },
+    "components": [
+      "LoopVectorize"
+    ],
+    "fix_commit": "943eb6fd958e8b130ee94f5c65b7d53ec3419acc"
+  },
+  "issue": {
+    "author": "DaniilSuchkov",
+    "body": "Running `opt -passes=loop-vectorize reduced.ll` on this IR:\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128-ni:1-p2:32:8:8:32-ni:2\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\ndefine i32 @hoge.24(i32 %load2) {\nbb:\n  %icmp120 = icmp eq i32 0, 0\n  br label %bb121\n\nbb121:                                            ; preds = %bb121, %bb\n  %phi122 = phi i32 [ %add124, %bb121 ], [ %load2, %bb ]\n  %phi123 = phi i32 [ %select, %bb121 ], [ 0, %bb ]\n  %select = select i1 %icmp120, i32 %phi123, i32 %phi122\n  %add124 = add i32 %phi122, 1\n  %icmp125 = icmp sgt i32 %phi122, 0\n  br i1 %icmp125, label %bb127, label %bb121\n\nbb127:                                            ; preds = %bb121\n  ret i32 %select\n}\n```\nresults in the following crash:\n```\nopt: /root/llvm-project/llvm/include/llvm/ADT/ilist_iterator.h:168: llvm::ilist_iterator<OptionsT, IsReverse, IsConst>::reference llvm::ilist_iterator<OptionsT, IsReverse, IsConst>::operator*() const [with OptionsT = llvm::ilist_detail::node_options<llvm::VPRecipeBase, true, false, void, false, void>; bool IsReverse = false; bool IsConst = false; llvm::ilist_iterator<OptionsT, IsReverse, IsConst>::reference = llvm::VPRecipeBase&]: Assertion `!NodePtr->isKnownSentinel()' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/opt -o /app/output.s -S -passes=loop-vectorize <source>\n1.\tRunning pass \"function(loop-vectorize<no-interleave-forced-only;no-vectorize-forced-only;>)\" on module \"<source>\"\n2.\tRunning pass \"loop-vectorize<no-interleave-forced-only;no-vectorize-forced-only;>\" on function \"hoge.24\"\n #0 0x0000000005b93398 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x5b93398)\n #1 0x0000000005b90274 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007086d7a42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007086d7a969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007086d7a42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007086d7a287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007086d7a2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007086d7a39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000003997e03 (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x3997e03)\n #9 0x00000000039a241c llvm::VPlanTransforms::handleFindLastReductions(llvm::VPlan&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x39a241c)\n#10 0x00000000037de84f llvm::LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(std::unique_ptr<llvm::VPlan, std::default_delete<llvm::VPlan>>, llvm::VFRange&, llvm::LoopVersioning*) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x37de84f)\n#11 0x00000000037dff45 llvm::LoopVectorizationPlanner::buildVPlansWithVPRecipes(llvm::ElementCount, llvm::ElementCount) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x37dff45)\n#12 0x00000000037ef095 llvm::LoopVectorizationPlanner::plan(llvm::ElementCount, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x37ef095)\n#13 0x00000000037ff8a6 llvm::LoopVectorizePass::processLoop(llvm::Loop*) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x37ff8a6)\n#14 0x0000000003802610 llvm::LoopVectorizePass::runImpl(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x3802610)\n#15 0x0000000003802d9d llvm::LoopVectorizePass::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x3802d9d)\n#16 0x00000000030cefae llvm::detail::PassModel<llvm::Function, llvm::LoopVectorizePass, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x30cefae)\n#17 0x00000000058fe441 llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x58fe441)\n#18 0x0000000000f1484e llvm::detail::PassModel<llvm::Function, llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0xf1484e)\n#19 0x00000000058fc9fa llvm::ModuleToFunctionPassAdaptor::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x58fc9fa)\n#20 0x000000000096c50e llvm::detail::PassModel<llvm::Module, llvm::ModuleToFunctionPassAdaptor, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x96c50e)\n#21 0x00000000058fc3b1 llvm::PassManager<llvm::Module, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x58fc3b1)\n#22 0x00000000009766ca llvm::runPassPipeline(llvm::StringRef, llvm::Module&, llvm::TargetMachine*, llvm::TargetLibraryInfoImpl*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::StringRef, llvm::ArrayRef<llvm::PassPlugin>, llvm::ArrayRef<std::function<void (llvm::PassBuilder&)>>, llvm::opt_tool::OutputKind, llvm::opt_tool::VerifierKind, bool, bool, bool, bool, bool, bool, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x9766ca)\n#23 0x000000000096a778 optMain (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x96a778)\n#24 0x00007086d7a29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#25 0x00007086d7a29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#26 0x00000000009613f5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x9613f5)\n```\nIt's reproducible on LLVM trunk: https://godbolt.org/z/3PhjKfroe",
+    "comments": [
+      {
+        "author": "DaniilSuchkov",
+        "body": "According to our QA, this crash was introduced/triggered by this commit: https://github.com/llvm/llvm-project/commit/2abd6d6d7ac54d40302dfc946d01572a12963ee5\n\n```\ncommit 2abd6d6d7ac54d40302dfc946d01572a12963ee5\nAuthor: Graham Hunter <[graham.hunter@arm.com](mailto:graham.hunter@arm.com)>\nDate:   Wed Jan 14 14:59:18 2026 +0000\n\n[LV] Vectorize conditional scalar assignments (https://github.com/llvm/llvm-project/pull/158088)\nBased on Michael Maitland's previous work:\nhttps://github.com/llvm/llvm-project/pull/121222\n\nThis PR uses the existing recurrences code instead of introducing a\nnew pass just for CSA autovec. I've also made recipes that are more\ngeneric.\n```"
+      },
+      {
+        "author": "DaniilSuchkov",
+        "body": "@huntergr-arm"
+      }
+    ],
+    "labels": [
+      "vectorizers",
+      "crash"
+    ],
+    "title": "LoopVectorizePass crash: assertion `!NodePtr->isKnownSentinel()' failed"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/182152",
+  "knowledge_cutoff": "2026-02-18T21:27:24Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/LoopVectorize"
+  ],
+  "patch": "commit 943eb6fd958e8b130ee94f5c65b7d53ec3419acc\nAuthor: Graham Hunter <graham.hunter@arm.com>\nDate:   Wed Mar 4 11:28:56 2026 +0000\n\n    [LV] Use make_early_inc_range in handleFindLastReductions (#184340)\n    \n    Fixes #182152\n\ndiff --git a/llvm/lib/Transforms/Vectorize/VPlanConstruction.cpp b/llvm/lib/Transforms/Vectorize/VPlanConstruction.cpp\nindex ab79822d7fb6..83907fb96dbd 100644\n--- a/llvm/lib/Transforms/Vectorize/VPlanConstruction.cpp\n+++ b/llvm/lib/Transforms/Vectorize/VPlanConstruction.cpp\n@@ -1335,7 +1335,8 @@ bool VPlanTransforms::handleFindLastReductions(VPlan &Plan) {\n   //   result = extract-last-active vp<new.data>, vp<new.mask>, ir<default.val>\n \n   VPValue *HeaderMask = vputils::findHeaderMask(Plan);\n-  for (auto &Phi : Plan.getVectorLoopRegion()->getEntryBasicBlock()->phis()) {\n+  for (auto &Phi : make_early_inc_range(\n+           Plan.getVectorLoopRegion()->getEntryBasicBlock()->phis())) {\n     auto *PhiR = dyn_cast<VPReductionPHIRecipe>(&Phi);\n     if (!PhiR || !RecurrenceDescriptor::isFindLastRecurrenceKind(\n                      PhiR->getRecurrenceKind()))\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -passes=loop-vectorize -force-vector-width=4 -force-vector-interleave=1 -S %s",
+        "opt -passes=loop-vectorize -force-vector-width=4 -force-vector-interleave=1 -prefer-inloop-reductions -S %s"
+      ],
+      "file": "llvm/test/Transforms/LoopVectorize/find-last.ll",
+      "tests": [
+        {
+          "test_body": "define i32 @loop_inv_select_condition_issue_182152(i32 %iv.start, i32 %a, i32 %b) {\nentry:\n  %inv_cond = icmp eq i32 %a, %b\n  br label %loop\n\nloop:                                             ; preds = %loop, %entry\n  %iv = phi i32 [ %iv.start, %entry ], [ %iv.next, %loop ]\n  %rdx = phi i32 [ 0, %entry ], [ %select, %loop ]\n  %select = select i1 %inv_cond, i32 %rdx, i32 %iv\n  %iv.next = add i32 %iv, 1\n  %exit.cond = icmp sgt i32 %iv, 0\n  br i1 %exit.cond, label %exit, label %loop\n\nexit:                                             ; preds = %loop\n  ret i32 %select\n}\n",
+          "test_name": "loop_inv_select_condition_issue_182152"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

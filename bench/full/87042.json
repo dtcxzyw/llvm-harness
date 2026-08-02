@@ -1,0 +1,73 @@
+{
+  "base_commit": "efb8cc5ddb03897795dc153a03d0c1548c8ee4a7",
+  "bug_id": "87042",
+  "bug_type": "miscompilation",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Analysis/InstructionSimplify.cpp": [
+        "threadBinOpOverSelect"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Analysis/InstructionSimplify.cpp": [
+        [
+          440,
+          446
+        ]
+      ]
+    },
+    "components": [
+      "InstructionSimplify"
+    ],
+    "fix_commit": "3197f9d8b0efc3efdc531421bd11c16305d9b1ff"
+  },
+  "issue": {
+    "author": "dtcxzyw",
+    "body": "Reduced test case:\r\n```\r\n#include <stdio.h>\r\n#include <stdint.h>\r\nint16_t g;\r\nint32_t f;\r\nuint32_t h;\r\nuint64_t j = 6;\r\nstatic uint64_t o(int16_t x, uint32_t *a, int16_t ac) {\r\n  if (!x) j |= f;\r\n  f = ac ? 7 % ac : 7;\r\n  return j;\r\n}\r\nint main() {\r\n  uint64_t v1 =  o(g, &h, 8);\r\n  uint64_t v2 = o(v1, &h, 0);\r\n  o(v2 >> 8, &h, 0);\r\n  printf(\"%lu\\n\", j);\r\n  return 0;\r\n}\r\n```\r\n\r\n```\r\n$ gcc -O0 -fsanitize=address,undefined test.c && ./a.out\r\n7\r\n$ bin/clang -O3 --target=riscv64-linux-gnu test.c\r\n$ qemu-riscv64 -L /usr/riscv64-linux-gnu ./a.out\r\n13\r\n```\r\n\r\nllvm version: ba6b2d22af177a72b132cdb8e9350a708f282d2c\r\nqemu version: v8.2.0\r\n",
+    "comments": [
+      {
+        "author": "dtcxzyw",
+        "body": "It should be a middle-end bug since the disjoint flag is incorrectly inferred.\r\n"
+      },
+      {
+        "author": "dtcxzyw",
+        "body": "Reduced LLVM IR: https://alive2.llvm.org/ce/z/d5utst\r\n```\r\ndefine i64 @src(i64 %x) {\r\nentry:\r\n  %and1 = and i64 %x, 65535\r\n  %cmp1 = icmp eq i64 %and1, 0\r\n  %or1 = or disjoint i64 %x, 7\r\n  %sel1 = select i1 %cmp1, i64 %or1, i64 %x\r\n  %and2 = and i64 %sel1, 16776960\r\n  %cmp2 = icmp eq i64 %and2, 0\r\n  %or2 = or i64 %sel1, 7\r\n  %sel2 = select i1 %cmp2, i64 %or2, i64 %sel1\r\n  ret i64 %sel2\r\n}\r\n\r\ndefine i64 @tgt(i64 %x) {\r\n  %and1 = and i64 %x, 65535\r\n  %cmp1 = icmp eq i64 %and1, 0\r\n  %or1 = or disjoint i64 %x, 7\r\n  %sel1 = select i1 %cmp1, i64 %or1, i64 %x\r\n  %and2 = and i64 %sel1, 16776960\r\n  %cmp2 = icmp eq i64 %and2, 0\r\n  %sel2 = select i1 %cmp2, i64 %or1, i64 %sel1\r\n  ret i64 %sel2\r\n}\r\n```"
+      }
+    ],
+    "labels": [
+      "miscompilation",
+      "llvm:instcombine"
+    ],
+    "title": "[RISCV] Miscompile with -O3"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/87042",
+  "knowledge_cutoff": "2024-03-29T07:50:21Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/InstSimplify"
+  ],
+  "patch": "commit 3197f9d8b0efc3efdc531421bd11c16305d9b1ff\nAuthor: Yingwei Zheng <dtcxzyw2333@gmail.com>\nDate:   Thu Apr 11 12:48:52 2024 +0800\n\n    [InstSimplify] Make sure the simplified value doesn't generate poison in threadBinOpOverSelect (#87075)\n    \n    Alive2: https://alive2.llvm.org/ce/z/y_Jmdn\n    Fix https://github.com/llvm/llvm-project/issues/87042.\n\ndiff --git a/llvm/lib/Analysis/InstructionSimplify.cpp b/llvm/lib/Analysis/InstructionSimplify.cpp\nindex 9ff3faff7990..3c943a09a9c2 100644\n--- a/llvm/lib/Analysis/InstructionSimplify.cpp\n+++ b/llvm/lib/Analysis/InstructionSimplify.cpp\n@@ -440,7 +440,8 @@ static Value *threadBinOpOverSelect(Instruction::BinaryOps Opcode, Value *LHS,\n     // Check that the simplified value has the form \"X op Y\" where \"op\" is the\n     // same as the original operation.\n     Instruction *Simplified = dyn_cast<Instruction>(FV ? FV : TV);\n-    if (Simplified && Simplified->getOpcode() == unsigned(Opcode)) {\n+    if (Simplified && Simplified->getOpcode() == unsigned(Opcode) &&\n+        !Simplified->hasPoisonGeneratingFlags()) {\n       // The value that didn't simplify is \"UnsimplifiedLHS op UnsimplifiedRHS\".\n       // We already know that \"op\" is the same as for the simplified value.  See\n       // if the operands match too.  If so, return the simplified value.\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt < %s -passes=instsimplify -S"
+      ],
+      "file": "llvm/test/Transforms/InstSimplify/pr87042.ll",
+      "tests": [
+        {
+          "test_body": "define i64 @test(i1 %cond, i64 %x) {\n  %or1 = or disjoint i64 %x, 7\n  %sel1 = select i1 %cond, i64 %or1, i64 %x\n  %or2 = or i64 %sel1, 7\n  ret i64 %or2\n}\n",
+          "test_name": "test"
+        },
+        {
+          "test_body": "define i64 @pr87042(i64 %x) {\n  %and1 = and i64 %x, 65535\n  %cmp1 = icmp eq i64 %and1, 0\n  %or1 = or disjoint i64 %x, 7\n  %sel1 = select i1 %cmp1, i64 %or1, i64 %x\n  %and2 = and i64 %sel1, 16776960\n  %cmp2 = icmp eq i64 %and2, 0\n  %or2 = or i64 %sel1, 7\n  %sel2 = select i1 %cmp2, i64 %or2, i64 %sel1\n  ret i64 %sel2\n}\n",
+          "test_name": "pr87042"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

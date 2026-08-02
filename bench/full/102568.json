@@ -1,0 +1,65 @@
+{
+  "base_commit": "136e5f4850fb40b1c2be2da5e2032ab3d85a493e",
+  "bug_id": "102568",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "RISCVTargetLowering::getOptimalMemOpType"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          21024,
+          21029
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "c772f5d53a75f2d5d0e8eb8c09c2d6c8d0fb1255"
+  },
+  "issue": {
+    "author": "patrick-rivos",
+    "body": "Likely caused by a commit today since godbolt doesn't crash at time of filing bug:\r\nhttps://godbolt.org/z/965eTfvz7\r\n\r\nUsing llvm: https://github.com/llvm/llvm-project/commit/3e7135750cfe41e8b093e19ce5b85ad937e064fd\r\n\r\nTestcase:\r\n```llvm ir\r\n; ModuleID = 'reduced.bc'\r\ntarget datalayout = \"e-m:e-p:32:32-i64:64-n32-S128\"\r\ntarget triple = \"riscv32-unknown-linux-gnu\"\r\n\r\n; Function Attrs: noinline optnone\r\ndefine void @d() #0 {\r\nentry:\r\n  br label %e\r\n\r\ne:                                                ; preds = %e, %entry\r\n  call void @llvm.memcpy.p0.p0.i32(ptr null, ptr null, i32 4, i1 false)\r\n  br label %e\r\n}\r\n\r\n; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: readwrite)\r\ndeclare void @llvm.memcpy.p0.p0.i32(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i32, i1 immarg) #1\r\n\r\nattributes #0 = { noinline optnone \"target-features\"=\"+32bit,+relax,+xsfvcp,+zicsr,+zve32x,+zvl32b,-a,-b,-c,-d,-e,-experimental-smmpm,-experimental-smnpm,-experimental-ssnpm,-experimental-sspm,-experimental-ssqosid,-experimental-supm,-experimental-zacas,-experimental-zalasr,-experimental-zicfilp,-experimental-zicfiss,-f,-h,-m,-shcounterenw,-shgatpa,-shtvala,-shvsatpa,-shvstvala,-shvstvecd,-smaia,-smcdeleg,-smcsrind,-smepmp,-smstateen,-ssaia,-ssccfg,-ssccptr,-sscofpmf,-sscounterenw,-sscsrind,-ssstateen,-ssstrict,-sstc,-sstvala,-sstvecd,-ssu64xl,-svade,-svadu,-svbare,-svinval,-svnapot,-svpbmt,-v,-xcvalu,-xcvbi,-xcvbitmanip,-xcvelw,-xcvmac,-xcvmem,-xcvsimd,-xsfcease,-xsfvfnrclipxfqf,-xsfvfwmaccqqq,-xsfvqmaccdod,-xsfvqmaccqoq,-xsifivecdiscarddlone,-xsifivecflushdlone,-xtheadba,-xtheadbb,-xtheadbs,-xtheadcmo,-xtheadcondmov,-xtheadfmemidx,-xtheadmac,-xtheadmemidx,-xtheadmempair,-xtheadsync,-xtheadvdot,-xventanacondops,-xwchc,-za128rs,-za64rs,-zaamo,-zabha,-zalrsc,-zama16b,-zawrs,-zba,-zbb,-zbc,-zbkb,-zbkc,-zbkx,-zbs,-zca,-zcb,-zcd,-zce,-zcf,-zcmop,-zcmp,-zcmt,-zdinx,-zfa,-zfbfmin,-zfh,-zfhmin,-zfinx,-zhinx,-zhinxmin,-zic64b,-zicbom,-zicbop,-zicboz,-ziccamoa,-ziccif,-zicclsm,-ziccrse,-zicntr,-zicond,-zifencei,-zihintntl,-zihintpause,-zihpm,-zimop,-zk,-zkn,-zknd,-zkne,-zknh,-zkr,-zks,-zksed,-zksh,-zkt,-zmmul,-ztso,-zvbb,-zvbc,-zve32f,-zve64d,-zve64f,-zve64x,-zvfbfmin,-zvfbfwma,-zvfh,-zvfhmin,-zvkb,-zvkg,-zvkn,-zvknc,-zvkned,-zvkng,-zvknha,-zvknhb,-zvks,-zvksc,-zvksed,-zvksg,-zvksh,-zvkt,-zvl1024b,-zvl128b,-zvl16384b,-zvl2048b,-zvl256b,-zvl32768b,-zvl4096b,-zvl512b,-zvl64b,-zvl65536b,-zvl8192b\" }\r\nattributes #1 = { nocallback nofree nounwind willreturn memory(argmem: readwrite) }\r\n```\r\n\r\nCommand/Backtrace:\r\n```\r\n> /scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc reduced.ll\r\nllc: /scratch/tc-testing/tc-compiler-fuzz-trunk/llvm/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:7943: llvm::SDValue getMemcpyLoadsAndStores(llvm::SelectionDAG&, const llvm::SDLoc&, llvm::SDValue, llvm::SDValue, llvm::SDValue, uint64_t, llvm::Align, bool, bool, llvm::MachinePointerInfo, llvm::MachinePointerInfo, const llvm::AAMDNodes&, llvm::AAResults*): Assertion `NVT.bitsGE(VT)' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.      Program arguments: /scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc reduced.ll\r\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\r\n2.      Running pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@d'\r\n #0 0x00005dbce6188050 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1de1050)\r\n #1 0x00005dbce618546f llvm::sys::RunSignalHandlers() (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1dde46f)\r\n #2 0x00005dbce61855c5 SignalHandler(int) Signals.cpp:0:0\r\n #3 0x000074a1a0042520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #4 0x000074a1a00969fc __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\r\n #5 0x000074a1a00969fc __pthread_kill_internal ./nptl/pthread_kill.c:78:10\r\n #6 0x000074a1a00969fc pthread_kill ./nptl/pthread_kill.c:89:10\r\n #7 0x000074a1a0042476 gsignal ./signal/../sysdeps/posix/raise.c:27:6\r\n #8 0x000074a1a00287f3 abort ./stdlib/abort.c:81:7\r\n #9 0x000074a1a002871b _nl_load_domain ./intl/loadmsgcat.c:1177:9\r\n#10 0x000074a1a0039e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n#11 0x00005dbce5eeaec5 getMemcpyLoadsAndStores(llvm::SelectionDAG&, llvm::SDLoc const&, llvm::SDValue, llvm::SDValue, llvm::SDValue, unsigned long, llvm::Align, bool, bool, llvm::MachinePointerInfo, llvm::MachinePointerInfo, llvm::AAMDNodes const&, llvm::AAResults*) SelectionDAG.cpp:0:0\r\n#12 0x00005dbce5eeb1a3 llvm::SelectionDAG::getMemcpy(llvm::SDValue, llvm::SDLoc const&, llvm::SDValue, llvm::SDValue, llvm::SDValue, llvm::Align, bool, bool, llvm::CallInst const*, std::optional<bool>, llvm::MachinePointerInfo, llvm::MachinePointerInfo, llvm::AAMDNodes const&, llvm::AAResults*) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1b441a3)\r\n#13 0x00005dbce5e84f44 llvm::SelectionDAGBuilder::visitIntrinsicCall(llvm::CallInst const&, unsigned int) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1addf44)\r\n#14 0x00005dbce5e885bc llvm::SelectionDAGBuilder::visit(llvm::Instruction const&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1ae15bc)\r\n#15 0x00005dbce5f1b284 llvm::SelectionDAGISel::SelectBasicBlock(llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, bool&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1b74284)\r\n#16 0x00005dbce5f1c682 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1b75682)\r\n#17 0x00005dbce5f1de57 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1b76e57)\r\n#18 0x00005dbce5f0e389 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1b67389)\r\n#19 0x00005dbce508ec27 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#20 0x00005dbce56b815c llvm::FPPassManager::runOnFunction(llvm::Function&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x131115c)\r\n#21 0x00005dbce56b8589 llvm::FPPassManager::runOnModule(llvm::Module&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1311589)\r\n#22 0x00005dbce56b7496 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1310496)\r\n#23 0x00005dbce4992cf6 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#24 0x00005dbce48d6bb6 main (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x52fbb6)\r\n#25 0x000074a1a0029d90 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16\r\n#26 0x000074a1a0029e40 call_init ./csu/../csu/libc-start.c:128:20\r\n#27 0x000074a1a0029e40 __libc_start_main ./csu/../csu/libc-start.c:379:5\r\n#28 0x00005dbce49895c5 _start (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x5e25c5)\r\nzsh: IOT instruction (core dumped)  /scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc\r\n```\r\nGodbolt: https://godbolt.org/z/b37KbvWM9\r\n\r\nFound via fuzzer.",
+    "comments": [
+      {
+        "author": "preames",
+        "body": "Likely a duplicate of https://github.com/llvm/llvm-project/issues/102566"
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash-on-valid"
+    ],
+    "title": "[RISC-V] Assertion `NVT.bitsGE(VT)' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/102568",
+  "knowledge_cutoff": "2024-08-09T05:15:26Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit c772f5d53a75f2d5d0e8eb8c09c2d6c8d0fb1255\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Mon Aug 12 20:55:13 2024 -0700\n\n    [RISCV] Disable fixed vectors in getOptimalMemOpType if minimum VLEN is 32. (#102974)\n    \n    This is needed to match #102405 which disabled fixed to scalable vector\n    lowering for VLEN=32.\n    \n    Fixes #102566 and #102568.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 3beaa5198259..6fde09d89e48 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -21024,6 +21024,11 @@ EVT RISCVTargetLowering::getOptimalMemOpType(const MemOp &Op,\n     // which ends up using scalar sequences.\n     return MVT::Other;\n \n+  // If the minimum VLEN is less than RISCV::RVVBitsPerBlock we don't support\n+  // fixed vectors.\n+  if (MinVLenInBytes <= RISCV::RVVBitsPerBlock / 8)\n+    return MVT::Other;\n+\n   // Prefer i8 for non-zero memset as it allows us to avoid materializing\n   // a large scalar constant and instead use vmv.v.x/i to do the\n   // broadcast.  For everything else, prefer ELenVT to minimize VL and thus\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64 -mattr=+zve32x"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/memcpy-crash-zvl32b.ll",
+      "tests": [
+        {
+          "test_body": "\n; Make sure we don't with VLEN=32.\n\ndefine void @c() {\nentry:\n  call void @llvm.memcpy.p0.p0.i64(ptr null, ptr null, i64 4, i1 false)\n  ret void\n}\n\ndeclare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg) #1",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

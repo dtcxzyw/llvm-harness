@@ -1,0 +1,65 @@
+{
+  "base_commit": "7fc524fe080a69e79bd1ce8925e680350b7e9d44",
+  "bug_id": "92569",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp": [
+        "SelectionDAG::canCreateUndefOrPoison"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp": [
+        [
+          5246,
+          5253
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "e0217ee7829cf49bc0caa8b814f6acc4c4b0836d"
+  },
+  "issue": {
+    "author": "TatyanaDoubts",
+    "body": "To reproduce run llc with the following test\r\n```\r\n; ModuleID = 'reduced.ll'\r\nsource_filename = \"reduced.ll\"\r\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128-ni:1-p2:32:8:8:32-ni:2\"\r\ntarget triple = \"x86_64-unknown-linux-gnu\"\r\n\r\ndefine void @widget(i64 %arg, <8 x i8> %arg1) gc \"statepoint-example\" {\r\nbb:\r\n  %call = call i64 @llvm.cttz.i64(i64 %arg, i1 false)\r\n  %trunc = trunc i64 %call to i8\r\n  %lshr = lshr i8 %trunc, 3\r\n  %extractelement = extractelement <8 x i8> %arg1, i8 %lshr\r\n  %freeze = freeze i8 %extractelement\r\n  %zext = zext i8 %freeze to i32\r\n  store i32 %zext, ptr addrspace(1) null, align 4\r\n  ret void\r\n}\r\n```\r\nReproducer https://godbolt.org/z/r14zaeTG7\r\n\r\nStack dump:\r\n```\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@widget'\r\n #0 0x00000000039a2fb8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39a2fb8)\r\n #1 0x00000000039a070c SignalHandler(int) Signals.cpp:0:0\r\n #2 0x00007477c5a42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x00007477c5a969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x00007477c5a42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x00007477c5a287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x00007477c5a2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\r\n #7 0x00007477c5a39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n #8 0x00000000035839e6 (anonymous namespace)::DAGCombiner::visitFREEZE(llvm::SDNode*) (.isra.0) DAGCombiner.cpp:0:0\r\n #9 0x000000000360de60 (anonymous namespace)::DAGCombiner::visit(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#10 0x000000000360f3ee (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#11 0x000000000361106c (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\r\n#12 0x000000000361364a llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::AAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x361364a)\r\n#13 0x000000000376aee6 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x376aee6)\r\n#14 0x000000000376e895 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x376e895)\r\n#15 0x0000000003770307 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (.part.0) SelectionDAGISel.cpp:0:0\r\n#16 0x0000000001e584dc (anonymous namespace)::X86DAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) X86ISelDAGToDAG.cpp:0:0\r\n#17 0x00000000029ae821 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#18 0x0000000002f70d93 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f70d93)\r\n#19 0x0000000002f70fd1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f70fd1)\r\n#20 0x0000000002f71835 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f71835)\r\n#21 0x000000000082d4ac compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#22 0x000000000072a966 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x72a966)\r\n#23 0x00007477c5a29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#24 0x00007477c5a29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#25 0x0000000000823fce _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x823fce)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "```\r\nSelectionDAG has 19 nodes:\r\n  t0: ch,glue = EntryToken\r\n            t9: v16i8,ch = CopyFromReg t0, Register:v16i8 %5\r\n                    t2: i64,ch = CopyFromReg t0, Register:i64 %2\r\n                  t4: i64 = AssertZext t2, ValueType:ch:i7\r\n                t5: i8 = truncate t4\r\n              t7: i8 = srl t5, Constant:i8<3>\r\n            t12: i64 = zero_extend t7\r\n          t20: i8 = extract_vector_elt t9, t12\r\n        t14: i8 = freeze t20\r\n      t15: i32 = zero_extend t14\r\n    t17: ch = store<(store (s32) into `ptr addrspace(1) null`, addrspace 1)> t0, t15, Constant:i64<0>, undef:i64\r\n  t19: ch = X86ISD::RET_GLUE t17, TargetConstant:i32<0>\r\n```\r\nWe're freezing the extract_vector_elt index and then the ComputeKnownBits fails to see through the freeze.\r\n\r\nLooking at a fix."
+      }
+    ],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "Assertion `DAG.isGuaranteedNotToBeUndefOrPoison(R, false) && \"Can't create node that may be undef/poison!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/92569",
+  "knowledge_cutoff": "2024-05-17T16:10:55Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit e0217ee7829cf49bc0caa8b814f6acc4c4b0836d\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Sun May 19 11:06:02 2024 +0100\n\n    [DAG] canCreateUndefOrPoison - only compute extract/index vector elt index knownbits when not poison\n    \n    We were calling computeKnownBits to determine the bounds of the element index without ensuring that it wasn't poison, meaning if we did freeze the index, isGuaranteedNotToBeUndefOrPoison would then fail as we can't call computeKnownBits through FREEZE for potentially poison values.\n    \n    Fixes #92569\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp b/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\nindex 6a4ff741af10..2e1f4b7e5b37 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp\n@@ -5246,8 +5246,12 @@ bool SelectionDAG::canCreateUndefOrPoison(SDValue Op, const APInt &DemandedElts,\n     // Ensure that the element index is in bounds.\n     EVT VecVT = Op.getOperand(0).getValueType();\n     SDValue Idx = Op.getOperand(Opcode == ISD::INSERT_VECTOR_ELT ? 2 : 1);\n-    KnownBits KnownIdx = computeKnownBits(Idx, Depth + 1);\n-    return KnownIdx.getMaxValue().uge(VecVT.getVectorMinNumElements());\n+    if (isGuaranteedNotToBeUndefOrPoison(Idx, DemandedElts, PoisonOnly,\n+                                         Depth + 1)) {\n+      KnownBits KnownIdx = computeKnownBits(Idx, Depth + 1);\n+      return KnownIdx.getMaxValue().uge(VecVT.getVectorMinNumElements());\n+    }\n+    return true;\n   }\n \n   case ISD::VECTOR_SHUFFLE: {\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-linux-gnu"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr92569.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @PR92569(i64 %arg, <8 x i8> %arg1) {\n  %cttz = call i64 @llvm.cttz.i64(i64 %arg, i1 false)\n  %trunc = trunc i64 %cttz to i8\n  %lshr = lshr i8 %trunc, 3\n  %extractelement = extractelement <8 x i8> %arg1, i8 %lshr\n  %freeze = freeze i8 %extractelement\n  %zext = zext i8 %freeze to i32\n  store i32 %zext, ptr addrspace(1) null, align 4\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

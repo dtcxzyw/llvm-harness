@@ -1,0 +1,60 @@
+{
+  "base_commit": "614a064cac4f8d0e9c53fafd7876a71be84b8610",
+  "bug_id": "108728",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "DAGCombiner::visitUDIVLike"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          4897,
+          4902
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "5910e8d6075648d941c5723eab856c58857e345d"
+  },
+  "issue": {
+    "author": "dtcxzyw",
+    "body": "Reproducer: https://godbolt.org/z/5TGro7zbM\r\n```\r\n; bin/llc test.ll -o -\r\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\r\ntarget triple = \"x86_64-unknown-linux-gnu\"\r\n\r\ndefine i8 @main(i1 %tobool180.not.i150.i) {\r\nentry:\r\n  %spec.select = select i1 %tobool180.not.i150.i, i8 0, i8 1\r\n  %conv673.i.1.i = xor i8 %spec.select, -1\r\n  %0 = udiv i8 1, %conv673.i.1.i\r\n  %1 = tail call i8 @llvm.ctpop.i8(i8 %0)\r\n  ret i8 %1\r\n}\r\n```\r\n```\r\nllc: /root/llvm-project/llvm/lib/Target/X86/X86ISelLowering.cpp:31722: llvm::SDValue LowerCTPOP(llvm::SDValue, const llvm::X86Subtarget&, llvm::SelectionDAG&): Assertion `(LZ + TZ) < Known.getBitWidth() && \"Illegal shifted mask\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -filetype=obj <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@main'\r\n #0 0x0000000003b243a8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3b243a8)\r\n #1 0x0000000003b21aec SignalHandler(int) Signals.cpp:0:0\r\n #2 0x0000793749242520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x00007937492969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x0000793749242476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x00007937492287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x000079374922871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\r\n #7 0x0000793749239e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n #8 0x0000000001f709ff LowerCTPOP(llvm::SDValue, llvm::X86Subtarget const&, llvm::SelectionDAG&) X86ISelLowering.cpp:0:0\r\n #9 0x00000000020a8d11 llvm::X86TargetLowering::LowerOperation(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x20a8d11)\r\n#10 0x00000000037c4a38 (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) (.part.0) LegalizeDAG.cpp:0:0\r\n#11 0x00000000037c8113 llvm::SelectionDAG::Legalize() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37c8113)\r\n#12 0x00000000038ddc47 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x38ddc47)\r\n#13 0x00000000038e0e92 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x38e0e92)\r\n#14 0x00000000038e21b0 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x38e21b0)\r\n#15 0x00000000038d2eef llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x38d2eef)\r\n#16 0x0000000002abe549 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#17 0x00000000030b1f20 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x30b1f20)\r\n#18 0x00000000030b22d1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x30b22d1)\r\n#19 0x00000000030b2b87 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x30b2b87)\r\n#20 0x000000000085cb7c compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#21 0x000000000074ad56 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x74ad56)\r\n#22 0x0000793749229d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#23 0x0000793749229e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#24 0x0000000000853b4e _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x853b4e)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```\r\n```\r\n    // Compute the lower/upper bounds of the active bits of the value,\r\n    // allowing us to shift the active bits down if necessary to fit into the\r\n    // special cases below.\r\n    KnownBits Known = DAG.computeKnownBits(Op);\r\n    unsigned LZ = Known.countMinLeadingZeros();\r\n    unsigned TZ = Known.countMinTrailingZeros();\r\n    assert((LZ + TZ) < Known.getBitWidth() && \"Illegal shifted mask\");\r\n    unsigned ActiveBits = Known.getBitWidth() - LZ;\r\n    unsigned ShiftedActiveBits = Known.getBitWidth() - (LZ + TZ);\r\n```\r\n`LZ + TZ == 2 * BW` when the operand is known to be zero.\r\n",
+    "comments": [],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[X86][ISel] Assertion `(LZ + TZ) < Known.getBitWidth() && \"Illegal shifted mask\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/108728",
+  "knowledge_cutoff": "2024-09-15T02:40:07Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 5910e8d6075648d941c5723eab856c58857e345d\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Sun Sep 15 12:29:23 2024 +0100\n\n    [DAG] visitUDIV - call SimplifyDemandedBits to handle hidden constant foldable cases\n    \n    Fixes #108728\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex fe8ae5c9e9af..6dd711af0347 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -4897,6 +4897,12 @@ SDValue DAGCombiner::visitUDIV(SDNode *N) {\n     if (SDValue DivRem = useDivRem(N))\n         return DivRem;\n \n+  // Simplify the operands using demanded-bits information.\n+  // We don't have demanded bits support for UDIV so this just enables constant\n+  // folding based on known bits.\n+  if (SimplifyDemandedBits(SDValue(N, 0)))\n+    return SDValue(N, 0);\n+\n   return SDValue();\n }\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64--"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr108728.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine i8 @PR108728(i1 %a0) {\n  %sel = select i1 %a0, i8 0, i8 1\n  %not = xor i8 %sel, -1\n  %udiv = udiv i8 1, %not\n  %cnt = tail call i8 @llvm.ctpop.i8(i8 %udiv)\n  ret i8 %cnt\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

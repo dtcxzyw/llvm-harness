@@ -1,0 +1,60 @@
+{
+  "base_commit": "77db18a1e19c2a04df0210befcab1d66f44a7512",
+  "bug_id": "157177",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "matchSplatAsGather"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          3744,
+          3752
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "151c6edd4592b78984f80f22ced1fef52b5e7ab1"
+  },
+  "issue": {
+    "author": "ewlu",
+    "body": "Testcase:\n```llvm ir\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"riscv64-unknown-linux-gnu\"\n\ndefine <vscale x 8 x i1> @main(<120 x i1> %0) #0 {\nentry:\n  %1 = extractelement <120 x i1> %0, i64 0\n  %2 = insertelement <vscale x 8 x i1> zeroinitializer, i1 %1, i64 0\n  %3 = shufflevector <vscale x 8 x i1> %2, <vscale x 8 x i1> zeroinitializer, <vscale x 8 x i32> zeroinitializer\n  ret <vscale x 8 x i1> %3\n}\n\nattributes #0 = { \"target-features\"=\"+v\" }\n```\n\nCommands/backtrace:\n```\n$ /scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc reduced.ll\nllc: /scratch/ewlu/daily-upstream-build/llvm/llvm/include/llvm/CodeGen/ValueTypes.h:312: llvm::MVT llvm::EVT::getSimpleVT() const: Assertion `isSimple() && \"Expected a SimpleValueType!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.      Program arguments: /scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc reduced.ll\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\n2.      Running pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@main'\n #0 0x00006213b93c2fc2 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1ec6fc2)\n #1 0x00006213b93bfcbf llvm::sys::RunSignalHandlers() (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1ec3cbf)\n #2 0x00006213b93bfe0c SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #3 0x0000727ebec45330 (/lib/x86_64-linux-gnu/libc.so.6+0x45330)\n #4 0x0000727ebec9eb2c __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x0000727ebec9eb2c __pthread_kill_internal ./nptl/pthread_kill.c:78:10\n #6 0x0000727ebec9eb2c pthread_kill ./nptl/pthread_kill.c:89:10\n #7 0x0000727ebec4527e raise ./signal/../sysdeps/posix/raise.c:27:6\n #8 0x0000727ebec288ff abort ./stdlib/abort.c:81:7\n #9 0x0000727ebec2881b _nl_load_domain ./intl/loadmsgcat.c:1177:9\n#10 0x0000727ebec3b517 (/lib/x86_64-linux-gnu/libc.so.6+0x3b517)\n#11 0x00006213b7bdaa11 (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x6dea11)\n#12 0x00006213b7c3f57a llvm::RISCVTargetLowering::PerformDAGCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&) const (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x74357a)\n#13 0x00006213b8fb9ed1 (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#14 0x00006213b8fbb925 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#15 0x00006213b8fbe4ed llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1ac24ed)\n#16 0x00006213b9120076 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1c24076)\n#17 0x00006213b91243af llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1c283af)\n#18 0x00006213b91258ba llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1c298ba)\n#19 0x00006213b910fce7 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x1c13ce7)\n#20 0x00006213b81f8023 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#21 0x00006213b88875ee llvm::FPPassManager::runOnFunction(llvm::Function&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x138b5ee)\n#22 0x00006213b8887a31 llvm::FPPassManager::runOnModule(llvm::Module&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x138ba31)\n#23 0x00006213b8888382 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x138c382)\n#24 0x00006213b7a3490b compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#25 0x00006213b7943887 main (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x447887)\n#26 0x0000727ebec2a1ca __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#27 0x0000727ebec2a28b call_init ./csu/../csu/libc-start.c:128:20\n#28 0x0000727ebec2a28b __libc_start_main ./csu/../csu/libc-start.c:347:5\n#29 0x00006213b7a29895 _start (/scratch/ewlu/daily-upstream-build/build-gcv/build-llvm-linux/bin/llc+0x52d895)\nAborted (core dumped)\n```\n\nGodbolt: https://godbolt.org/z/z8v5bd3W7\n\nFound via fuzzer (C program before reduction)",
+    "comments": [],
+    "labels": [
+      "backend:RISC-V",
+      "crash"
+    ],
+    "title": "[RISC-V] Assertion `isSimple() && \"Expected a SimpleValueType!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/157177",
+  "knowledge_cutoff": "2025-09-05T21:03:00Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 151c6edd4592b78984f80f22ced1fef52b5e7ab1\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Fri Sep 5 22:00:38 2025 -0700\n\n    [RISCV] Check for legal type before calling getSimpleValueType() in matchSplatAsGather. (#157188)\n    \n    This just reorders existing so we do the legal type check first.\n    \n    In this particular test case we're also protected by the i1 check that I\n    also moved earlier.\n    \n    Fixes #157177.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 97a2fa92c6d8..3ab08f990c28 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -3744,9 +3744,11 @@ static SDValue matchSplatAsGather(SDValue SplatVal, MVT VT, const SDLoc &DL,\n   // different\n   // FIXME: Support i1 vectors, maybe by promoting to i8?\n   MVT EltTy = VT.getVectorElementType();\n+  if (EltTy == MVT::i1 ||\n+      !DAG.getTargetLoweringInfo().isTypeLegal(Src.getValueType()))\n+    return SDValue();\n   MVT SrcVT = Src.getSimpleValueType();\n-  if (EltTy == MVT::i1 || EltTy != SrcVT.getVectorElementType() ||\n-      !DAG.getTargetLoweringInfo().isTypeLegal(SrcVT))\n+  if (EltTy != SrcVT.getVectorElementType())\n     return SDValue();\n   SDValue Idx = SplatVal.getOperand(1);\n   // The index must be a legal type.\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64 -mattr=+v"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/pr157177.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <vscale x 8 x i1> @main(<120 x i1> %0) #0 {\nentry:\n  %1 = extractelement <120 x i1> %0, i64 0\n  %2 = insertelement <vscale x 8 x i1> zeroinitializer, i1 %1, i64 0\n  %3 = shufflevector <vscale x 8 x i1> %2, <vscale x 8 x i1> zeroinitializer, <vscale x 8 x i32> zeroinitializer\n  ret <vscale x 8 x i1> %3\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

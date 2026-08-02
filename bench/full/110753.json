@@ -1,0 +1,126 @@
+{
+  "base_commit": "3d994468098027f9cf550c78a1c91bb266040f61",
+  "bug_id": "110753",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/TargetLoweringBase.cpp": [
+        "TargetLoweringBase::initActions"
+      ],
+      "llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp": [
+        "AMDGPUTargetLowering::AMDGPUTargetLowering"
+      ],
+      "llvm/lib/Target/ARM/ARMISelLowering.cpp": [
+        "ARMTargetLowering::ARMTargetLowering",
+        "ARMTargetLowering::addMVEVectorTypes"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/TargetLoweringBase.cpp": [
+        [
+          806,
+          812
+        ],
+        [
+          852,
+          864
+        ],
+        [
+          914,
+          928
+        ]
+      ],
+      "llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp": [
+        [
+          391,
+          398
+        ],
+        [
+          412,
+          420
+        ]
+      ],
+      "llvm/lib/Target/ARM/ARMISelLowering.cpp": [
+        [
+          370,
+          375
+        ],
+        [
+          1507,
+          1512
+        ]
+      ]
+    },
+    "components": [
+      "AMDGPU",
+      "ARM",
+      "TargetLoweringBase"
+    ],
+    "fix_commit": "fe0dbe0f2950d95071be7140c7b4680f17a7ac4e"
+  },
+  "issue": {
+    "author": "tuliom",
+    "body": "This issue was originally reported against [Fedora](https://bugzilla.redhat.com/show_bug.cgi?id=2308835).\r\n\r\nI was able to reduce it to:\r\n- LLVM IR: https://godbolt.org/z/dqa91xzv1\r\n- C: https://godbolt.org/z/jbxnvx7o6\r\n\r\nThe C source code is:\r\n```c\r\n#define simde_math_roundeven(v) __builtin_roundeven(v)\r\n#define SIMDE_VECTOR(size) __attribute__((__vector_size__(size)))\r\n\r\ntypedef double simde_float64;\r\ntypedef struct {\r\n  simde_float64 f64 SIMDE_VECTOR(64);\r\n} simde__m512d_private;\r\n\r\nsimde__m512d_private __trans_tmp_4, test_simde_x_mm512_round_pd_r_;\r\n\r\nvoid simde__m512d_from_private();\r\n\r\nvoid test_simde_x_mm512_round_pd() {\r\n  for (int i;;) {\r\n    simde__m512d_private a_ = __trans_tmp_4;\r\n    i = 0;\r\n    for (; i < sizeof(test_simde_x_mm512_round_pd_r_.f64[0]); i++)\r\n      test_simde_x_mm512_round_pd_r_.f64[i] = simde_math_roundeven(a_.f64[i]);\r\n    simde__m512d_from_private();\r\n  }\r\n}\r\n```\r\n\r\nThe issue can be reproduced with the command: `clang -O2 round-reduced.c`\r\n\r\nThe error message is:\r\n```\r\nLLVM ERROR: Cannot select: 0x9b8fd80: v2f64 = froundeven 0x9b8ef10\r\n  0x9b8ef10: v2f64,ch = PPCISD::XXSWAPD 0x9b92d00:1, 0x9b92d00\r\n    0x9b92d00: v2f64,ch = PPCISD::LXVD2X<(dereferenceable load (s128) from @__trans_tmp_4 + 48, basealign 64)> 0x9b07a90, 0x9b92910\r\n      0x9b92910: i64 = add nuw 0x9b8f1b0, Constant:i64<48>\r\n        0x9b8f1b0: i64,ch = PPCISD::TOC_ENTRY<(load (s64) from got)> TargetGlobalAddress:i64<ptr @__trans_tmp_4> 0, Register:i64 $x2\r\n          0x9b8f0d0: i64 = TargetGlobalAddress<ptr @__trans_tmp_4> 0\r\n          0x9b8f450: i64 = Register $x2\r\n        0x9b8eff0: i64 = Constant<48>\r\nIn function: _Z27test_simde_x_mm512_round_pdv\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -mtriple=powerpc64le-linux <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'PowerPC DAG->DAG Pattern Instruction Selection' on function '@_Z27test_simde_x_mm512_round_pdv'\r\n #0 0x00000000038a5c18 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-trunk/bin/llc+0x38a5c18)\r\n #1 0x00000000038a37fc SignalHandler(int) Signals.cpp:0:0\r\n #2 0x000078581ec42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x000078581ec969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x000078581ec42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x000078581ec287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x000000000074cf34 llvm::UniqueStringSaver::save(llvm::Twine const&) (.cold) StringSaver.cpp:0:0\r\n #7 0x000000000365c78c llvm::SelectionDAGISel::CannotYetSelect(llvm::SDNode*) (/opt/compiler-explorer/clang-trunk/bin/llc+0x365c78c)\r\n #8 0x0000000003663755 llvm::SelectionDAGISel::SelectCodeCommon(llvm::SDNode*, unsigned char const*, unsigned int) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3663755)\r\n #9 0x0000000001826182 (anonymous namespace)::PPCDAGToDAGISel::Select(llvm::SDNode*) PPCISelDAGToDAG.cpp:0:0\r\n#10 0x0000000003659cd4 llvm::SelectionDAGISel::DoInstructionSelection() (/opt/compiler-explorer/clang-trunk/bin/llc+0x3659cd4)\r\n#11 0x0000000003668ea1 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-trunk/bin/llc+0x3668ea1)\r\n#12 0x000000000366b9dc llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x366b9dc)\r\n#13 0x000000000366d63f llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x366d63f)\r\n#14 0x000000000182c987 (anonymous namespace)::PPCDAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) PPCISelDAGToDAG.cpp:0:0\r\n#15 0x0000000003659861 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3659861)\r\n#16 0x000000000295896b llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#17 0x0000000002ea8f32 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2ea8f32)\r\n#18 0x0000000002ea91c1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2ea91c1)\r\n#19 0x0000000002eaab66 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2eaab66)\r\n#20 0x0000000000870854 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#21 0x0000000000761086 main (/opt/compiler-explorer/clang-trunk/bin/llc+0x761086)\r\n#22 0x000078581ec29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#23 0x000078581ec29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#24 0x00000000008685fe _start (/opt/compiler-explorer/clang-trunk/bin/llc+0x8685fe)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```",
+    "comments": [
+      {
+        "author": "tuliom",
+        "body": "The following code is easier to read and reproduces the issue:\r\n\r\n```\r\ntypedef struct {\r\n  double f64 __attribute__((__vector_size__(8*sizeof(double))));\r\n} simde__m512d_private;\r\n\r\nvoid test_simde_x_mm512_round_pd(simde__m512d_private in, simde__m512d_private * out) {\r\n  for (int i = 0; i < sizeof(out->f64[0]); i++)\r\n    out->f64[i] = __builtin_roundeven(in.f64[i]);\r\n}\r\n```\r\n\r\nBuilt with: `clang -O2 -mcpu=power8`\r\n\r\nLink to Compiler Explorer: https://godbolt.org/z/aKv8f38Pj\r\n"
+      },
+      {
+        "author": "tclin914",
+        "body": "It doesn't have the pattern for froundeven in PPCInstrVSX.td. I am not sure which vsx instruction could be matched to froundeven operation."
+      },
+      {
+        "author": "tuliom",
+        "body": "Reminder: code that was not vectorized is successfully built and calls `roundeven()` provided by the math library."
+      },
+      {
+        "author": "stefanp-synopsys",
+        "body": "Okay, we should take a look at this. The PPC backend should support this even if it requires multiple instructions."
+      },
+      {
+        "author": "lei137",
+        "body": "`xvrdpic` - VSX Vector Round to Double-Precision Integer Exact using Current rounding mode and `xvrspic` (SP) seem to be the best fit.  FPSCR need to be set/reset to round to nearest even (FPSCR.RN=0b00) since these instructions respond to the prevailing rounding mode.  There are other vector round to integer instructions but apparently none specific to round to nearest even.\n\n[Accessing the floating point environment](https://clang.llvm.org/docs/UsersManual.html#accessing-the-floating-point-environment) seems to suggest we can assume the default rounding mode (round to nearest even) for `xvrdpic` and `xvrspic` unless one of these pragmas are set \n```\n#pragma STDC FENV_ACCESS ON\n#pragma STDC FENV_ROUND FE_DYNAMIC\n```\nIn which case we have to set/restore the rounding mode before/after `xvrdpic` or `xvrspic`.\n\nNot sure if there are also options to sets the floating point env that need to be taken into consideration."
+      },
+      {
+        "author": "glaubitz",
+        "body": "This seems to occur as well when [building Thunderbird on ppc64be](https://buildd.debian.org/status/fetch.php?pkg=thunderbird&arch=ppc64&ver=1%3A128.13.0esr-1&stamp=1753381391&raw=0)."
+      },
+      {
+        "author": "nikic",
+        "body": "I've put up a fix for the legalization failure at https://github.com/llvm/llvm-project/pull/150597. Having a more optimized lowering for this would certainly be nice, but there is no reason to crash in the meantime, we just need to scalarize the unsupported operation."
+      }
+    ],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "powerpc64le: ICE during instruction selection"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/110753",
+  "knowledge_cutoff": "2024-10-01T21:56:52Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/PowerPC"
+  ],
+  "patch": "commit fe0dbe0f2950d95071be7140c7b4680f17a7ac4e\nAuthor: Nikita Popov <npopov@redhat.com>\nDate:   Mon Jul 28 09:46:00 2025 +0200\n\n    [CodeGen] More consistently expand float ops by default (#150597)\n    \n    These float operations were expanded for scalar f32/f64/f128, but not\n    for f16 and more problematically, not for vectors. A small subset of\n    them was separately set to expand for vectors.\n    \n    Change these to always expand by default, and adjust targets to mark\n    these as legal where necessary instead.\n    \n    This is a much safer default, and avoids unnecessary legalization\n    failures because a target failed to manually mark them as expand.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/110753.\n    Fixes https://github.com/llvm/llvm-project/issues/121390.\n\ndiff --git a/llvm/lib/CodeGen/TargetLoweringBase.cpp b/llvm/lib/CodeGen/TargetLoweringBase.cpp\nindex d4a34555ed82..68b8a0044d6e 100644\n--- a/llvm/lib/CodeGen/TargetLoweringBase.cpp\n+++ b/llvm/lib/CodeGen/TargetLoweringBase.cpp\n@@ -806,7 +806,17 @@ void TargetLoweringBase::initActions() {\n                         ISD::SDIVFIX,        ISD::SDIVFIXSAT,\n                         ISD::UDIVFIX,        ISD::UDIVFIXSAT,\n                         ISD::FP_TO_SINT_SAT, ISD::FP_TO_UINT_SAT,\n-                        ISD::IS_FPCLASS},\n+                        ISD::IS_FPCLASS,     ISD::FCBRT,\n+                        ISD::FLOG,           ISD::FLOG2,\n+                        ISD::FLOG10,         ISD::FEXP,\n+                        ISD::FEXP2,          ISD::FEXP10,\n+                        ISD::FFLOOR,         ISD::FNEARBYINT,\n+                        ISD::FCEIL,          ISD::FRINT,\n+                        ISD::FTRUNC,         ISD::FROUNDEVEN,\n+                        ISD::FTAN,           ISD::FACOS,\n+                        ISD::FASIN,          ISD::FATAN,\n+                        ISD::FCOSH,          ISD::FSINH,\n+                        ISD::FTANH,          ISD::FATAN2},\n                        VT, Expand);\n \n     // Overflow operations default to expand\n@@ -852,13 +862,12 @@ void TargetLoweringBase::initActions() {\n \n     // These operations default to expand for vector types.\n     if (VT.isVector())\n-      setOperationAction(\n-          {ISD::FCOPYSIGN, ISD::SIGN_EXTEND_INREG, ISD::ANY_EXTEND_VECTOR_INREG,\n-           ISD::SIGN_EXTEND_VECTOR_INREG, ISD::ZERO_EXTEND_VECTOR_INREG,\n-           ISD::SPLAT_VECTOR, ISD::LRINT, ISD::LLRINT, ISD::LROUND,\n-           ISD::LLROUND, ISD::FTAN, ISD::FACOS, ISD::FASIN, ISD::FATAN,\n-           ISD::FCOSH, ISD::FSINH, ISD::FTANH, ISD::FATAN2},\n-          VT, Expand);\n+      setOperationAction({ISD::FCOPYSIGN, ISD::SIGN_EXTEND_INREG,\n+                          ISD::ANY_EXTEND_VECTOR_INREG,\n+                          ISD::SIGN_EXTEND_VECTOR_INREG,\n+                          ISD::ZERO_EXTEND_VECTOR_INREG, ISD::SPLAT_VECTOR,\n+                          ISD::LRINT, ISD::LLRINT, ISD::LROUND, ISD::LLROUND},\n+                         VT, Expand);\n \n       // Constrained floating-point operations default to expand.\n #define DAG_INSTRUCTION(NAME, NARG, ROUND_MODE, INTRINSIC, DAGN)               \\\n@@ -914,15 +923,6 @@ void TargetLoweringBase::initActions() {\n                      {MVT::bf16, MVT::f16, MVT::f32, MVT::f64, MVT::f80, MVT::f128},\n                      Expand);\n \n-  // These library functions default to expand.\n-  setOperationAction({ISD::FCBRT,      ISD::FLOG,  ISD::FLOG2,  ISD::FLOG10,\n-                      ISD::FEXP,       ISD::FEXP2, ISD::FEXP10, ISD::FFLOOR,\n-                      ISD::FNEARBYINT, ISD::FCEIL, ISD::FRINT,  ISD::FTRUNC,\n-                      ISD::FROUNDEVEN, ISD::FTAN,  ISD::FACOS,  ISD::FASIN,\n-                      ISD::FATAN,      ISD::FCOSH, ISD::FSINH,  ISD::FTANH,\n-                      ISD::FATAN2},\n-                     {MVT::f32, MVT::f64, MVT::f128}, Expand);\n-\n   // Insert custom handling default for llvm.canonicalize.*.\n   setOperationAction(ISD::FCANONICALIZE,\n                      {MVT::f16, MVT::f32, MVT::f64, MVT::f128}, Expand);\ndiff --git a/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp b/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp\nindex e3ca09e512b3..f25ce8723a2d 100644\n--- a/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp\n+++ b/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp\n@@ -391,8 +391,9 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(const TargetMachine &TM,\n   // Library functions.  These default to Expand, but we have instructions\n   // for them.\n   setOperationAction({ISD::FCEIL, ISD::FPOW, ISD::FABS, ISD::FFLOOR,\n-                      ISD::FROUNDEVEN, ISD::FTRUNC, ISD::FMINNUM, ISD::FMAXNUM},\n-                     MVT::f32, Legal);\n+                      ISD::FROUNDEVEN, ISD::FTRUNC},\n+                     {MVT::f16, MVT::f32}, Legal);\n+  setOperationAction({ISD::FMINNUM, ISD::FMAXNUM}, MVT::f32, Legal);\n \n   setOperationAction(ISD::FLOG2, MVT::f32, Custom);\n   setOperationAction(ISD::FROUND, {MVT::f32, MVT::f64}, Custom);\n@@ -412,9 +413,10 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(const TargetMachine &TM,\n \n   setOperationAction(ISD::FREM, {MVT::f16, MVT::f32, MVT::f64}, Custom);\n \n-  if (Subtarget->has16BitInsts())\n+  if (Subtarget->has16BitInsts()) {\n     setOperationAction(ISD::IS_FPCLASS, {MVT::f16, MVT::f32, MVT::f64}, Legal);\n-  else {\n+    setOperationAction({ISD::FLOG2, ISD::FEXP2}, MVT::f16, Legal);\n+  } else {\n     setOperationAction(ISD::IS_FPCLASS, {MVT::f32, MVT::f64}, Legal);\n     setOperationAction({ISD::FLOG2, ISD::FEXP2}, MVT::f16, Custom);\n   }\ndiff --git a/llvm/lib/Target/ARM/ARMISelLowering.cpp b/llvm/lib/Target/ARM/ARMISelLowering.cpp\nindex fca5dff09230..066b392213fa 100644\n--- a/llvm/lib/Target/ARM/ARMISelLowering.cpp\n+++ b/llvm/lib/Target/ARM/ARMISelLowering.cpp\n@@ -370,6 +370,11 @@ void ARMTargetLowering::addMVEVectorTypes(bool HasMVEFP) {\n       setOperationAction(ISD::FMINNUM, VT, Legal);\n       setOperationAction(ISD::FMAXNUM, VT, Legal);\n       setOperationAction(ISD::FROUND, VT, Legal);\n+      setOperationAction(ISD::FROUNDEVEN, VT, Legal);\n+      setOperationAction(ISD::FRINT, VT, Legal);\n+      setOperationAction(ISD::FTRUNC, VT, Legal);\n+      setOperationAction(ISD::FFLOOR, VT, Legal);\n+      setOperationAction(ISD::FCEIL, VT, Legal);\n       setOperationAction(ISD::VECREDUCE_FADD, VT, Custom);\n       setOperationAction(ISD::VECREDUCE_FMUL, VT, Custom);\n       setOperationAction(ISD::VECREDUCE_FMIN, VT, Custom);\n@@ -1507,6 +1512,12 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM_,\n     setOperationAction(ISD::FLOG2, MVT::f16, Promote);\n \n     setOperationAction(ISD::FROUND, MVT::f16, Legal);\n+    setOperationAction(ISD::FROUNDEVEN, MVT::f16, Legal);\n+    setOperationAction(ISD::FTRUNC, MVT::f16, Legal);\n+    setOperationAction(ISD::FNEARBYINT, MVT::f16, Legal);\n+    setOperationAction(ISD::FRINT, MVT::f16, Legal);\n+    setOperationAction(ISD::FFLOOR, MVT::f16, Legal);\n+    setOperationAction(ISD::FCEIL, MVT::f16, Legal);\n   }\n \n   if (Subtarget->hasNEON()) {\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=powerpc64le < %s"
+      ],
+      "file": "llvm/test/CodeGen/PowerPC/froundeven-legalization.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @test(ptr %p1, ptr %p2) nounwind {\n  %v = load <8 x double>, ptr %p1, align 64\n  %res = call <8 x double> @llvm.roundeven.v8f64(<8 x double> %v)\n  store <8 x double> %res, ptr %p2, align 64\n  ret void\n}\n\ndeclare <8 x double> @llvm.roundeven.v8f64(<8 x double>)",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

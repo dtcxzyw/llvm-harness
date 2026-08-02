@@ -1,0 +1,100 @@
+{
+  "base_commit": "31e757d3a124cdcd199a4b1023e136d0b3457b6a",
+  "bug_id": "166556",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/GlobalISel/CombinerHelper.cpp": [
+        "CombinerHelper::matchSelectIMinMax",
+        "CombinerHelper::matchSuboCarryOut"
+      ],
+      "llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp": [
+        "LegalizerHelper::lowerMinMax"
+      ],
+      "llvm/lib/CodeGen/MachineVerifier.cpp": [
+        "MachineVerifier::verifyPreISelGenericInstruction"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/GlobalISel/CombinerHelper.cpp": [
+        [
+          7556,
+          7562
+        ],
+        [
+          8511,
+          8514
+        ]
+      ],
+      "llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp": [
+        [
+          8663,
+          8669
+        ]
+      ],
+      "llvm/lib/CodeGen/MachineVerifier.cpp": [
+        [
+          2276,
+          2281
+        ]
+      ]
+    },
+    "components": [
+      "GlobalISel",
+      "MachineVerifier"
+    ],
+    "fix_commit": "b7a20c1cc4eae8b265ad28586d16439acc35678d"
+  },
+  "issue": {
+    "author": "sjoerdmeijer",
+    "body": "This IR:\n\n```\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine <4 x ptr> @_Z4testabbbyxiPA17_i(<4 x ptr> %0) {\nentry:\n  %1 = icmp ugt <4 x ptr> %0, zeroinitializer\n  %2 = select <4 x i1> %1, <4 x ptr> %0, <4 x ptr> zeroinitializer\n  ret <4 x ptr> %2\n}\n```\n\ntriggers this assert:\n\n```\nllc: /root/llvm-project/llvm/include/llvm/CodeGenTypes/LowLevelType.h:220: constexpr llvm::LLT llvm::LLT::changeElementSize(unsigned int) const: Assertion `!isPointerOrPointerVector() && \"invalid to directly change element size for pointers\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel --verify-machineinstrs -global-isel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'Legalizer' on function '@_Z4testabbbyxiPA17_i'\n #0 0x000000000419d348 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x419d348)\n #1 0x000000000419a1f4 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007f75dfc42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007f75dfc969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007f75dfc42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007f75dfc287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007f75dfc2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007f75dfc39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x000000000482faf9 llvm::LegalizerHelper::lowerMinMax(llvm::MachineInstr&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x482faf9)\n #9 0x0000000004853c45 llvm::LegalizerHelper::lower(llvm::MachineInstr&, unsigned int, llvm::LLT) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4853c45)\n#10 0x000000000480d7db llvm::Legalizer::legalizeMachineFunction(llvm::MachineFunction&, llvm::LegalizerInfo const&, llvm::ArrayRef<llvm::GISelChangeObserver*>, llvm::LostDebugLocObserver&, llvm::MachineIRBuilder&, llvm::GISelValueTracking*) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x480d7db)\n```\n\nwhen compiled with `llc -global-isel`, see also: https://godbolt.org/z/663GxGane",
+    "comments": [
+      {
+        "author": "cofibrant",
+        "body": "I'll take a look at this"
+      }
+    ],
+    "labels": [
+      "llvm:globalisel",
+      "crash-on-valid"
+    ],
+    "title": "[AArch64][GISel] Assert \"invalid to directly change element size for pointers\""
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/166556",
+  "knowledge_cutoff": "2025-11-05T13:32:11Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64",
+    "llvm/test/MachineVerifier"
+  ],
+  "patch": "commit b7a20c1cc4eae8b265ad28586d16439acc35678d\nAuthor: Nathan Corbyn <n_corbyn@apple.com>\nDate:   Wed Dec 17 09:03:41 2025 +0000\n\n    [GlobalISel] Don't permit G_*MIN/G_*MAX of pointer vectors (#168872)\n    \n    - Use `LLT::changeElementType()` instead of `LLT::changeElementSize()`\n    in `LegalizerHelper::lowerMinMax()` to avoid a crash in the case that\n    the destination type is a pointer vector;\n    - Reject `G_*MIN`/`G_*MAX` of pointers and pointer vectors in\n    `MachineVerifier`;\n    - Don't combine `G_SELECT`+`G_ICMP` pairs into `G_*MIN`/`G_*MAX` generic\n    instructions when the operands are pointers / pointer vectors.\n    \n    Fixes #166556\n\ndiff --git a/llvm/lib/CodeGen/GlobalISel/CombinerHelper.cpp b/llvm/lib/CodeGen/GlobalISel/CombinerHelper.cpp\nindex f0fbe0135353..c58969144dc2 100644\n--- a/llvm/lib/CodeGen/GlobalISel/CombinerHelper.cpp\n+++ b/llvm/lib/CodeGen/GlobalISel/CombinerHelper.cpp\n@@ -7556,7 +7556,7 @@ bool CombinerHelper::matchSelectIMinMax(const MachineOperand &MO,\n   Register False = Select->getFalseReg();\n   LLT DstTy = MRI.getType(DstReg);\n \n-  if (DstTy.isPointer())\n+  if (DstTy.isPointerOrPointerVector())\n     return false;\n \n   // We want to fold the icmp and replace the select.\n@@ -8511,4 +8511,4 @@ bool CombinerHelper::matchSuboCarryOut(const MachineInstr &MI,\n   }\n \n   return false;\n-}\n\\ No newline at end of file\n+}\ndiff --git a/llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp b/llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp\nindex 802738ba19a7..6fce22e091cf 100644\n--- a/llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp\n+++ b/llvm/lib/CodeGen/GlobalISel/LegalizerHelper.cpp\n@@ -8663,7 +8663,7 @@ LegalizerHelper::LegalizeResult LegalizerHelper::lowerMinMax(MachineInstr &MI) {\n   auto [Dst, Src0, Src1] = MI.getFirst3Regs();\n \n   const CmpInst::Predicate Pred = minMaxToCompare(MI.getOpcode());\n-  LLT CmpType = MRI.getType(Dst).changeElementSize(1);\n+  LLT CmpType = MRI.getType(Dst).changeElementType(LLT::scalar(1));\n \n   auto Cmp = MIRBuilder.buildICmp(Pred, CmpType, Src0, Src1);\n   MIRBuilder.buildSelect(Dst, Cmp, Src0, Src1);\ndiff --git a/llvm/lib/CodeGen/MachineVerifier.cpp b/llvm/lib/CodeGen/MachineVerifier.cpp\nindex 9be741d96e45..5ce7606b051a 100644\n--- a/llvm/lib/CodeGen/MachineVerifier.cpp\n+++ b/llvm/lib/CodeGen/MachineVerifier.cpp\n@@ -2276,6 +2276,16 @@ void MachineVerifier::verifyPreISelGenericInstruction(const MachineInstr *MI) {\n       report(\"addr operand must be a pointer\", &AddrOp, 1);\n     break;\n   }\n+  case TargetOpcode::G_SMIN:\n+  case TargetOpcode::G_SMAX:\n+  case TargetOpcode::G_UMIN:\n+  case TargetOpcode::G_UMAX: {\n+    const LLT DstTy = MRI->getType(MI->getOperand(0).getReg());\n+    if (DstTy.isPointerOrPointerVector())\n+      report(\"Generic smin/smax/umin/umax does not support pointer operands\",\n+             MI);\n+    break;\n+  }\n   default:\n     break;\n   }\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -global-isel -stop-after=legalizer -o - %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/GlobalISel/pr168872.ll",
+      "tests": [
+        {
+          "test_body": "target triple = \"aarch64\"\n\n; Check we don't crash here or try to generate an ill-formed `G_UMAX` of\n; pointer vectors.\n\ndefine <4 x ptr> @pr168872(<4 x ptr> %ptrs) {\nentry:\n  %cmp = icmp ugt <4 x ptr> %ptrs, zeroinitializer\n  %ptrs.select = select <4 x i1> %cmp, <4 x ptr> %ptrs, <4 x ptr> zeroinitializer\n  ret <4 x ptr> %ptrs.select\n}",
+          "test_name": "<module>"
+        }
+      ]
+    },
+    {
+      "commands": [],
+      "file": "llvm/test/MachineVerifier/test_g_minmax.mir",
+      "tests": [
+        {
+          "test_body": "# RUN: not --crash llc -mtriple=arm64 -global-isel -run-pass=none -filetype=null %s 2>&1 | FileCheck %s\n# REQUIRES: aarch64-registered-target\n\n---\nname: test_minmax\nbody: |\n  bb.0:\n    ; Pointer operands\n    %0:_(p0) = G_CONSTANT i64 0\n    %1:_(p0) = G_SMIN %0, %0\n    %2:_(p0) = G_SMAX %0, %0\n    %2:_(p0) = G_UMIN %0, %0\n    %4:_(p0) = G_UMAX %0, %0\n\n    ; Pointer vector operands\n    %5:_(<4 x p0>) = G_IMPLICIT_DEF\n    %6:_(<4 x p0>) = G_SMIN %5, %5\n    %6:_(<4 x p0>) = G_SMIN %5, %5\n    %6:_(<4 x p0>) = G_SMIN %5, %5\n    %6:_(<4 x p0>) = G_SMIN %5, %5\n...",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

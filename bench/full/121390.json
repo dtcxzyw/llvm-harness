@@ -1,0 +1,102 @@
+{
+  "base_commit": "3d994468098027f9cf550c78a1c91bb266040f61",
+  "bug_id": "121390",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/TargetLoweringBase.cpp": [
+        "TargetLoweringBase::initActions"
+      ],
+      "llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp": [
+        "AMDGPUTargetLowering::AMDGPUTargetLowering"
+      ],
+      "llvm/lib/Target/ARM/ARMISelLowering.cpp": [
+        "ARMTargetLowering::ARMTargetLowering",
+        "ARMTargetLowering::addMVEVectorTypes"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/TargetLoweringBase.cpp": [
+        [
+          806,
+          812
+        ],
+        [
+          852,
+          864
+        ],
+        [
+          914,
+          928
+        ]
+      ],
+      "llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp": [
+        [
+          391,
+          398
+        ],
+        [
+          412,
+          420
+        ]
+      ],
+      "llvm/lib/Target/ARM/ARMISelLowering.cpp": [
+        [
+          370,
+          375
+        ],
+        [
+          1507,
+          1512
+        ]
+      ]
+    },
+    "components": [
+      "AMDGPU",
+      "ARM",
+      "TargetLoweringBase"
+    ],
+    "fix_commit": "fe0dbe0f2950d95071be7140c7b4680f17a7ac4e"
+  },
+  "issue": {
+    "author": "pkubaj",
+    "body": "LLVM 20.0.d20241215\nFreeBSD 14.2-RELEASE\npowerpc64, powerpc64le\n\nReproducer:\n```\nfloat f32 __attribute__((__vector_size__(16)));\nvoid simde_m128_from_private(float f32 __attribute__((__vector_size__(16))));\nvoid simde_x_mm_round_ps() {\n  f32[2] = __builtin_roundevenf(f32[2]);\n  f32[3] = __builtin_roundevenf(f32[3]);\n  simde_m128_from_private(f32);\n}\n```\n\nCompile with:\n```\nclang++-devel -cc1 -triple powerpc64le-unknown-freebsd14.2 -emit-obj -target-cpu ppc64le -O2 -vectorize-slp FGA_sse41-af262d.cpp\n```",
+    "comments": [
+      {
+        "author": "amy-kwan",
+        "body": "@lei137 This appears similar to the issue you are assigned to [powerpc64le: ICE during instruction selection](https://github.com/llvm/llvm-project/issues/110753) for the missing `froundeven`.\n\nIt just looks like this is for `v4f32`."
+      }
+    ],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[PowerPC] fatal error: error in backend: Cannot select: t35: v4f32 = froundeven t34"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/121390",
+  "knowledge_cutoff": "2024-12-31T13:49:26Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/PowerPC"
+  ],
+  "patch": "commit fe0dbe0f2950d95071be7140c7b4680f17a7ac4e\nAuthor: Nikita Popov <npopov@redhat.com>\nDate:   Mon Jul 28 09:46:00 2025 +0200\n\n    [CodeGen] More consistently expand float ops by default (#150597)\n    \n    These float operations were expanded for scalar f32/f64/f128, but not\n    for f16 and more problematically, not for vectors. A small subset of\n    them was separately set to expand for vectors.\n    \n    Change these to always expand by default, and adjust targets to mark\n    these as legal where necessary instead.\n    \n    This is a much safer default, and avoids unnecessary legalization\n    failures because a target failed to manually mark them as expand.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/110753.\n    Fixes https://github.com/llvm/llvm-project/issues/121390.\n\ndiff --git a/llvm/lib/CodeGen/TargetLoweringBase.cpp b/llvm/lib/CodeGen/TargetLoweringBase.cpp\nindex d4a34555ed82..68b8a0044d6e 100644\n--- a/llvm/lib/CodeGen/TargetLoweringBase.cpp\n+++ b/llvm/lib/CodeGen/TargetLoweringBase.cpp\n@@ -806,7 +806,17 @@ void TargetLoweringBase::initActions() {\n                         ISD::SDIVFIX,        ISD::SDIVFIXSAT,\n                         ISD::UDIVFIX,        ISD::UDIVFIXSAT,\n                         ISD::FP_TO_SINT_SAT, ISD::FP_TO_UINT_SAT,\n-                        ISD::IS_FPCLASS},\n+                        ISD::IS_FPCLASS,     ISD::FCBRT,\n+                        ISD::FLOG,           ISD::FLOG2,\n+                        ISD::FLOG10,         ISD::FEXP,\n+                        ISD::FEXP2,          ISD::FEXP10,\n+                        ISD::FFLOOR,         ISD::FNEARBYINT,\n+                        ISD::FCEIL,          ISD::FRINT,\n+                        ISD::FTRUNC,         ISD::FROUNDEVEN,\n+                        ISD::FTAN,           ISD::FACOS,\n+                        ISD::FASIN,          ISD::FATAN,\n+                        ISD::FCOSH,          ISD::FSINH,\n+                        ISD::FTANH,          ISD::FATAN2},\n                        VT, Expand);\n \n     // Overflow operations default to expand\n@@ -852,13 +862,12 @@ void TargetLoweringBase::initActions() {\n \n     // These operations default to expand for vector types.\n     if (VT.isVector())\n-      setOperationAction(\n-          {ISD::FCOPYSIGN, ISD::SIGN_EXTEND_INREG, ISD::ANY_EXTEND_VECTOR_INREG,\n-           ISD::SIGN_EXTEND_VECTOR_INREG, ISD::ZERO_EXTEND_VECTOR_INREG,\n-           ISD::SPLAT_VECTOR, ISD::LRINT, ISD::LLRINT, ISD::LROUND,\n-           ISD::LLROUND, ISD::FTAN, ISD::FACOS, ISD::FASIN, ISD::FATAN,\n-           ISD::FCOSH, ISD::FSINH, ISD::FTANH, ISD::FATAN2},\n-          VT, Expand);\n+      setOperationAction({ISD::FCOPYSIGN, ISD::SIGN_EXTEND_INREG,\n+                          ISD::ANY_EXTEND_VECTOR_INREG,\n+                          ISD::SIGN_EXTEND_VECTOR_INREG,\n+                          ISD::ZERO_EXTEND_VECTOR_INREG, ISD::SPLAT_VECTOR,\n+                          ISD::LRINT, ISD::LLRINT, ISD::LROUND, ISD::LLROUND},\n+                         VT, Expand);\n \n       // Constrained floating-point operations default to expand.\n #define DAG_INSTRUCTION(NAME, NARG, ROUND_MODE, INTRINSIC, DAGN)               \\\n@@ -914,15 +923,6 @@ void TargetLoweringBase::initActions() {\n                      {MVT::bf16, MVT::f16, MVT::f32, MVT::f64, MVT::f80, MVT::f128},\n                      Expand);\n \n-  // These library functions default to expand.\n-  setOperationAction({ISD::FCBRT,      ISD::FLOG,  ISD::FLOG2,  ISD::FLOG10,\n-                      ISD::FEXP,       ISD::FEXP2, ISD::FEXP10, ISD::FFLOOR,\n-                      ISD::FNEARBYINT, ISD::FCEIL, ISD::FRINT,  ISD::FTRUNC,\n-                      ISD::FROUNDEVEN, ISD::FTAN,  ISD::FACOS,  ISD::FASIN,\n-                      ISD::FATAN,      ISD::FCOSH, ISD::FSINH,  ISD::FTANH,\n-                      ISD::FATAN2},\n-                     {MVT::f32, MVT::f64, MVT::f128}, Expand);\n-\n   // Insert custom handling default for llvm.canonicalize.*.\n   setOperationAction(ISD::FCANONICALIZE,\n                      {MVT::f16, MVT::f32, MVT::f64, MVT::f128}, Expand);\ndiff --git a/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp b/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp\nindex e3ca09e512b3..f25ce8723a2d 100644\n--- a/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp\n+++ b/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp\n@@ -391,8 +391,9 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(const TargetMachine &TM,\n   // Library functions.  These default to Expand, but we have instructions\n   // for them.\n   setOperationAction({ISD::FCEIL, ISD::FPOW, ISD::FABS, ISD::FFLOOR,\n-                      ISD::FROUNDEVEN, ISD::FTRUNC, ISD::FMINNUM, ISD::FMAXNUM},\n-                     MVT::f32, Legal);\n+                      ISD::FROUNDEVEN, ISD::FTRUNC},\n+                     {MVT::f16, MVT::f32}, Legal);\n+  setOperationAction({ISD::FMINNUM, ISD::FMAXNUM}, MVT::f32, Legal);\n \n   setOperationAction(ISD::FLOG2, MVT::f32, Custom);\n   setOperationAction(ISD::FROUND, {MVT::f32, MVT::f64}, Custom);\n@@ -412,9 +413,10 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(const TargetMachine &TM,\n \n   setOperationAction(ISD::FREM, {MVT::f16, MVT::f32, MVT::f64}, Custom);\n \n-  if (Subtarget->has16BitInsts())\n+  if (Subtarget->has16BitInsts()) {\n     setOperationAction(ISD::IS_FPCLASS, {MVT::f16, MVT::f32, MVT::f64}, Legal);\n-  else {\n+    setOperationAction({ISD::FLOG2, ISD::FEXP2}, MVT::f16, Legal);\n+  } else {\n     setOperationAction(ISD::IS_FPCLASS, {MVT::f32, MVT::f64}, Legal);\n     setOperationAction({ISD::FLOG2, ISD::FEXP2}, MVT::f16, Custom);\n   }\ndiff --git a/llvm/lib/Target/ARM/ARMISelLowering.cpp b/llvm/lib/Target/ARM/ARMISelLowering.cpp\nindex fca5dff09230..066b392213fa 100644\n--- a/llvm/lib/Target/ARM/ARMISelLowering.cpp\n+++ b/llvm/lib/Target/ARM/ARMISelLowering.cpp\n@@ -370,6 +370,11 @@ void ARMTargetLowering::addMVEVectorTypes(bool HasMVEFP) {\n       setOperationAction(ISD::FMINNUM, VT, Legal);\n       setOperationAction(ISD::FMAXNUM, VT, Legal);\n       setOperationAction(ISD::FROUND, VT, Legal);\n+      setOperationAction(ISD::FROUNDEVEN, VT, Legal);\n+      setOperationAction(ISD::FRINT, VT, Legal);\n+      setOperationAction(ISD::FTRUNC, VT, Legal);\n+      setOperationAction(ISD::FFLOOR, VT, Legal);\n+      setOperationAction(ISD::FCEIL, VT, Legal);\n       setOperationAction(ISD::VECREDUCE_FADD, VT, Custom);\n       setOperationAction(ISD::VECREDUCE_FMUL, VT, Custom);\n       setOperationAction(ISD::VECREDUCE_FMIN, VT, Custom);\n@@ -1507,6 +1512,12 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM_,\n     setOperationAction(ISD::FLOG2, MVT::f16, Promote);\n \n     setOperationAction(ISD::FROUND, MVT::f16, Legal);\n+    setOperationAction(ISD::FROUNDEVEN, MVT::f16, Legal);\n+    setOperationAction(ISD::FTRUNC, MVT::f16, Legal);\n+    setOperationAction(ISD::FNEARBYINT, MVT::f16, Legal);\n+    setOperationAction(ISD::FRINT, MVT::f16, Legal);\n+    setOperationAction(ISD::FFLOOR, MVT::f16, Legal);\n+    setOperationAction(ISD::FCEIL, MVT::f16, Legal);\n   }\n \n   if (Subtarget->hasNEON()) {\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=powerpc64le < %s"
+      ],
+      "file": "llvm/test/CodeGen/PowerPC/froundeven-legalization.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @test(ptr %p1, ptr %p2) nounwind {\n  %v = load <8 x double>, ptr %p1, align 64\n  %res = call <8 x double> @llvm.roundeven.v8f64(<8 x double> %v)\n  store <8 x double> %res, ptr %p2, align 64\n  ret void\n}\n\ndeclare <8 x double> @llvm.roundeven.v8f64(<8 x double>)",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

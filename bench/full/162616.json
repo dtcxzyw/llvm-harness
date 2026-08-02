@@ -1,0 +1,71 @@
+{
+  "base_commit": "80f48b849378dd46b5ff19945995c0f1598eb16b",
+  "bug_id": "162616",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "AArch64TargetLowering::LowerDIV",
+        "AArch64TargetLowering::LowerFixedLengthVectorIntDivideToSVE"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          16249,
+          16255
+        ],
+        [
+          30034,
+          30040
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "1c5bba1e4716547e24d07ca830e9db64cc9221da"
+  },
+  "issue": {
+    "author": "sjoerdmeijer",
+    "body": "Compiling this:\n\n```\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine <16 x i16> @foo(<16 x i16> %0) #0 {\n  %2 = shufflevector <16 x i16> zeroinitializer, <16 x i16> splat (i16 1), <16 x i32> <i32 0, i32 17, i32 18, i32 19, i32 20, i32 21, i32 22, i32 23, i32 24, i32 25, i32 26, i32 27, i32 28, i32 29, i32 30, i32 31>\n  %3 = sdiv <16 x i16> %0, %2\n  ret <16 x i16> %3\n}\n\nattributes #0 = { \"target-cpu\"=\"neoverse-v2\" }\n```\n\nwith `llc test.ll` results in:\n\n```\nLLVM ERROR: Cannot select: 0xaaaaae3d6b50: nxv8i16 = AArch64ISD::SRAD_MERGE_OP1 0xaaaaae3d6ae0, 0xaaaaae3d6990, TargetConstant:i32<0>\n  0xaaaaae3d6ae0: nxv8i1 = AArch64ISD::PTRUE TargetConstant:i32<8>\n  0xaaaaae3d6990: nxv8i16 = insert_subvector undef:nxv8i16, 0xaaaaae3d6920, Constant:i64<0>\n    0xaaaaae3d6920: v8i16,ch = CopyFromReg 0xaaaaae35e3e0, Register:v8i16 %1\nIn function: foo\n```\n\nSee also: https://godbolt.org/z/z4GEoneza\n\nFWIW: it seems specific to the Neoverse V2 and one of its architecture extensions that it enables, this e.g. doesn't occur with the V1.",
+    "comments": [
+      {
+        "author": "sjoerdmeijer",
+        "body": "CC: @paulwalker-arm , @david-arm , @sdesmalen-arm , @davemgreen "
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "SVE",
+      "crash"
+    ],
+    "title": "[AArch64] Cannot select AArch64ISD::SRAD_MERGE_OP1"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/162616",
+  "knowledge_cutoff": "2025-10-09T09:03:54Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 1c5bba1e4716547e24d07ca830e9db64cc9221da\nAuthor: Paul Walker <paul.walker@arm.com>\nDate:   Fri Oct 10 12:37:43 2025 +0100\n\n    [LLVM][CodeGen][SVE] ASRD cannot represent sdiv-by-one. (#162708)\n    \n    We lower signed divides by a power-of-two to ASRD. However, ASRD's\n    immediate is log2(shift_amount) in the range 1 to elt-bitwidth, which\n    means it cannot represent sdiv-by-one.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/162616\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex e78e6979aabe..7294f3eaad0c 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -16249,7 +16249,9 @@ SDValue AArch64TargetLowering::LowerDIV(SDValue Op, SelectionDAG &DAG) const {\n \n   bool Negated;\n   uint64_t SplatVal;\n-  if (Signed && isPow2Splat(Op.getOperand(1), SplatVal, Negated)) {\n+  // NOTE: SRAD cannot be used to represent sdiv-by-one.\n+  if (Signed && isPow2Splat(Op.getOperand(1), SplatVal, Negated) &&\n+      SplatVal > 1) {\n     SDValue Pg = getPredicateForScalableVector(DAG, DL, VT);\n     SDValue Res =\n         DAG.getNode(AArch64ISD::SRAD_MERGE_OP1, DL, VT, Pg, Op->getOperand(0),\n@@ -30034,7 +30036,9 @@ SDValue AArch64TargetLowering::LowerFixedLengthVectorIntDivideToSVE(\n \n   bool Negated;\n   uint64_t SplatVal;\n-  if (Signed && isPow2Splat(Op.getOperand(1), SplatVal, Negated)) {\n+  // NOTE: SRAD cannot be used to represent sdiv-by-one.\n+  if (Signed && isPow2Splat(Op.getOperand(1), SplatVal, Negated) &&\n+      SplatVal > 1) {\n     EVT ContainerVT = getContainerForFixedLengthVector(DAG, VT);\n     SDValue Op1 = convertToScalableVector(DAG, ContainerVT, Op.getOperand(0));\n     SDValue Op2 = DAG.getTargetConstant(Log2_64(SplatVal), DL, MVT::i32);\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mattr=+sve -combiner-disabled < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/sve-asrd.ll",
+      "tests": [
+        {
+          "test_body": "\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\n; Ensure we don't try to represent sdiv-by-one using ARSD.\ndefine <16 x i16> @sdiv_by_one_v16i16(<16 x i16> %a) vscale_range(2,2) {\n  %res = sdiv <16 x i16> %a, splat(i16 1)\n  ret <16 x i16> %res\n}\n\n; Ensure we don't try to represent sdiv-by-one using ARSD.\ndefine <vscale x 8 x i16> @sdiv_by_one_nxv8i16(<vscale x 8 x i16> %a) {\n  %res = sdiv <vscale x 8 x i16> %a, splat(i16 1)\n  ret <vscale x 8 x i16> %res\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

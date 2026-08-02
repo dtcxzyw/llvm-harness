@@ -1,0 +1,101 @@
+{
+  "base_commit": "0bac8f1729512a0b392908d6a57a00b0387a855f",
+  "bug_id": "171141",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "RISCVTargetLowering::getRegForInlineAsmConstraint",
+        "RISCVTargetLowering::joinRegisterPartsIntoValue",
+        "RISCVTargetLowering::splitValueIntoRegisterParts"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          24323,
+          24331
+        ],
+        [
+          24342,
+          24357
+        ],
+        [
+          25229,
+          25240
+        ],
+        [
+          25304,
+          25320
+        ]
+      ],
+      "llvm/lib/Target/RISCV/RISCVRegisterInfo.td": [
+        [
+          766,
+          771
+        ],
+        [
+          809,
+          819
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "21871bb650cde9386a4961329397ed36ba6bfe2b"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/bx99W86Th\nTestcase (reduced from a valid C program with `_BitInt`):\n```llvm\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"riscv64-unknown-linux-musl\"\n\ndefine <vscale x 16 x i4> @backsmith_pure_0() #0 {\nentry:\n  ret <vscale x 16 x i4> zeroinitializer\n}\n\nattributes #0 = { \"target-features\"=\"+v\" }\n```\n\nDump:\n```\nLLVM ERROR: Cannot scalarize scalable vector stores\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@backsmith_pure_0'\n #0 0x0000000004213598 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4213598)\n #1 0x0000000004210444 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x0000753a13e42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x0000753a13e969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x0000753a13e42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x0000753a13e287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00000000007c10b5 llvm::json::operator==(llvm::json::Value const&, llvm::json::Value const&) (.cold) JSON.cpp:0:0\n #7 0x00000000041597a1 (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x41597a1)\n #8 0x0000000003fe08b5 llvm::TargetLowering::scalarizeVectorStore(llvm::StoreSDNode*, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fe08b5)\n #9 0x0000000004056dc3 (anonymous namespace)::VectorLegalizer::LegalizeOp(llvm::SDValue) LegalizeVectorOps.cpp:0:0\n#10 0x0000000004059fe9 llvm::SelectionDAG::LegalizeVectors() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4059fe9)\n#11 0x0000000003fa8626 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fa8626)\n#12 0x0000000003fabd88 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fabd88)\n#13 0x0000000003fad80c llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fad80c)\n#14 0x0000000003f9900f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f9900f)\n#15 0x00000000030f3849 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#16 0x000000000374c486 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x374c486)\n#17 0x000000000374c831 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x374c831)\n#18 0x000000000374d09f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x374d09f)\n#19 0x00000000008fe004 compileModule(char**, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#20 0x00000000007c7c99 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c7c99)\n#21 0x0000753a13e29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#22 0x0000753a13e29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#23 0x00000000008f3205 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8f3205)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "topperc",
+        "body": "This doesn't look like a valid reduction of a C test case. I don't know how a C program can create a <vscale x 16 x i4> argument type. Can you share the original C code?"
+      },
+      {
+        "author": "XChy",
+        "body": "> Can you share the original C code?\n\n@topperc, yes, attach it to godbolt now.\nA reduced C reproducer: https://godbolt.org/z/h15eKxo8G\nLet me know if you need the unreduced C reproducer, thanks!"
+      },
+      {
+        "author": "topperc",
+        "body": "> > Can you share the original C code?\n> \n> [@topperc](https://github.com/topperc), yes, attach it to godbolt now. A reduced C reproducer: https://godbolt.org/z/h15eKxo8G Let me know if you need the unreduced C reproducer, thanks!\n\nThis is enough. And it confirms that there are 2 differnet issues."
+      },
+      {
+        "author": "topperc",
+        "body": "> > > Can you share the original C code?\n> > \n> > \n> > [@topperc](https://github.com/topperc), yes, attach it to godbolt now. A reduced C reproducer: https://godbolt.org/z/h15eKxo8G Let me know if you need the unreduced C reproducer, thanks!\n> \n> This is enough. And it confirms that there are 2 differnet issues.\n\nI was wrong. There is only 1 issue."
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash-on-valid"
+    ],
+    "title": "[RISCV] LLVM ERROR: Cannot scalarize scalable vector stores"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/171141",
+  "knowledge_cutoff": "2025-12-08T14:50:19Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 21871bb650cde9386a4961329397ed36ba6bfe2b\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Tue Dec 9 20:59:33 2025 -0800\n\n    [RISCV] Add fractional LMUL register classes for inline assembly. (#171278)\n    \n    Inline assembly uses the first type from the register class to\n    connect to the rest of SelectionDAG. By adding fractional LMUL\n    register classes, we can ensure that this type is the size of the\n    types we use for fractional LMUL in the rest of SelectionDAG.\n    \n    This allows us to remove some of the handling we had in\n    splitValueIntoRegisterParts/joinRegisterPartsIntoValue. This code\n    was incorrectly handling v16i4 arguments/returns which should be\n    any_extend to v16i8 to match type legalization. Instead we widened\n    v16i4 -> v32i4 then bitcasted to v16i8. This merged pairs of i4\n    elements into an i8 element instead of keeping them as separate\n    elements that have been extended to i8.\n    \n    This is an alternative to #171243.\n    \n    Fixes #171141.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 7cbb9c0da487..f28772a74d43 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -24323,9 +24323,11 @@ RISCVTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,\n       break;\n     }\n   } else if (Constraint == \"vr\") {\n-    // Check VM first so that mask types will use that instead of VR.\n+    // Check VM and fractional LMUL first so that those types will use that\n+    // class instead of VR.\n     for (const auto *RC :\n-         {&RISCV::VMRegClass, &RISCV::VRRegClass, &RISCV::VRM2RegClass,\n+         {&RISCV::VMRegClass, &RISCV::VRMF8RegClass, &RISCV::VRMF4RegClass,\n+          &RISCV::VRMF2RegClass, &RISCV::VRRegClass, &RISCV::VRM2RegClass,\n           &RISCV::VRM4RegClass, &RISCV::VRM8RegClass, &RISCV::VRN2M1RegClass,\n           &RISCV::VRN3M1RegClass, &RISCV::VRN4M1RegClass,\n           &RISCV::VRN5M1RegClass, &RISCV::VRN6M1RegClass,\n@@ -24342,16 +24344,19 @@ RISCVTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,\n       }\n     }\n   } else if (Constraint == \"vd\") {\n-    // Check VMNoV0 first so that mask types will use that instead of VRNoV0.\n+    // Check VMNoV0 and fractional LMUL first so that those types will use that\n+    // class instead of VRNoV0.\n     for (const auto *RC :\n-         {&RISCV::VMNoV0RegClass, &RISCV::VRNoV0RegClass,\n-          &RISCV::VRM2NoV0RegClass, &RISCV::VRM4NoV0RegClass,\n-          &RISCV::VRM8NoV0RegClass, &RISCV::VRN2M1NoV0RegClass,\n-          &RISCV::VRN3M1NoV0RegClass, &RISCV::VRN4M1NoV0RegClass,\n-          &RISCV::VRN5M1NoV0RegClass, &RISCV::VRN6M1NoV0RegClass,\n-          &RISCV::VRN7M1NoV0RegClass, &RISCV::VRN8M1NoV0RegClass,\n-          &RISCV::VRN2M2NoV0RegClass, &RISCV::VRN3M2NoV0RegClass,\n-          &RISCV::VRN4M2NoV0RegClass, &RISCV::VRN2M4NoV0RegClass}) {\n+         {&RISCV::VMNoV0RegClass, &RISCV::VRMF8NoV0RegClass,\n+          &RISCV::VRMF4NoV0RegClass, &RISCV::VRMF2NoV0RegClass,\n+          &RISCV::VRNoV0RegClass, &RISCV::VRM2NoV0RegClass,\n+          &RISCV::VRM4NoV0RegClass, &RISCV::VRM8NoV0RegClass,\n+          &RISCV::VRN2M1NoV0RegClass, &RISCV::VRN3M1NoV0RegClass,\n+          &RISCV::VRN4M1NoV0RegClass, &RISCV::VRN5M1NoV0RegClass,\n+          &RISCV::VRN6M1NoV0RegClass, &RISCV::VRN7M1NoV0RegClass,\n+          &RISCV::VRN8M1NoV0RegClass, &RISCV::VRN2M2NoV0RegClass,\n+          &RISCV::VRN3M2NoV0RegClass, &RISCV::VRN4M2NoV0RegClass,\n+          &RISCV::VRN2M4NoV0RegClass}) {\n       if (TRI->isTypeLegalForClass(*RC, VT.SimpleTy))\n         return std::make_pair(0U, RC);\n \n@@ -25229,12 +25234,10 @@ bool RISCVTargetLowering::splitValueIntoRegisterParts(\n     return true;\n   }\n \n-  if ((ValueVT.isScalableVector() || ValueVT.isFixedLengthVector()) &&\n-      PartVT.isScalableVector()) {\n-    if (ValueVT.isFixedLengthVector()) {\n-      ValueVT = getContainerForFixedLengthVector(ValueVT.getSimpleVT());\n-      Val = convertToScalableVector(ValueVT, Val, DAG, Subtarget);\n-    }\n+  if (ValueVT.isFixedLengthVector() && PartVT.isScalableVector()) {\n+    ValueVT = getContainerForFixedLengthVector(ValueVT.getSimpleVT());\n+    Val = convertToScalableVector(ValueVT, Val, DAG, Subtarget);\n+\n     LLVMContext &Context = *DAG.getContext();\n     EVT ValueEltVT = ValueVT.getVectorElementType();\n     EVT PartEltVT = PartVT.getVectorElementType();\n@@ -25304,17 +25307,17 @@ SDValue RISCVTargetLowering::joinRegisterPartsIntoValue(\n     return Val;\n   }\n \n-  if ((ValueVT.isScalableVector() || ValueVT.isFixedLengthVector()) &&\n-      PartVT.isScalableVector()) {\n+  if (ValueVT.isFixedLengthVector() && PartVT.isScalableVector()) {\n     LLVMContext &Context = *DAG.getContext();\n     SDValue Val = Parts[0];\n     EVT ValueEltVT = ValueVT.getVectorElementType();\n     EVT PartEltVT = PartVT.getVectorElementType();\n-    unsigned ValueVTBitSize = ValueVT.getSizeInBits().getKnownMinValue();\n-    if (ValueVT.isFixedLengthVector())\n-      ValueVTBitSize = getContainerForFixedLengthVector(ValueVT.getSimpleVT())\n-                           .getSizeInBits()\n-                           .getKnownMinValue();\n+\n+    unsigned ValueVTBitSize =\n+        getContainerForFixedLengthVector(ValueVT.getSimpleVT())\n+            .getSizeInBits()\n+            .getKnownMinValue();\n+\n     unsigned PartVTBitSize = PartVT.getSizeInBits().getKnownMinValue();\n     if (PartVTBitSize % ValueVTBitSize == 0) {\n       assert(PartVTBitSize >= ValueVTBitSize);\ndiff --git a/llvm/lib/Target/RISCV/RISCVRegisterInfo.td b/llvm/lib/Target/RISCV/RISCVRegisterInfo.td\nindex f354793eb0ea..e3657badfa9a 100644\n--- a/llvm/lib/Target/RISCV/RISCVRegisterInfo.td\n+++ b/llvm/lib/Target/RISCV/RISCVRegisterInfo.td\n@@ -766,6 +766,13 @@ class VReg<list<ValueType> regTypes, dag regList, int Vlmul, int nf = 1>\n defvar VMaskVTs = [vbool1_t, vbool2_t, vbool4_t, vbool8_t, vbool16_t,\n                    vbool32_t, vbool64_t];\n \n+defvar VMF8VTs = [vint8mf8_t];\n+\n+defvar VMF4VTs = [vint8mf4_t, vint16mf4_t, vfloat16mf4_t, vbfloat16mf4_t];\n+\n+defvar VMF2VTs = [vint8mf2_t, vint16mf2_t, vint32mf2_t,\n+                 vfloat16mf2_t, vbfloat16mf2_t, vfloat32mf2_t];\n+\n defvar VM1VTs = [vint8m1_t, vint16m1_t, vint32m1_t, vint64m1_t,\n                  vbfloat16m1_t, vfloat16m1_t, vfloat32m1_t,\n                  vfloat64m1_t, vint8mf2_t, vint8mf4_t, vint8mf8_t,\n@@ -809,11 +816,21 @@ def VRM8 : VReg<VM8VTs, (add V8M8, V16M8, V24M8, V0M8), 8>;\n \n def VRM8NoV0 : VReg<VM8VTs, (sub VRM8, V0M8), 8>;\n \n+// Fractional LMUL register classes for inline assembly.\n+def VRMF8 : VReg<VMF8VTs, (add VR), 1>;\n+def VRMF8NoV0 : VReg<VMF8VTs, (add VRNoV0), 1>;\n+\n+def VRMF4 : VReg<VMF4VTs, (add VR), 1>;\n+def VRMF4NoV0 : VReg<VMF4VTs, (add VRNoV0), 1>;\n+\n+def VRMF2 : VReg<VMF2VTs, (add VR), 1>;\n+def VRMF2NoV0 : VReg<VMF2VTs, (add VRNoV0), 1>;\n+\n def VMV0 : VReg<VMaskVTs, (add V0), 1>;\n \n // The register class is added for inline assembly for vector mask types.\n def VM : VReg<VMaskVTs, (add VR), 1>;\n-def VMNoV0 : VReg<VMaskVTs, (sub VR, V0), 1>;\n+def VMNoV0 : VReg<VMaskVTs, (add VRNoV0), 1>;\n \n defvar VTupM1N2VTs = [riscv_nxv8i8x2, riscv_nxv4i8x2, riscv_nxv2i8x2, riscv_nxv1i8x2];\n defvar VTupM1N3VTs = [riscv_nxv8i8x3, riscv_nxv4i8x3, riscv_nxv2i8x3, riscv_nxv1i8x3];\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64 -mattr=+v"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/pr171141.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <vscale x 16 x i4> @foo() {\nentry:\n  ret <vscale x 16 x i4> zeroinitializer\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

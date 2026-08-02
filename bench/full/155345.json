@@ -1,0 +1,89 @@
+{
+  "base_commit": "fe78a9a75d726e253b45923f5d4000e0c17e15da",
+  "bug_id": "155345",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "DAGCombiner::visitFREEZE"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          16796,
+          16801
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "5d111a20c566d16f80faaa8eed1a382aacd045de"
+  },
+  "issue": {
+    "author": "dtcxzyw",
+    "body": "Reproducer: https://godbolt.org/z/d37nf5YdK\n```\n; bin/llc reduced.ll -o -\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\n@g_288 = external global [3 x i8]\n\ndefine i64 @main(ptr %argv, i1 %cmp292.i, ptr %0) {\nentry:\n  %.pre1056.i = load i8, ptr %argv, align 1\n  %1 = or i8 %.pre1056.i, 1\n  %2 = zext i8 %1 to i32\n  store i8 %1, ptr %0, align 1\n  %3 = load i8, ptr %0, align 1\n  %conv261.i = sext i8 %3 to i64\n  %sh_prom.i.i = zext i32 %2 to i64\n  %cmp1.i.i = icmp ult i64 0, %conv261.i\n  %4 = select i1 %cmp292.i, i1 false, i1 %cmp1.i.i\n  %spec.select.i.i = select i1 %4, i64 0, i64 %sh_prom.i.i\n  %cond.i914.i = shl i64 1, %spec.select.i.i\n  store i8 %1, ptr getelementptr inbounds nuw (i8, ptr @g_288, i64 1), align 1\n  %5 = load i8, ptr getelementptr inbounds nuw (i8, ptr @g_288, i64 1), align 1\n  %conv261.1.i = sext i8 %5 to i64\n  %cmp1.i.1.i = icmp ult i64 0, %conv261.1.i\n  %6 = select i1 %cmp292.i, i1 false, i1 %cmp1.i.1.i\n  %spec.select.i.1.i = select i1 %6, i64 0, i64 1\n  %and298.1.i = and i64 %spec.select.i.1.i, %cond.i914.i\n  ret i64 %and298.1.i\n}\n```\n```\nt59: i8 = freeze t59\n\nNode is not in map!\nUNREACHABLE executed at /home/dtcxzyw/WorkSpace/Projects/compilers/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:1258!\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.      Program arguments: ./bin/llc reduced.ll\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\n2.      Running pass 'X86 DAG->DAG Instruction Selection' on function '@main'\n #0 0x000075b520e2f072 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSupport.so.22.0git+0x22f072)\n #1 0x000075b520e2b63f llvm::sys::RunSignalHandlers() (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSupport.so.22.0git+0x22b63f)\n #2 0x000075b520e2b78c SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #3 0x000075b520445330 (/lib/x86_64-linux-gnu/libc.so.6+0x45330)\n #4 0x000075b52049eb2c __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x000075b52049eb2c __pthread_kill_internal ./nptl/pthread_kill.c:78:10\n #6 0x000075b52049eb2c pthread_kill ./nptl/pthread_kill.c:89:10\n #7 0x000075b52044527e raise ./signal/../sysdeps/posix/raise.c:27:6\n #8 0x000075b5204288ff abort ./stdlib/abort.c:81:7\n #9 0x000075b520d2946e (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSupport.so.22.0git+0x12946e)\n#10 0x000075b523f77d58 llvm::SelectionDAG::RemoveNodeFromCSEMaps(llvm::SDNode*) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSelectionDAG.so.22.0git+0x377d58)\n#11 0x000075b523fcccbb llvm::SelectionDAG::ReplaceAllUsesWith(llvm::SDNode*, llvm::SDNode*) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSelectionDAG.so.22.0git+0x3cccbb)\n#12 0x000075b523fccff9 llvm::SelectionDAG::AddModifiedNodeToCSEMaps(llvm::SDNode*) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSelectionDAG.so.22.0git+0x3ccff9)\n#13 0x000075b523fcd998 llvm::SelectionDAG::ReplaceAllUsesWith(llvm::SDValue, llvm::SDValue) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSelectionDAG.so.22.0git+0x3cd998)\n#14 0x000075b523ce7c34 (anonymous namespace)::DAGCombiner::visitFREEZE(llvm::SDNode*) DAGCombiner.cpp:0:0\n#15 0x000075b523d69c3f (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#16 0x000075b523d6b4ab (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#17 0x000075b523d6db9d llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSelectionDAG.so.22.0git+0x16db9d)\n#18 0x000075b523feef71 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSelectionDAG.so.22.0git+0x3eef71)\n#19 0x000075b523ff268a llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSelectionDAG.so.22.0git+0x3f268a)\n#20 0x000075b523ff3a82 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSelectionDAG.so.22.0git+0x3f3a82)\n#21 0x000075b523fe249a llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMSelectionDAG.so.22.0git+0x3e249a)\n#22 0x000075b52346262c llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMCodeGen.so.22.0git+0x46262c)\n#23 0x000075b5212c9434 llvm::FPPassManager::runOnFunction(llvm::Function&) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMCore.so.22.0git+0x2c9434)\n#24 0x000075b5212c99c4 llvm::FPPassManager::runOnModule(llvm::Module&) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMCore.so.22.0git+0x2c99c4)\n#25 0x000075b5212ca12d llvm::legacy::PassManagerImpl::run(llvm::Module&) (/home/dtcxzyw/WorkSpace/Projects/compilers/LLVM/llvm-build/bin/../lib/libLLVMCore.so.22.0git+0x2ca12d)\n#26 0x00005d3b47626ce1 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#27 0x00005d3b476199c1 main (./bin/llc+0x149c1)\n#28 0x000075b52042a1ca __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#29 0x000075b52042a28b call_init ./csu/../csu/libc-start.c:128:20\n#30 0x000075b52042a28b __libc_start_main ./csu/../csu/libc-start.c:347:5\n#31 0x00005d3b4761adc5 _start (./bin/llc+0x15dc5)\nAborted (core dumped)\n```\n",
+    "comments": [],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG",
+      "generated by fuzzer"
+    ],
+    "title": "[SDAG] Assertion failed: Node is not in map!"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/155345",
+  "knowledge_cutoff": "2025-08-26T02:37:08Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 5d111a20c566d16f80faaa8eed1a382aacd045de\nAuthor: Yingwei Zheng <dtcxzyw2333@gmail.com>\nDate:   Wed Aug 27 11:21:22 2025 +0800\n\n    [DAGCombiner] Avoid double deletion when replacing multiple frozen/unfrozen uses (#155427)\n    \n    Closes https://github.com/llvm/llvm-project/issues/155345.\n    In the original case, we have one frozen use and two unfrozen uses:\n    ```\n    t73: i8 = select t81, Constant:i8<0>, t18\n    t75: i8 = select t10, t18, t73\n    t59: i8 = freeze t18 (combining)\n    \n    t80: i8 = freeze t59 (another user of t59)\n    ```\n    \n    In `DAGCombiner::visitFREEZE`, we replace all uses of `t18` with `t59`.\n    After updating the uses, `t59: i8 = freeze t18` will be updated to `t59:\n    i8 = freeze t59` (`AddModifiedNodeToCSEMaps`) and CSEed into `t80: i8 =\n    freeze t59` (`ReplaceAllUsesWith`). As the previous call to\n    `AddModifiedNodeToCSEMaps` already removed `t59` from the CSE map,\n    `ReplaceAllUsesWith` cannot remove `t59` again.\n    \n    For clarity, see the following call graph:\n    ```\n    ReplaceAllUsesOfValueWith(t18, t59)\n      ReplaceAllUsesWith(t18, t59)\n        RemoveNodeFromCSEMaps(t73)\n        update t73\n        AddModifiedNodeToCSEMaps(t73)\n        RemoveNodeFromCSEMaps(t75)\n        update t75\n        AddModifiedNodeToCSEMaps(t75)\n        RemoveNodeFromCSEMaps(t59) <- first delection\n        update t59\n        AddModifiedNodeToCSEMaps(t59)\n            ReplaceAllUsesWith(t59, t80)\n                RemoveNodeFromCSEMaps(t59) <- second delection\n                    Boom!\n    ```\n    \n    This patch unfreezes all the uses first to avoid triggering CSE when\n    introducing cycles.\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex 55aff0460e7d..bed3c42473e2 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -16796,6 +16796,8 @@ SDValue DAGCombiner::visitFREEZE(SDNode *N) {\n   // If we have frozen and unfrozen users of N0, update so everything uses N.\n   if (!N0.isUndef() && !N0.hasOneUse()) {\n     SDValue FrozenN0(N, 0);\n+    // Unfreeze all uses of N to avoid double deleting N from the CSE map.\n+    DAG.ReplaceAllUsesOfValueWith(FrozenN0, N0);\n     DAG.ReplaceAllUsesOfValueWith(N0, FrozenN0);\n     // ReplaceAllUsesOfValueWith will have also updated the use in N, thus\n     // creating a cycle in a DAG. Let's undo that by mutating the freeze.\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=x86_64-unknown-linux-gnu < %s 2>&1"
+      ],
+      "file": "llvm/test/CodeGen/X86/freeze.ll",
+      "tests": [
+        {
+          "test_body": "define i64 @pr155345(ptr %p1, i1 %cond, ptr %p2, ptr %p3) {\nentry:\n  %load1 = load i8, ptr %p1, align 1\n  %v1 = or i8 %load1, 1\n  %v2 = zext i8 %v1 to i32\n  store i8 %v1, ptr %p2, align 1\n  %v3 = load i8, ptr %p2, align 1\n  %ext1 = sext i8 %v3 to i64\n  %ext2 = zext i32 %v2 to i64\n  %cmp1 = icmp ult i64 0, %ext1\n  %v4 = select i1 %cond, i1 false, i1 %cmp1\n  %sel1 = select i1 %v4, i64 0, i64 %ext2\n  %shl = shl i64 1, %sel1\n  store i8 %v1, ptr %p3, align 1\n  %v5 = load i8, ptr %p3, align 1\n  %ext3 = sext i8 %v5 to i64\n  %cmp2 = icmp ult i64 0, %ext3\n  %v6 = select i1 %cond, i1 false, i1 %cmp2\n  %sel2 = select i1 %v6, i64 0, i64 1\n  %and = and i64 %sel2, %shl\n  ret i64 %and\n}\n",
+          "test_name": "pr155345"
+        }
+      ]
+    },
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx2",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+xop",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+xop,+avx",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+xop,+avx2",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx512f",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx512f,+avx512vl",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx512f,+avx512bw",
+        "llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx512f,+avx512vl,+avx512bw"
+      ],
+      "file": "llvm/test/CodeGen/X86/midpoint-int-vec-256.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <4 x i64> @vec256_i64_signed_mem_mem(ptr %a1_addr, ptr %a2_addr) #0 {\n  %a1 = load <4 x i64>, ptr %a1_addr, align 32\n  %a2 = load <4 x i64>, ptr %a2_addr, align 32\n  %t3 = icmp sgt <4 x i64> %a1, %a2\n  %t4 = select <4 x i1> %t3, <4 x i64> splat (i64 -1), <4 x i64> splat (i64 1)\n  %t5 = select <4 x i1> %t3, <4 x i64> %a2, <4 x i64> %a1\n  %t6 = select <4 x i1> %t3, <4 x i64> %a1, <4 x i64> %a2\n  %t7 = sub <4 x i64> %t6, %t5\n  %t8 = lshr <4 x i64> %t7, splat (i64 1)\n  %t9 = mul nsw <4 x i64> %t8, %t4\n  %a10 = add nsw <4 x i64> %t9, %a1\n  ret <4 x i64> %a10\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "vec256_i64_signed_mem_mem"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <4 x i64> @vec256_i64_signed_mem_reg(ptr %a1_addr, <4 x i64> %a2) #0 {\n  %a1 = load <4 x i64>, ptr %a1_addr, align 32\n  %t3 = icmp sgt <4 x i64> %a1, %a2\n  %t4 = select <4 x i1> %t3, <4 x i64> splat (i64 -1), <4 x i64> splat (i64 1)\n  %t5 = select <4 x i1> %t3, <4 x i64> %a2, <4 x i64> %a1\n  %t6 = select <4 x i1> %t3, <4 x i64> %a1, <4 x i64> %a2\n  %t7 = sub <4 x i64> %t6, %t5\n  %t8 = lshr <4 x i64> %t7, splat (i64 1)\n  %t9 = mul nsw <4 x i64> %t8, %t4\n  %a10 = add nsw <4 x i64> %t9, %a1\n  ret <4 x i64> %a10\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "vec256_i64_signed_mem_reg"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <4 x i64> @vec256_i64_signed_reg_mem(<4 x i64> %a1, ptr %a2_addr) #0 {\n  %a2 = load <4 x i64>, ptr %a2_addr, align 32\n  %t3 = icmp sgt <4 x i64> %a1, %a2\n  %t4 = select <4 x i1> %t3, <4 x i64> splat (i64 -1), <4 x i64> splat (i64 1)\n  %t5 = select <4 x i1> %t3, <4 x i64> %a2, <4 x i64> %a1\n  %t6 = select <4 x i1> %t3, <4 x i64> %a1, <4 x i64> %a2\n  %t7 = sub <4 x i64> %t6, %t5\n  %t8 = lshr <4 x i64> %t7, splat (i64 1)\n  %t9 = mul nsw <4 x i64> %t8, %t4\n  %a10 = add nsw <4 x i64> %t9, %a1\n  ret <4 x i64> %a10\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "vec256_i64_signed_reg_mem"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

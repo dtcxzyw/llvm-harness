@@ -1,0 +1,109 @@
+{
+  "base_commit": "ba0e871db81d8527382a051a0abf1ce2a171d8bf",
+  "bug_id": "92720",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp": [
+        "TargetLowering::ShrinkDemandedOp",
+        "TargetLowering::SimplifyDemandedBits"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp": [
+        [
+          587,
+          592
+        ],
+        [
+          1832,
+          1842
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "cf128305bdada3ffb34054813a855d80b3948025"
+  },
+  "issue": {
+    "author": "zhendongsu",
+    "body": "Compiler Explorer: https://godbolt.org/z/vcTf6fxWY\r\n\r\n```\r\n[521] % clangtk -v\r\nclang version 19.0.0git (https://github.com/llvm/llvm-project.git 32ae9a28a54f59f2b4e2f32323f53fb107ea1f85)\r\nTarget: x86_64-unknown-linux-gnu\r\nThread model: posix\r\nInstalledDir: /local/suz-local/software/local/clang-trunk/bin\r\nBuild config: +assertions\r\nFound candidate GCC installation: /usr/lib/gcc/x86_64-linux-gnu/10\r\nFound candidate GCC installation: /usr/lib/gcc/x86_64-linux-gnu/11\r\nFound candidate GCC installation: /usr/lib/gcc/x86_64-linux-gnu/9\r\nSelected GCC installation: /usr/lib/gcc/x86_64-linux-gnu/11\r\nCandidate multilib: .;@m64\r\nSelected multilib: .;@m64\r\n[522] % \r\n[522] % clangtk -O1 small.c\r\nclang-19: /local/suz-local/software/clangbuild/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:6010: llvm::SDValue llvm::SelectionDAG::getNode(unsigned int, const llvm::SDLoc&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags): Assertion `N1.getValueType().bitsGT(VT) && \"Invalid truncate node, src < dst!\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\r\nStack dump:\r\n0.\tProgram arguments: /local/suz-local/software/local/clang-trunk/bin/clang-19 -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -dumpdir a- -disable-free -clear-ast-before-backend -main-file-name small.c -mrelocation-model pic -pic-level 2 -pic-is-pie -mframe-pointer=none -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/local/suz-local/software/emitesting/bugs/20240520-clangtk-m64-O3-build-005835/delta -fcoverage-compilation-dir=/local/suz-local/software/emitesting/bugs/20240520-clangtk-m64-O3-build-005835/delta -resource-dir /local/suz-local/software/local/clang-trunk/lib/clang/19 -I /usr/local/include -I /local/suz-local/software/local/include -internal-isystem /local/suz-local/software/local/clang-trunk/lib/clang/19/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-linux-gnu/11/../../../../x86_64-linux-gnu/include -internal-externc-isystem /usr/include/x86_64-linux-gnu -internal-externc-isystem /include -internal-externc-isystem /usr/include -O1 -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -fcolor-diagnostics -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o /tmp/small-09f9be.o -x c small.c\r\n1.\t<eof> parser at end of file\r\n2.\tCode generation\r\n3.\tRunning pass 'Function Pass Manager' on module 'small.c'.\r\n4.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@main'\r\n #0 0x000055d445b3dd8f llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x4094d8f)\r\n #1 0x000055d445b3b2b4 SignalHandler(int) Signals.cpp:0:0\r\n #2 0x00007f2f637c2420 __restore_rt (/lib/x86_64-linux-gnu/libpthread.so.0+0x14420)\r\n #3 0x00007f2f631c900b raise /build/glibc-e2p3jK/glibc-2.31/signal/../sysdeps/unix/sysv/linux/raise.c:51:1\r\n #4 0x00007f2f631a8859 abort /build/glibc-e2p3jK/glibc-2.31/stdlib/abort.c:81:7\r\n #5 0x00007f2f631a8729 get_sysdep_segment_value /build/glibc-e2p3jK/glibc-2.31/intl/loadmsgcat.c:509:8\r\n #6 0x00007f2f631a8729 _nl_load_domain /build/glibc-e2p3jK/glibc-2.31/intl/loadmsgcat.c:970:34\r\n #7 0x00007f2f631b9fd6 (/lib/x86_64-linux-gnu/libc.so.6+0x33fd6)\r\n #8 0x000055d446d257b1 llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x527c7b1)\r\n #9 0x000055d446d84024 llvm::TargetLowering::ShrinkDemandedOp(llvm::SDValue, unsigned int, llvm::APInt const&, llvm::TargetLowering::TargetLoweringOpt&) const (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x52db024)\r\n#10 0x000055d446dc3e08 llvm::TargetLowering::SimplifyDemandedBits(llvm::SDValue, llvm::APInt const&, llvm::APInt const&, llvm::KnownBits&, llvm::TargetLowering::TargetLoweringOpt&, unsigned int, bool) const (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x531ae08)\r\n#11 0x000055d446dbd076 llvm::TargetLowering::SimplifyDemandedBits(llvm::SDValue, llvm::APInt const&, llvm::APInt const&, llvm::KnownBits&, llvm::TargetLowering::TargetLoweringOpt&, unsigned int, bool) const (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x5314076)\r\n#12 0x000055d446bb8125 (anonymous namespace)::DAGCombiner::SimplifyDemandedBits(llvm::SDValue) (.constprop.0) DAGCombiner.cpp:0:0\r\n#13 0x000055d446be7d8e (anonymous namespace)::DAGCombiner::visitSIGN_EXTEND_INREG(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#14 0x000055d446c25fce (anonymous namespace)::DAGCombiner::visit(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#15 0x000055d446c28541 (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#16 0x000055d446c2a1bc (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\r\n#17 0x000055d446c2c7aa llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::AAResults*, llvm::CodeGenOptLevel) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x51837aa)\r\n#18 0x000055d446d63c52 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x52bac52)\r\n#19 0x000055d446d6789d llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x52be89d)\r\n#20 0x000055d446d692d6 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (.part.0) SelectionDAGISel.cpp:0:0\r\n#21 0x000055d444674df0 (anonymous namespace)::X86DAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) X86ISelDAGToDAG.cpp:0:0\r\n#22 0x000055d444ec31d1 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#23 0x000055d4454b017b llvm::FPPassManager::runOnFunction(llvm::Function&) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x3a0717b)\r\n#24 0x000055d4454b03c9 llvm::FPPassManager::runOnModule(llvm::Module&) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x3a073c9)\r\n#25 0x000055d4454b0c85 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x3a07c85)\r\n#26 0x000055d445dda723 (anonymous namespace)::EmitAssemblyHelper::EmitAssembly(clang::BackendAction, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) BackendUtil.cpp:0:0\r\n#27 0x000055d445ddab26 clang::EmitBackendOutput(clang::DiagnosticsEngine&, clang::HeaderSearchOptions const&, clang::CodeGenOptions const&, clang::TargetOptions const&, clang::LangOptions const&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x4331b26)\r\n#28 0x000055d446436dd9 clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x498ddd9)\r\n#29 0x000055d4481c0f7c clang::ParseAST(clang::Sema&, bool, bool) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x6717f7c)\r\n#30 0x000055d446437268 clang::CodeGenAction::ExecuteAction() (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x498e268)\r\n#31 0x000055d4466c6f19 clang::FrontendAction::Execute() (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x4c1df19)\r\n#32 0x000055d44664c0ee clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x4ba30ee)\r\n#33 0x000055d4467b1306 clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x4d08306)\r\n#34 0x000055d442d191ec cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x12701ec)\r\n#35 0x000055d442d123ea ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&) driver.cpp:0:0\r\n#36 0x000055d442d15dbe clang_main(int, char**, llvm::ToolContext const&) (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x126cdbe)\r\n#37 0x000055d442c1276b main (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x116976b)\r\n#38 0x00007f2f631aa083 __libc_start_main /build/glibc-e2p3jK/glibc-2.31/csu/../csu/libc-start.c:342:3\r\n#39 0x000055d442d11e7e _start (/local/suz-local/software/local/clang-trunk/bin/clang-19+0x1268e7e)\r\nclangtk: error: unable to execute command: Aborted\r\nclangtk: error: clang frontend command failed due to signal (use -v to see invocation)\r\nclang version 19.0.0git (https://github.com/llvm/llvm-project.git 32ae9a28a54f59f2b4e2f32323f53fb107ea1f85)\r\nTarget: x86_64-unknown-linux-gnu\r\nThread model: posix\r\nInstalledDir: /local/suz-local/software/local/clang-trunk/bin\r\nBuild config: +assertions\r\nclangtk: note: diagnostic msg: \r\n********************\r\n\r\nPLEASE ATTACH THE FOLLOWING FILES TO THE BUG REPORT:\r\nPreprocessed source(s) and associated run script(s) are located at:\r\nclangtk: note: diagnostic msg: /tmp/small-a04b76.c\r\nclangtk: note: diagnostic msg: /tmp/small-a04b76.sh\r\nclangtk: note: diagnostic msg: \r\n\r\n********************\r\n[523] % \r\n[523] % cat small.c\r\nlong a, b;\r\nstatic int c;\r\nint main() {\r\n  b = c = a ? a << -(b | 255) : 0;\r\n  return 0;\r\n}\r\n```",
+    "comments": [
+      {
+        "author": "dtcxzyw",
+        "body": "Reduced IR: https://godbolt.org/z/KTbfnYnET\r\n```\r\ndefine i64 @pr92720(i64 %x) {\r\n  %or = or i64 %x, 255\r\n  %sub = sub i64 0, %or\r\n  %shl = shl i64 1, %sub\r\n  %sext = shl i64 %shl, 32\r\n  ret i64 %sext\r\n}\r\n```\r\n\r\nI will post a fix.\r\n"
+      }
+    ],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "clang crashes on valid code at -O1 and above on x86_64-linux-gnu: Assertion `N1.getValueType().bitsGT(VT) && \"Invalid truncate node, src < dst!\"' failed "
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/92720",
+  "knowledge_cutoff": "2024-05-20T06:54:04Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64",
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit cf128305bdada3ffb34054813a855d80b3948025\nAuthor: Yingwei Zheng <dtcxzyw2333@gmail.com>\nDate:   Wed May 22 20:20:33 2024 +0800\n\n    [SDAG] Don't treat ISD::SHL as a uniform binary operator in `ShrinkDemandedOp` (#92753)\n    \n    In `TargetLowering::ShrinkDemandedOp`, types of lhs and rhs may differ\n    before legalization.\n    In the original case, `VT` is `i64` and `SmallVT` is `i32`, but the type\n    of rhs is `i8`. Then invalid truncate nodes will be created.\n    \n    See the description of ISD::SHL for further information:\n    > After legalization, the type of the shift amount is known to be\n    TLI.getShiftAmountTy(). Before legalization, the shift amount can be any\n    type, but care must be taken to ensure it is large enough.\n    \n    \n    https://github.com/llvm/llvm-project/blob/605ae4e93be8976095c7eedf5c08bfdb9ff71257/llvm/include/llvm/CodeGen/ISDOpcodes.h#L691-L712\n    \n    This patch stops handling ISD::SHL in `TargetLowering::ShrinkDemandedOp`\n    and duplicates the logic in `TargetLowering::SimplifyDemandedBits`.\n    Additionally, it adds some additional checks like\n    `isNarrowingProfitable` and `isTypeDesirableForOp` to improve the\n    codegen on AArch64.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/92720.\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\nindex b6d4050236b7..87c4c62522c1 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\n@@ -587,6 +587,10 @@ bool TargetLowering::ShrinkDemandedOp(SDValue Op, unsigned BitWidth,\n   if (VT.isVector())\n     return false;\n \n+  assert(Op.getOperand(0).getValueType().getScalarSizeInBits() == BitWidth &&\n+         Op.getOperand(1).getValueType().getScalarSizeInBits() == BitWidth &&\n+         \"ShrinkDemandedOp only supports operands that have the same size!\");\n+\n   // Don't do this if the node has another user, which may require the\n   // full value.\n   if (!Op.getNode()->hasOneUse())\n@@ -1832,11 +1836,33 @@ bool TargetLowering::SimplifyDemandedBits(\n         }\n       }\n \n+      // TODO: Can we merge this fold with the one below?\n       // Try shrinking the operation as long as the shift amount will still be\n       // in range.\n-      if ((ShAmt < DemandedBits.getActiveBits()) &&\n-          ShrinkDemandedOp(Op, BitWidth, DemandedBits, TLO))\n-        return true;\n+      if (ShAmt < DemandedBits.getActiveBits() && !VT.isVector() &&\n+          Op.getNode()->hasOneUse()) {\n+        // Search for the smallest integer type with free casts to and from\n+        // Op's type. For expedience, just check power-of-2 integer types.\n+        unsigned DemandedSize = DemandedBits.getActiveBits();\n+        for (unsigned SmallVTBits = llvm::bit_ceil(DemandedSize);\n+             SmallVTBits < BitWidth; SmallVTBits = NextPowerOf2(SmallVTBits)) {\n+          EVT SmallVT = EVT::getIntegerVT(*TLO.DAG.getContext(), SmallVTBits);\n+          if (isNarrowingProfitable(VT, SmallVT) &&\n+              isTypeDesirableForOp(ISD::SHL, SmallVT) &&\n+              isTruncateFree(VT, SmallVT) && isZExtFree(SmallVT, VT) &&\n+              (!TLO.LegalOperations() || isOperationLegal(ISD::SHL, SmallVT))) {\n+            assert(DemandedSize <= SmallVTBits &&\n+                   \"Narrowed below demanded bits?\");\n+            // We found a type with free casts.\n+            SDValue NarrowShl = TLO.DAG.getNode(\n+                ISD::SHL, dl, SmallVT,\n+                TLO.DAG.getNode(ISD::TRUNCATE, dl, SmallVT, Op.getOperand(0)),\n+                TLO.DAG.getShiftAmountConstant(ShAmt, SmallVT, dl));\n+            return TLO.CombineTo(\n+                Op, TLO.DAG.getNode(ISD::ANY_EXTEND, dl, VT, NarrowShl));\n+          }\n+        }\n+      }\n \n       // Narrow shift to lower half - similar to ShrinkDemandedOp.\n       // (shl i64:x, K) -> (i64 zero_extend (shl (i32 (trunc i64:x)), K))\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-none-linux-gnu < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/bitfield-insert.ll",
+      "tests": [
+        {
+          "test_body": "define void @test_64bit_badmask(ptr %existing, ptr %new) {\n  %oldval = load volatile i64, ptr %existing, align 4\n  %oldval_keep = and i64 %oldval, 135\n  %newval = load volatile i64, ptr %new, align 4\n  %newval_shifted = shl i64 %newval, 3\n  %newval_masked = and i64 %newval_shifted, 664\n  %combined = or i64 %oldval_keep, %newval_masked\n  store volatile i64 %combined, ptr %existing, align 4\n  ret void\n}\n",
+          "test_name": "test_64bit_badmask"
+        },
+        {
+          "test_body": "define i64 @test_and_extended_shift_with_imm(i64 %0) {\n  %2 = shl i64 %0, 7\n  %3 = and i64 %2, 32640\n  ret i64 %3\n}\n",
+          "test_name": "test_and_extended_shift_with_imm"
+        },
+        {
+          "test_body": "define i64 @test_truncated_shift(i64 %x, i64 %y) {\nentry:\n  %and = and i64 %x, -1040187393\n  %shl4 = shl i64 %y, 25\n  %and5 = and i64 %shl4, 1040187392\n  %or = or i64 %and5, %and\n  ret i64 %or\n}\n",
+          "test_name": "test_truncated_shift"
+        },
+        {
+          "test_body": "define <2 x i32> @test_complex_type(ptr %addr, i64 %in, ptr %bf) {\n  %vec = load <2 x i32>, ptr %addr, align 8\n  %vec.next = getelementptr <2 x i32>, ptr %addr, i32 1\n  %lo = ptrtoint ptr %vec.next to i64\n  %hi = shl i64 %in, 32\n  %both = or i64 %lo, %hi\n  store i64 %both, ptr %bf, align 4\n  ret <2 x i32> %vec\n}\n",
+          "test_name": "test_complex_type"
+        }
+      ]
+    },
+    {
+      "commands": [
+        "llc -mtriple=arm64-apple-ios -o - %s",
+        "llc -mtriple=aarch64_be-unknown-linux -o - %s",
+        "llc -mtriple=aarch64_be-unknown-linux -aarch64-enable-ext-to-tbl=false -o - %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/trunc-to-tbl.ll",
+      "tests": [
+        {
+          "test_body": "define void @trunc_v8i19_to_v8i8_in_loop(ptr %A, ptr %dst) {\nentry:\n  br label %loop\n\nloop:                                             ; preds = %loop, %entry\n  %iv = phi i64 [ 0, %entry ], [ %iv.next, %loop ]\n  %gep.A = getelementptr inbounds <8 x i19>, ptr %A, i64 %iv\n  %l.A = load <8 x i19>, ptr %gep.A, align 32\n  %trunc = trunc <8 x i19> %l.A to <8 x i8>\n  %gep.dst = getelementptr inbounds <8 x i8>, ptr %dst, i64 %iv\n  store <8 x i8> %trunc, ptr %gep.dst, align 8\n  %iv.next = add i64 %iv, 1\n  %ec = icmp eq i64 %iv.next, 1000\n  br i1 %ec, label %loop, label %exit\n\nexit:                                             ; preds = %loop\n  ret void\n}\n",
+          "test_name": "trunc_v8i19_to_v8i8_in_loop"
+        }
+      ]
+    },
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-linux-gnu"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr92720.ll",
+      "tests": [
+        {
+          "test_body": "\n; Make sure we don't crash when shrinking the shift amount before legalization.\ndefine i64 @pr92720(i64 %x) {\n  %or = or i64 %x, 255\n  %sub = sub i64 0, %or\n  %shl = shl i64 1, %sub\n  %sext = shl i64 %shl, 32\n  ret i64 %sext\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

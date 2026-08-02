@@ -1,0 +1,73 @@
+{
+  "base_commit": "5c3a3dc9eb0a70979ab456a69f2f40dab6515008",
+  "bug_id": "104480",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "scalarizeBinOpOfSplats"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          27140,
+          27145
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "e027e04f0139126b0a4af3aba0dbb31fdf22ea62"
+  },
+  "issue": {
+    "author": "patrick-rivos",
+    "body": "C testcase:\r\n```c\r\nextern int c[][4];\r\nextern short d[];\r\n#define e(a, b)                                                                \\\r\n  ({                                                                           \\\r\n    __typeof__(a) f = a;                                                       \\\r\n    __typeof__(b) g = 0;                                                       \\\r\n    f < g;                                                                     \\\r\n  })\r\nvoid h(short i[][5][5][5][5][5]) {\r\n  for (unsigned j = 0;;)\r\n    for (unsigned k = 0; k < 49; k += 2) {\r\n      c[k][3] = e(i[j][1][0][j][j][1] % 3, 0);\r\n      d[k] = 0;\r\n    }\r\n}\r\n```\r\nGodbolt: https://c.godbolt.org/z/bhfrE7drT\r\n\r\nTestcase:\r\n```llvm ir\r\n; ModuleID = 'reduced.bc'\r\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\r\ntarget triple = \"riscv64-unknown-linux-gnu\"\r\n\r\ndefine void @h(<vscale x 4 x i16> %broadcast.splatinsert, <vscale x 4 x i1> %0, <vscale x 4 x i1> %1) #0 {\r\nentry:\r\n  %broadcast.splat = shufflevector <vscale x 4 x i16> %broadcast.splatinsert, <vscale x 4 x i16> zeroinitializer, <vscale x 4 x i32> zeroinitializer\r\n  %2 = srem <vscale x 4 x i16> %broadcast.splat, shufflevector (<vscale x 4 x i16> insertelement (<vscale x 4 x i16> poison, i16 3, i64 0), <vscale x 4 x i16> poison, <vscale x 4 x i32> zeroinitializer)\r\n  %3 = zext <vscale x 4 x i16> %2 to <vscale x 4 x i32>\r\n  tail call void @llvm.masked.scatter.nxv4i32.nxv4p0(<vscale x 4 x i32> %3, <vscale x 4 x ptr> zeroinitializer, i32 0, <vscale x 4 x i1> %0)\r\n  ret void\r\n}\r\n\r\n; Function Attrs: nocallback nofree nosync nounwind willreturn memory(write)\r\ndeclare void @llvm.masked.scatter.nxv4i32.nxv4p0(<vscale x 4 x i32>, <vscale x 4 x ptr>, i32 immarg, <vscale x 4 x i1>) #1\r\n\r\nattributes #0 = { \"target-features\"=\"+64bit,+d,+f,+relax,+zicsr,+zmmul,+zve32f,+zve32x,+zve64d,+zve64f,+zve64x,+zvl32b,+zvl64b,-a,-b,-c,-e,-experimental-smmpm,-experimental-smnpm,-experimental-ssnpm,-experimental-sspm,-experimental-ssqosid,-experimental-supm,-experimental-zacas,-experimental-zalasr,-experimental-zicfilp,-experimental-zicfiss,-h,-m,-shcounterenw,-shgatpa,-shtvala,-shvsatpa,-shvstvala,-shvstvecd,-smaia,-smcdeleg,-smcsrind,-smepmp,-smstateen,-ssaia,-ssccfg,-ssccptr,-sscofpmf,-sscounterenw,-sscsrind,-ssstateen,-ssstrict,-sstc,-sstvala,-sstvecd,-ssu64xl,-svade,-svadu,-svbare,-svinval,-svnapot,-svpbmt,-v,-xcvalu,-xcvbi,-xcvbitmanip,-xcvelw,-xcvmac,-xcvmem,-xcvsimd,-xsfcease,-xsfvcp,-xsfvfnrclipxfqf,-xsfvfwmaccqqq,-xsfvqmaccdod,-xsfvqmaccqoq,-xsifivecdiscarddlone,-xsifivecflushdlone,-xtheadba,-xtheadbb,-xtheadbs,-xtheadcmo,-xtheadcondmov,-xtheadfmemidx,-xtheadmac,-xtheadmemidx,-xtheadmempair,-xtheadsync,-xtheadvdot,-xventanacondops,-xwchc,-za128rs,-za64rs,-zaamo,-zabha,-zalrsc,-zama16b,-zawrs,-zba,-zbb,-zbc,-zbkb,-zbkc,-zbkx,-zbs,-zca,-zcb,-zcd,-zce,-zcf,-zcmop,-zcmp,-zcmt,-zdinx,-zfa,-zfbfmin,-zfh,-zfhmin,-zfinx,-zhinx,-zhinxmin,-zic64b,-zicbom,-zicbop,-zicboz,-ziccamoa,-ziccif,-zicclsm,-ziccrse,-zicntr,-zicond,-zifencei,-zihintntl,-zihintpause,-zihpm,-zimop,-zk,-zkn,-zknd,-zkne,-zknh,-zkr,-zks,-zksed,-zksh,-zkt,-ztso,-zvbb,-zvbc,-zvfbfmin,-zvfbfwma,-zvfh,-zvfhmin,-zvkb,-zvkg,-zvkn,-zvknc,-zvkned,-zvkng,-zvknha,-zvknhb,-zvks,-zvksc,-zvksed,-zvksg,-zvksh,-zvkt,-zvl1024b,-zvl128b,-zvl16384b,-zvl2048b,-zvl256b,-zvl32768b,-zvl4096b,-zvl512b,-zvl65536b,-zvl8192b\" }\r\nattributes #1 = { nocallback nofree nosync nounwind willreturn memory(write) }\r\n```\r\n\r\nCommand/backtrace:\r\n```\r\n> /scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc reduced.ll\r\nPromoteIntegerResult #0: t43: i16 = mulhs t10, Constant:i16<21846>\r\n\r\nLLVM ERROR: Do not know how to promote this operator!\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.      Program arguments: /scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc reduced.ll\r\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\r\n2.      Running pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@h'\r\n #0 0x0000593572bef030 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1e6e030)\r\n #1 0x0000593572bec44f llvm::sys::RunSignalHandlers() (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1e6b44f)\r\n #2 0x0000593572bec5a5 SignalHandler(int) Signals.cpp:0:0\r\n #3 0x000075aef0c42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #4 0x000075aef0c969fc __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\r\n #5 0x000075aef0c969fc __pthread_kill_internal ./nptl/pthread_kill.c:78:10\r\n #6 0x000075aef0c969fc pthread_kill ./nptl/pthread_kill.c:89:10\r\n #7 0x000075aef0c42476 gsignal ./signal/../sysdeps/posix/raise.c:27:6\r\n #8 0x000075aef0c287f3 abort ./stdlib/abort.c:81:7\r\n #9 0x000059357132fcee llvm::UniqueStringSaver::save(llvm::StringRef) (.cold) StringSaver.cpp:0:0\r\n#10 0x0000593572b463ee (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1dc53ee)\r\n#11 0x0000593572aea00f llvm::DAGTypeLegalizer::PromoteIntegerResult(llvm::SDNode*, unsigned int) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1d6900f)\r\n#12 0x0000593572a2cc35 llvm::DAGTypeLegalizer::run() (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1cabc35)\r\n#13 0x0000593572a2de51 llvm::SelectionDAG::LegalizeTypes() (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1cace51)\r\n#14 0x000059357297e1fa llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1bfd1fa)\r\n#15 0x00005935729821a2 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1c011a2)\r\n#16 0x0000593572983977 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1c02977)\r\n#17 0x0000593572973df9 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1bf2df9)\r\n#18 0x0000593571aeebc7 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#19 0x000059357211693c llvm::FPPassManager::runOnFunction(llvm::Function&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x139593c)\r\n#20 0x0000593572116d69 llvm::FPPassManager::runOnModule(llvm::Module&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1395d69)\r\n#21 0x0000593572115c76 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x1394c76)\r\n#22 0x00005935713f30c6 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#23 0x0000593571337c06 main (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x5b6c06)\r\n#24 0x000075aef0c29d90 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16\r\n#25 0x000075aef0c29e40 call_init ./csu/../csu/libc-start.c:128:20\r\n#26 0x000075aef0c29e40 __libc_start_main ./csu/../csu/libc-start.c:379:5\r\n#27 0x00005935713e9f05 _start (/scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc+0x668f05)\r\nzsh: IOT instruction (core dumped)  /scratch/tc-testing/tc-compiler-fuzz-trunk/build-gcv/build-llvm-linux/bin/llc\r\n```\r\n\r\nGodbolt: https://ir.godbolt.org/z/GKT1T7v3e\r\n\r\nFound via fuzzer.",
+    "comments": [
+      {
+        "author": "topperc",
+        "body": "Looks like it was caused by 234cb4c6e3a382a5c0b3396647a1839699944ec0"
+      },
+      {
+        "author": "topperc",
+        "body": "Related variant that crashes differently on RV32. It crashes in Promote instead of Expand.\r\n\r\n```\r\ndefine <vscale x 4 x i64> @h(<vscale x 4 x i64> %broadcast.splatinsert, <vscale x 4 x i1> %0, <vscale x 4 x i1> %1) #0 {\r\nentry:                                                                           \r\n  %broadcast.splat = shufflevector <vscale x 4 x i64> %broadcast.splatinsert, <vscale x 4 x i64> zeroinitializer, <vscale x 4 x i32> zeroinitializer\r\n  %2 = srem <vscale x 4 x i64> %broadcast.splat, shufflevector (<vscale x 4 x i64> insertelement (<vscale x 4 x i64> poison, i64 3, i64 0), <vscale x 4 x i64> poison, <vscale x 4 x i32> zeroinitializer)\r\n  ret <vscale x 4 x i64> %2                                                      \r\n}\r\n```\r\n\r\n```\r\nExpandIntegerResult #0: t39: i64 = mulhs t61, Constant:i64<6148914691236517206>\r\n\r\nLLVM ERROR: Do not know how to expand the result of this operator!\r\n```"
+      },
+      {
+        "author": "Fros1er",
+        "body": "Does #104525 also related to this?"
+      }
+    ],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[RISC-V] PromoteIntegerResult mulhs Do not know how to promote this operator!"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/104480",
+  "knowledge_cutoff": "2024-08-15T18:44:21Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit e027e04f0139126b0a4af3aba0dbb31fdf22ea62\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Thu Aug 15 21:07:22 2024 -0700\n\n    [DAGCombiner] Don't let scalarizeBinOpOfSplats create illegal scalar MULHS/MULHU (#104518)\n    \n    Type legalization lacks generic support for these operations. They are\n    normally only created when the type is legal. This scalarization case is\n    new.\n    \n    We could update type legalization, but there some corner cases that make\n    it not straightforward. For example, if the promoted type isn't 2x the\n    narrow type we need to over promote.\n    \n    Fixes #104480\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex 25644c24855a..b21bea649e95 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -27140,6 +27140,10 @@ static SDValue scalarizeBinOpOfSplats(SDNode *N, SelectionDAG &DAG,\n                       : TLI.getTypeToTransformTo(*DAG.getContext(), EltVT)))\n     return SDValue();\n \n+  // FIXME: Type legalization can't handle illegal MULHS/MULHU.\n+  if ((Opcode == ISD::MULHS || Opcode == ISD::MULHU) && !TLI.isTypeLegal(EltVT))\n+    return SDValue();\n+\n   SDValue IndexC = DAG.getVectorIdxConstant(Index0, DL);\n   SDValue X = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL, EltVT, Src0, IndexC);\n   SDValue Y = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL, EltVT, Src1, IndexC);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv32 -mattr=+m,+v"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/pr104480.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <vscale x 4 x i16> @test_mulhs_promote(<vscale x 4 x i16> %broadcast.splatinsert, <vscale x 4 x i1> %0, <vscale x 4 x i1> %1) {\nentry:\n  %broadcast.splat = shufflevector <vscale x 4 x i16> %broadcast.splatinsert, <vscale x 4 x i16> zeroinitializer, <vscale x 4 x i32> zeroinitializer\n  %2 = srem <vscale x 4 x i16> %broadcast.splat, shufflevector (<vscale x 4 x i16> insertelement (<vscale x 4 x i16> poison, i16 3, i64 0), <vscale x 4 x i16> poison, <vscale x 4 x i32> zeroinitializer)\n ret <vscale x 4 x i16> %2\n}\n\ndefine <vscale x 4 x i16> @test_mulhu_promote(<vscale x 4 x i16> %broadcast.splatinsert, <vscale x 4 x i1> %0, <vscale x 4 x i1> %1) {\nentry:\n  %broadcast.splat = shufflevector <vscale x 4 x i16> %broadcast.splatinsert, <vscale x 4 x i16> zeroinitializer, <vscale x 4 x i32> zeroinitializer\n  %2 = urem <vscale x 4 x i16> %broadcast.splat, shufflevector (<vscale x 4 x i16> insertelement (<vscale x 4 x i16> poison, i16 3, i64 0), <vscale x 4 x i16> poison, <vscale x 4 x i32> zeroinitializer)\n ret <vscale x 4 x i16> %2\n}\n\ndefine <vscale x 4 x i64> @test_mulhs_expand(<vscale x 4 x i64> %broadcast.splatinsert, <vscale x 4 x i1> %0, <vscale x 4 x i1> %1) {\nentry:\n  %broadcast.splat = shufflevector <vscale x 4 x i64> %broadcast.splatinsert, <vscale x 4 x i64> zeroinitializer, <vscale x 4 x i32> zeroinitializer\n  %2 = srem <vscale x 4 x i64> %broadcast.splat, shufflevector (<vscale x 4 x i64> insertelement (<vscale x 4 x i64> poison, i64 3, i64 0), <vscale x 4 x i64> poison, <vscale x 4 x i32> zeroinitializer)\n ret <vscale x 4 x i64> %2\n}\n\ndefine <vscale x 4 x i64> @test_mulhu_expand(<vscale x 4 x i64> %broadcast.splatinsert, <vscale x 4 x i1> %0, <vscale x 4 x i1> %1) {\nentry:\n  %broadcast.splat = shufflevector <vscale x 4 x i64> %broadcast.splatinsert, <vscale x 4 x i64> zeroinitializer, <vscale x 4 x i32> zeroinitializer\n  %2 = urem <vscale x 4 x i64> %broadcast.splat, shufflevector (<vscale x 4 x i64> insertelement (<vscale x 4 x i64> poison, i64 3, i64 0), <vscale x 4 x i64> poison, <vscale x 4 x i32> zeroinitializer)\n ret <vscale x 4 x i64> %2\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

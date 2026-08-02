@@ -1,0 +1,77 @@
+{
+  "base_commit": "d7d2f7ca62400ed4a3f8f89062d2aeec61bd29d4",
+  "bug_id": "84830",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp": [
+        "TargetLowering::prepareSREMEqFold"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp": [
+        [
+          6916,
+          6921
+        ],
+        [
+          6924,
+          6934
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "7c9b5228da94a44f5e3948814d896de537d162bb"
+  },
+  "issue": {
+    "author": "regehr",
+    "body": "both the AArch64 and x86-64 backends assert out on this input:\r\n```\r\ndefine i32 @f(i1 %0) {\r\n  %new0 = srem i1 %0, true\r\n  %last = zext i1 %new0 to i32\r\n  %2 = icmp ne i32 %last, 0\r\n  %3 = select i1 %2, i32 0, i32 1\r\n  ret i32 %3\r\n}\r\n```",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "They appear to be failing in llvm::TargetLowering::prepareSREMEqFold   https://clang.godbolt.org/z/Pjf8bnrnE"
+      },
+      {
+        "author": "svs-quic",
+        "body": "Bisected to #82706 \r\ncc: @resistor "
+      },
+      {
+        "author": "resistor",
+        "body": "Almost certainly the assertion just needs to be moved above the special case."
+      }
+    ],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "assertion failing in multiple backends \"We are expecting that A is always less than all-ones for SVT\""
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/84830",
+  "knowledge_cutoff": "2024-03-11T21:00:04Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 7c9b5228da94a44f5e3948814d896de537d162bb\nAuthor: Owen Anderson <resistor@mac.com>\nDate:   Sat Mar 23 21:49:29 2024 -0500\n\n    Only check assertions that were meant to apply to the normal case of non-splat vector SREM expansion when we aren't hitting the special case. (#86238)\n    \n    Fixes https://github.com/llvm/llvm-project/issues/84830\n    Introduced in https://github.com/llvm/llvm-project/pull/82706\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\nindex da29b1d5b312..8be03b66e155 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\n@@ -6916,6 +6916,11 @@ TargetLowering::prepareSREMEqFold(EVT SETCCVT, SDValue REMNode,\n     // Q = floor((2 * A) / (2^K))\n     APInt Q = (2 * A).udiv(APInt::getOneBitSet(W, K));\n \n+    assert(APInt::getAllOnes(SVT.getSizeInBits()).ugt(A) &&\n+           \"We are expecting that A is always less than all-ones for SVT\");\n+    assert(APInt::getAllOnes(ShSVT.getSizeInBits()).ugt(K) &&\n+           \"We are expecting that K is always less than all-ones for ShSVT\");\n+\n     // If D was a power of two, apply the alternate constant derivation.\n     if (D0.isOne()) {\n       // A = 2^(W-1)\n@@ -6924,11 +6929,6 @@ TargetLowering::prepareSREMEqFold(EVT SETCCVT, SDValue REMNode,\n       Q = APInt::getAllOnes(W - K).zext(W);\n     }\n \n-    assert(APInt::getAllOnes(SVT.getSizeInBits()).ugt(A) &&\n-           \"We are expecting that A is always less than all-ones for SVT\");\n-    assert(APInt::getAllOnes(ShSVT.getSizeInBits()).ugt(K) &&\n-           \"We are expecting that K is always less than all-ones for ShSVT\");\n-\n     // If the divisor is 1 the result can be constant-folded. Likewise, we\n     // don't care about INT_MIN lanes, those can be set to undef if appropriate.\n     if (D.isOne()) {\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-unknown-unknown < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/srem-vec-crash.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine i32 @pr84830(i1 %arg) {\nbb:\n  %new0 = srem i1 %arg, true\n  %last = zext i1 %new0 to i32\n  %i = icmp ne i32 %last, 0\n  %i1 = select i1 %i, i32 0, i32 1\n  ret i32 %i1\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,61 @@
+{
+  "base_commit": "0c8bc08868e7bf051e9683851726747def85765a",
+  "bug_id": "90730",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "RISCVTargetLowering::hasAndNotCompare",
+        "RISCVTargetLowering::hasBitTest"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          1919,
+          1925
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "557bf3835b96ef5839013b1e821a1cb869660aa3"
+  },
+  "issue": {
+    "author": "dtcxzyw",
+    "body": "Reduced test case: https://godbolt.org/z/jqe59vW85\r\n```ll\r\n; llc -mattr=+zbb test.ll\r\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\r\ntarget triple = \"riscv64-unknown-linux-gnu\"\r\n\r\ndefine i32 @main(i32 %0, i1 %cmp469.2.i.peel, ptr %1) {\r\nentry:\r\n  %conv471.2.i.peel = zext i1 %cmp469.2.i.peel to i32\r\n  %2 = xor i32 %conv471.2.i.peel, 31817\r\n  %and.2.i119.peel = and i32 %2, %0\r\n  store i32 %and.2.i119.peel, ptr %1, align 4\r\n  %3 = load i32, ptr %1, align 4\r\n  %xor465.2.i = and i32 %3, 31808\r\n  %and.2.i119 = xor i32 %xor465.2.i, 31808\r\n  store i32 0, ptr %1, align 4\r\n  ret i32 %and.2.i119\r\n}\r\n```\r\n\r\n```console\r\nllc: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp:9233: llvm::SDValue {anonymous}::DAGCombiner::unfoldMaskedMerge(llvm::SDNode*): Assertion `TLI.hasAndNot(X) && \"Only mask is a variable? Unreachable.\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -mtriple=riscv64 -mattr=+zbb <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@main'\r\n #0 0x00000000039690e8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39690e8)\r\n #1 0x000000000396683c SignalHandler(int) Signals.cpp:0:0\r\n #2 0x000074b10d242520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x000074b10d2969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x000074b10d242476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x000074b10d2287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x000074b10d22871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\r\n #7 0x000074b10d239e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n #8 0x00000000035ada17 (anonymous namespace)::DAGCombiner::visitXOR(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n #9 0x00000000035d699f (anonymous namespace)::DAGCombiner::visit(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#10 0x00000000035d852e (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#11 0x00000000035da1ac (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\r\n#12 0x00000000035dc78a llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::AAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x35dc78a)\r\n#13 0x0000000003732a46 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3732a46)\r\n#14 0x00000000037363f5 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37363f5)\r\n#15 0x0000000003737e67 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (.part.0) SelectionDAGISel.cpp:0:0\r\n#16 0x000000000297e051 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#17 0x0000000002f3f313 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f3f313)\r\n#18 0x0000000002f3f551 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f3f551)\r\n#19 0x0000000002f3fdb5 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f3fdb5)\r\n#20 0x000000000082b87c compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#21 0x0000000000729d26 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x729d26)\r\n#22 0x000074b10d229d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#23 0x000074b10d229e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#24 0x000000000082239e _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x82239e)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```\r\n\r\n```\r\nType-legalized selection DAG: %bb.0 'main:entry'\r\nSelectionDAG has 23 nodes:\r\n  t0: ch,glue = EntryToken\r\n      t6: i64,ch = CopyFromReg t0, Register:i64 %2\r\n    t46: ch = store<(store (s32) into %ir.1), trunc to i32> t0, Constant:i64<0>, t6, undef:i64\r\n              t4: i64,ch = CopyFromReg t0, Register:i64 %1\r\n            t41: i64 = and t4, Constant:i64<1>\r\n            t40: i64 = or OpaqueConstant:i64<31808>, Constant:i64<9>\r\n          t42: i64 = xor t41, t40\r\n          t2: i64,ch = CopyFromReg t0, Register:i64 %0\r\n        t43: i64 = and t42, t2\r\n      t44: i64 = xor t43, Constant:i64<-1>\r\n    t45: i64 = and t44, OpaqueConstant:i64<31808>\r\n  t26: ch,glue = CopyToReg t46, Register:i64 $x10, t45\r\n  t27: ch = RISCVISD::RET_GLUE t26, Register:i64 $x10, t26:1\r\n\r\n\r\n\r\nCombining: t46: ch = store<(store (s32) into %ir.1), trunc to i32> t0, Constant:i64<0>, t6, undef:i64\r\n\r\nCombining: t45: i64 = and t44, OpaqueConstant:i64<31808>\r\n\r\nReplacing.2 t40: i64 = or OpaqueConstant:i64<31808>, Constant:i64<9>\r\n\r\nWith: t39: i64 = OpaqueConstant<31808>\r\n\r\n\r\nCombining: t45: i64 = and t44, OpaqueConstant:i64<31808>\r\n\r\nReplacing.2 t41: i64 = and t4, Constant:i64<1>\r\n\r\nWith: t37: i64 = Constant<0>\r\n\r\n\r\nCombining: t46: ch = store<(store (s32) into %ir.1), trunc to i32> t0, Constant:i64<0>, t6, undef:i64\r\n\r\nCombining: t45: i64 = and t44, OpaqueConstant:i64<31808>\r\nCreating new node: t47: i64 = xor t43, OpaqueConstant:i64<31808>\r\n\r\nReplacing.2 t45: i64 = and t44, OpaqueConstant:i64<31808>\r\n\r\nWith: t47: i64 = xor t43, OpaqueConstant:i64<31808>\r\n\r\n\r\nCombining: t47: i64 = xor t43, OpaqueConstant:i64<31808>\r\n\r\nX: t37: i64 = Constant<0>\r\nY: t39: i64 = OpaqueConstant<31808>\r\n```\r\n\r\ncc @topperc ",
+    "comments": [],
+    "labels": [
+      "backend:RISC-V",
+      "crash-on-valid"
+    ],
+    "title": "Assertion `TLI.hasAndNot(X) && \"Only mask is a variable? Unreachable.\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/90730",
+  "knowledge_cutoff": "2024-05-01T13:30:13Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 557bf3835b96ef5839013b1e821a1cb869660aa3\nAuthor: Yingwei Zheng <dtcxzyw2333@gmail.com>\nDate:   Wed May 22 00:48:26 2024 +0800\n\n    [RISCV][ISel] Allow opaque constants in `hasAndNotCompare` (#92926)\n    \n    See the following code:\n    \n    https://github.com/llvm/llvm-project/blob/4ae896fe979b7db501cabde4b6b3504478958682/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp#L9334-L9357\n    \n    > Combining: t47: i64 = xor t43, OpaqueConstant:i64<31808>\n    X: i64 = Constant<0>\n    Y: i64 = OpaqueConstant<31808>\n    \n    The assertion failed because both `X` and `Y` are constants.\n    This patch allows opaque constants in `hasAndNotCompare` to fix the\n    issue.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/90730.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 06f85698d296..05859a1f4898 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -1919,7 +1919,7 @@ bool RISCVTargetLowering::hasAndNotCompare(SDValue Y) const {\n     return false;\n \n   return (Subtarget.hasStdExtZbb() || Subtarget.hasStdExtZbkb()) &&\n-         !isa<ConstantSDNode>(Y);\n+         (!isa<ConstantSDNode>(Y) || cast<ConstantSDNode>(Y)->isOpaque());\n }\n \n bool RISCVTargetLowering::hasBitTest(SDValue X, SDValue Y) const {\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64 -mattr=+zbb"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/pr90730.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine i32 @pr90730(i32 %x, i1 %y, ptr %p) {\nentry:\n  %ext = zext i1 %y to i32\n  %xor1 = xor i32 %ext, 31817\n  %and1 = and i32 %xor1, %x\n  store i32 %and1, ptr %p, align 4\n  %v = load i32, ptr %p, align 4\n  %and2 = and i32 %v, 31808\n  %xor2 = xor i32 %and2, 31808\n  store i32 0, ptr %p, align 4\n  ret i32 %xor2\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

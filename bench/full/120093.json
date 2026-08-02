@@ -1,0 +1,60 @@
+{
+  "base_commit": "290f38cd1a9fa7b1a91ddb25632807ecb5308dc7",
+  "bug_id": "120093",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "DAGCombiner::visitFREEZE"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          16096,
+          16102
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "0954c67d7ae412af9f8da5149565d9af837ac575"
+  },
+  "issue": {
+    "author": "TatyanaDoubts",
+    "body": "To reproduce run the following test on llc:\n\n```\n; ModuleID = 'reduced.ll'\nsource_filename = \"reduced.ll\"\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128-ni:1-p2:32:8:8:32-ni:2\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\ndefine double @widget() gc \"statepoint-example\" {\nbb:\n  %insertelement = insertelement <2 x double> <double poison, double 0xFFFFFFFFFFFFFFFF>, double 0.000000e+00, i64 0\n  %fcmp = fcmp uge <2 x double> zeroinitializer, %insertelement\n  %extractelement = extractelement <2 x i1> %fcmp, i64 0\n  %extractelement1 = extractelement <2 x i1> %fcmp, i64 1\n  %select = select i1 %extractelement, i1 %extractelement1, i1 false\n  br i1 %select, label %bb2, label %bb3\n\nbb2:                                              ; preds = %bb\n  ret double 0.000000e+00\n\nbb3:                                              ; preds = %bb\n  unreachable\n}\n```\nReproducer: https://godbolt.org/z/EG69jzzfz\n\nStack dump:\n```\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@widget'\n #0 0x0000000003c7e2e8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3c7e2e8)\n #1 0x0000000003c7bcec SignalHandler(int) Signals.cpp:0:0\n #2 0x00007c08a0642520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007c08a06969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007c08a0642476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007c08a06287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007c08a062871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007c08a0639e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x00000000039f7f6b llvm::SelectionDAG::getConstant(llvm::ConstantInt const&, llvm::SDLoc const&, llvm::EVT, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39f7f6b)\n #9 0x00000000039f8c00 llvm::SelectionDAG::getAllOnesConstant(llvm::SDLoc const&, llvm::EVT, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x39f8c00)\n#10 0x00000000038b1b31 (anonymous namespace)::DAGCombiner::visitFREEZE(llvm::SDNode*) (.isra.0) DAGCombiner.cpp:0:0\n#11 0x00000000038ca30f (anonymous namespace)::DAGCombiner::visit(llvm::SDNode*) DAGCombiner.cpp:0:0\n#12 0x00000000038cca3c (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#13 0x00000000038ce328 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#14 0x00000000038d0c3b llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::AAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x38d0c3b)\n#15 0x0000000003a32a08 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a32a08)\n#16 0x0000000003a366f9 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a366f9)\n#17 0x0000000003a379b0 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a379b0)\n#18 0x0000000003a283af llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3a283af)\n#19 0x0000000002bc1829 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#20 0x00000000031c737f llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x31c737f)\n#21 0x00000000031c7731 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x31c7731)\n#22 0x00000000031c7fd1 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x31c7fd1)\n#23 0x000000000089a608 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#24 0x000000000078563e main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x78563e)\n#25 0x00007c08a0629d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#26 0x00007c08a0629e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#27 0x0000000000890f35 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x890f35)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "Assertion `VT.isInteger() && \"Cannot create FP integer constant!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/120093",
+  "knowledge_cutoff": "2024-12-16T14:47:52Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 0954c67d7ae412af9f8da5149565d9af837ac575\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Mon Dec 16 16:28:30 2024 +0000\n\n    [DAG] visitFREEZE - only fold integer types to an all ones constant\n    \n    ISD::isBuildVectorAllOnes can peek through bitcasts, so this can match against FP NAN (ish) data (e.g. double (bitcast i64 -1)) under certain circumstances - bail if the type isn't an integer and let bitcast folding handle it first.\n    \n    Fixes #120093\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex 9d888d9940a1..4fe5e7416c78 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -16096,7 +16096,7 @@ SDValue DAGCombiner::visitFREEZE(SDNode *N) {\n   if (N0.getOpcode() == ISD::BUILD_VECTOR) {\n     SDLoc DL(N0);\n     EVT VT = N0.getValueType();\n-    if (llvm::ISD::isBuildVectorAllOnes(N0.getNode()))\n+    if (llvm::ISD::isBuildVectorAllOnes(N0.getNode()) && VT.isInteger())\n       return DAG.getAllOnesConstant(DL, VT);\n     if (llvm::ISD::isBuildVectorOfConstantSDNodes(N0.getNode())) {\n       SmallVector<SDValue, 8> NewVecC;\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-unknown-linux-gnu"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr120093.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine double @PR120093() {\nbb:\n  %insertelement = insertelement <2 x double> <double poison, double 0xFFFFFFFFFFFFFFFF>, double 0.000000e+00, i64 0\n  %fcmp = fcmp uge <2 x double> zeroinitializer, %insertelement\n  %extractelement = extractelement <2 x i1> %fcmp, i64 0\n  %extractelement1 = extractelement <2 x i1> %fcmp, i64 1\n  %select = select i1 %extractelement, i1 %extractelement1, i1 false\n  br i1 %select, label %bb2, label %bb3\n\nbb2:                                              ; preds = %bb\n  ret double 0.000000e+00\n\nbb3:                                              ; preds = %bb\n  unreachable\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

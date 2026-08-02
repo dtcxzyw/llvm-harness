@@ -1,0 +1,61 @@
+{
+  "base_commit": "e655317cf134887b369c43598ac1c0605865c1b7",
+  "bug_id": "172265",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/PowerPC/PPCISelLowering.cpp": [
+        "PPCTargetLowering::combineVectorShuffle"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/PowerPC/PPCISelLowering.cpp": [
+        [
+          16886,
+          16891
+        ]
+      ]
+    },
+    "components": [
+      "PowerPC"
+    ],
+    "fix_commit": "98b82f90dfb7865ae4dbfcb5a83a9e817e7894a1"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/PzdTK8qPM\nReduced testcase:\n```llvm\ntarget datalayout = \"e-m:e-Fn32-i64:64-i128:128-n32:64-S128-v256:256:256-v512:512:512\"\ntarget triple = \"powerpc64le-unknown-linux-musl\"\n\ndefine <32 x i32> @backsmith_pure_1(<32 x i32> %BS_ARG_1, <3 x i32> %0) {\nentry:\n  %vecinit37 = shufflevector <3 x i32> %0, <3 x i32> zeroinitializer, <32 x i32> <i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 2, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>\n  %shuffle56 = shufflevector <32 x i32> %vecinit37, <32 x i32> %BS_ARG_1, <32 x i32> <i32 4, i32 9, i32 3, i32 3, i32 4, i32 1, i32 1, i32 0, i32 16, i32 5, i32 5, i32 34, i32 3, i32 0, i32 8, i32 2, i32 8, i32 1, i32 0, i32 0, i32 0, i32 1, i32 0, i32 0, i32 7, i32 5, i32 3, i32 6, i32 0, i32 3, i32 4, i32 7>\n  ret <32 x i32> %shuffle56\n}\n```\n\nThe reduced testcase contains the odd-sized vector. But the C reproducer doesn't: https://godbolt.org/z/T1Er6bvx6\n\nDump:\n```\nllc: /root/llvm-project/llvm/include/llvm/Support/Casting.h:566: decltype(auto) llvm::cast(From&) [with To = llvm::ShuffleVectorSDNode; From = llvm::SDValue]: Assertion `isa<To>(Val) && \"cast<Ty>() argument of incompatible type!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -O1 <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'PowerPC DAG->DAG Pattern Instruction Selection' on function '@backsmith_pure_1'\n #0 0x000000000421fb68 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x421fb68)\n #1 0x000000000421ca14 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007881a1442520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007881a14969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007881a1442476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007881a14287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007881a142871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007881a1439e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000001cb6a1c llvm::PPCTargetLowering::combineVectorShuffle(llvm::ShuffleVectorSDNode*, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x1cb6a1c)\n #9 0x0000000001cb6adf llvm::PPCTargetLowering::LowerVECTOR_SHUFFLE(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x1cb6adf)\n#10 0x0000000001ce48ee llvm::PPCTargetLowering::LowerOperation(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x1ce48ee)\n#11 0x0000000003e9273e (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) (.part.0) LegalizeDAG.cpp:0:0\n#12 0x0000000003e95e1e llvm::SelectionDAG::Legalize() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e95e1e)\n#13 0x0000000003fb6262 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fb6262)\n#14 0x0000000003fb95b8 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fb95b8)\n#15 0x0000000003fbb03c llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fbb03c)\n#16 0x0000000001c77f17 (anonymous namespace)::PPCDAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) PPCISelDAGToDAG.cpp:0:0\n#17 0x0000000003fa683f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fa683f)\n#18 0x00000000030f5fd9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#19 0x0000000003750ab6 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3750ab6)\n#20 0x0000000003750e61 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3750e61)\n#21 0x00000000037516cf llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37516cf)\n#22 0x00000000008fe384 compileModule(char**, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#23 0x00000000007c88f9 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c88f9)\n#24 0x00007881a1429d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#25 0x00007881a1429e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#26 0x00000000008f3585 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8f3585)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [],
+    "labels": [
+      "backend:PowerPC",
+      "crash-on-valid"
+    ],
+    "title": "[PowerPC] Assertion `isa<To>(Val) && \"cast<Ty>() argument of incompatible type!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/172265",
+  "knowledge_cutoff": "2025-12-15T08:59:41Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/PowerPC"
+  ],
+  "patch": "commit 98b82f90dfb7865ae4dbfcb5a83a9e817e7894a1\nAuthor: Kevin Per <kevin.per@protonmail.com>\nDate:   Thu Dec 18 10:14:01 2025 +0100\n\n    [PowerPC]: Add check for cast when shufflevector (#172443)\n    \n    The crash happens because the cast for `Mask =\n    cast<ShuffleVectorSDNode>(Res)->getMask();` fails for node `t197: v16i8\n    = vector_shuffle<16,17,18,19,4,5,6,7,8,9,10,11,u,u,u,u> t196, t196`.\n    However, both `LHS` and `RHS` are the same node, so\n    `DAG.getCommutedVectorShuffle` doesn't return a `ShuffleVectorSDNode`\n    and crashes. The fix is to add a check before the cast is performed.\n    \n    Closes https://github.com/llvm/llvm-project/issues/172265\n\ndiff --git a/llvm/lib/Target/PowerPC/PPCISelLowering.cpp b/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\nindex 5b1d9f814806..21297b812968 100644\n--- a/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\n+++ b/llvm/lib/Target/PowerPC/PPCISelLowering.cpp\n@@ -16886,6 +16886,10 @@ SDValue PPCTargetLowering::combineVectorShuffle(ShuffleVectorSDNode *SVN,\n       RHS.getOpcode() != ISD::VECTOR_SHUFFLE) {\n     std::swap(LHS, RHS);\n     Res = DAG.getCommutedVectorShuffle(*SVN);\n+\n+    if (!isa<ShuffleVectorSDNode>(Res))\n+      return Res;\n+\n     Mask = cast<ShuffleVectorSDNode>(Res)->getMask();\n   }\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -verify-machineinstrs < %s -mtriple=powerpc64le-unknown-linux-gnu",
+        "llc -verify-machineinstrs < %s -mtriple=powerpc64-unknown-linux-gnu"
+      ],
+      "file": "llvm/test/CodeGen/PowerPC/vec_shuffle_le_be.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <32 x i32> @issue_172265(<32 x i32> %BS_ARG_1, <3 x i32> %0) {\n;\nentry:\n  %vecinit37 = shufflevector <3 x i32> %0, <3 x i32> zeroinitializer, <32 x i32> <i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 2, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 2, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>\n  %shuffle56 = shufflevector <32 x i32> %vecinit37, <32 x i32> %BS_ARG_1, <32 x i32> <i32 4, i32 9, i32 3, i32 3, i32 4, i32 1, i32 1, i32 0, i32 16, i32 5, i32 5, i32 34, i32 3, i32 0, i32 8, i32 2, i32 8, i32 1, i32 0, i32 0, i32 0, i32 1, i32 0, i32 0, i32 7, i32 5, i32 3, i32 6, i32 0, i32 3, i32 4, i32 7>\n  ret <32 x i32> %shuffle56\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

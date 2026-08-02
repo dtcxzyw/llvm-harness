@@ -1,0 +1,65 @@
+{
+  "base_commit": "3eee451e1829b21bac571f758896e7b44c500106",
+  "bug_id": "173141",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "RISCVTargetLowering::PerformDAGCombine"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          22016,
+          22022
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "f06f5b53443cddba42b4cd446df52f344f2f0412"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/KTv13v8Wx\nTestcase:\n```llvm\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"riscv64-unknown-linux-musl\"\n\ndefine <4 x i16> @backsmith_pure_2(i1 %0, <2 x i16> %conv33) #0 {\nentry:\n  %1 = tail call i32 @llvm.riscv.orc.b.i32(i32 1)\n  %sub.i = add i32 %1, 1\n  %2 = and i32 %sub.i, 1\n  %and.i = zext i32 %2 to i64\n  %3 = select i1 %0, i64 0, i64 %and.i\n  %tobool.not128 = icmp sgt i64 %3, -1\n  %4 = insertelement <4 x i1> zeroinitializer, i1 %tobool.not128, i64 0\n  %5 = shufflevector <4 x i1> %4, <4 x i1> zeroinitializer, <4 x i32> zeroinitializer\n  %6 = shufflevector <2 x i16> %conv33, <2 x i16> zeroinitializer, <4 x i32> <i32 1, i32 1, i32 1, i32 1>\n  %7 = select <4 x i1> %5, <4 x i16> %6, <4 x i16> zeroinitializer\n  ret <4 x i16> %7\n}\n\n; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)\ndeclare i32 @llvm.riscv.orc.b.i32(i32) #1\n\nattributes #0 = { \"target-features\"=\"+v\" }\nattributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }\n```\n\nDump:\n```\nllc: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp:985: void {anonymous}::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*): Assertion `(TLI.getTypeAction(*DAG.getContext(), Op.getValueType()) == TargetLowering::TypeLegal || Op.getOpcode() == ISD::TargetConstant || Op.getOpcode() == ISD::Register) && \"Unexpected illegal type!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@backsmith_pure_2'\n #0 0x00000000041effa8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x41effa8)\n #1 0x00000000041ece54 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x0000784174842520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007841748969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x0000784174842476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007841748287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x000078417482871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x0000784174839e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000003e66b57 (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) (.part.0) LegalizeDAG.cpp:0:0\n #9 0x0000000003e68f5e llvm::SelectionDAG::Legalize() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e68f5e)\n#10 0x0000000003f877e2 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f877e2)\n#11 0x0000000003f8aa18 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f8aa18)\n#12 0x0000000003f8c54c llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f8c54c)\n#13 0x0000000003f77f3f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f77f3f)\n#14 0x00000000030deb49 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#15 0x000000000372b5e6 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x372b5e6)\n#16 0x000000000372b991 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x372b991)\n#17 0x000000000372c1ff llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x372c1ff)\n#18 0x00000000008f89fd compileModule(char**, llvm::SmallVectorImpl<llvm::PassPlugin>&, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#19 0x00000000007c20fc main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c20fc)\n#20 0x0000784174829d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#21 0x0000784174829e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#22 0x00000000008ed6d5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8ed6d5)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "XChy",
+        "body": "Bisected to 6584e47101b0631b44518742efbd4f13020c3dff."
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash-on-valid"
+    ],
+    "title": "[RISCV] Assertion `(TLI.getTypeAction(*DAG.getContext(), Op.getValueType()) == TargetLowering::TypeLegal || Op.getOpcode() == ISD::TargetConstant || Op.getOpcode() == ISD::Register) && \"Unexpected illegal type!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/173141",
+  "knowledge_cutoff": "2025-12-20T07:56:09Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit f06f5b53443cddba42b4cd446df52f344f2f0412\nAuthor: Hongyu Chen <xxs_chy@outlook.com>\nDate:   Sun Dec 21 16:12:34 2025 +0800\n\n    [RISCV] Use legally typed splat during vmv_v_v splat(x) -> vmv_v_x (#173154)\n    \n    Fixes https://github.com/llvm/llvm-project/issues/173141\n    Introduced in #170539, `DAG.getSplatValue` may involve the illegal-typed\n    splat value if not specified. This patch fixes it.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 49e52447bc00..7dfb5cd0a9e6 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -22016,7 +22016,7 @@ SDValue RISCVTargetLowering::PerformDAGCombine(SDNode *N,\n     if (sd_match(Src, m_InsertSubvector(m_Undef(), m_Value(SubVec), m_Zero())))\n       Src = SubVec;\n \n-    SDValue SplatVal = DAG.getSplatValue(Src);\n+    SDValue SplatVal = DAG.getSplatValue(Src, /*LegalTypes=*/true);\n     if (!SplatVal)\n       break;\n     MVT VT = N->getSimpleValueType(0);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64-unknown-linux-musl"
+      ],
+      "file": "<issue-body>",
+      "tests": [
+        {
+          "test_body": "target datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"riscv64-unknown-linux-musl\"\n\ndefine <4 x i16> @backsmith_pure_2(i1 %0, <2 x i16> %conv33) #0 {\nentry:\n  %1 = tail call i32 @llvm.riscv.orc.b.i32(i32 1)\n  %sub.i = add i32 %1, 1\n  %2 = and i32 %sub.i, 1\n  %and.i = zext i32 %2 to i64\n  %3 = select i1 %0, i64 0, i64 %and.i\n  %tobool.not128 = icmp sgt i64 %3, -1\n  %4 = insertelement <4 x i1> zeroinitializer, i1 %tobool.not128, i64 0\n  %5 = shufflevector <4 x i1> %4, <4 x i1> zeroinitializer, <4 x i32> zeroinitializer\n  %6 = shufflevector <2 x i16> %conv33, <2 x i16> zeroinitializer, <4 x i32> <i32 1, i32 1, i32 1, i32 1>\n  %7 = select <4 x i1> %5, <4 x i16> %6, <4 x i16> zeroinitializer\n  ret <4 x i16> %7\n}\n\n; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)\ndeclare i32 @llvm.riscv.orc.b.i32(i32) #1\n\nattributes #0 = { \"target-features\"=\"+v\" }\nattributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

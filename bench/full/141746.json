@@ -1,0 +1,80 @@
+{
+  "base_commit": "ebe25d8428ea68d2d9ce360076ee66d2d615dbb5",
+  "bug_id": "141746",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelDAGToDAG.cpp": [
+        "AArch64DAGToDAGISel::Select",
+        "AArch64DAGToDAGISel::trySelectXAR"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelDAGToDAG.cpp": [
+        [
+          4637,
+          4651
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "32837f376f3c795d3ae6e632adc4f1a60180a646"
+  },
+  "issue": {
+    "author": "nikic",
+    "body": "```llvm\ntarget triple = \"arm64-apple-macosx11.0.0\"\n\ndefine <1 x i64> @test(<1 x i64> %v.val) #0 {\n  %fshl = tail call <1 x i64> @llvm.fshl.v1i64(<1 x i64> %v.val, <1 x i64> %v.val, <1 x i64> splat (i64 1))\n  ret <1 x i64> %fshl\n}\n\nattributes #0 = { \"target-features\"=\"+sha3\" }\n```\n\n```\nQ0 = COPY D0\nunimplemented reg-to-reg copy\nUNREACHABLE executed at /home/npopov/repos/llvm-project/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp:5366!\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: build/bin/llc\n1.\tRunning pass 'Function Pass Manager' on module '<stdin>'.\n2.\tRunning pass 'Post-RA pseudo instruction expansion pass' on function '@test'\n #0 0x0000000006f6c308 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (build/bin/llc+0x6f6c308)\n #1 0x0000000006f69d9e llvm::sys::RunSignalHandlers() (build/bin/llc+0x6f69d9e)\n #2 0x0000000006f6c9e1 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #3 0x00007f94f1a27c30 __restore_rt (/lib64/libc.so.6+0x19c30)\n #4 0x00007f94f1a8111c __pthread_kill_implementation (/lib64/libc.so.6+0x7311c)\n #5 0x00007f94f1a27afe gsignal (/lib64/libc.so.6+0x19afe)\n #6 0x00007f94f1a0f6d0 abort (/lib64/libc.so.6+0x16d0)\n #7 0x0000000006ed250f (build/bin/llc+0x6ed250f)\n #8 0x00000000041d9b4b llvm::AArch64InstrInfo::copyPhysReg(llvm::MachineBasicBlock&, llvm::MachineInstrBundleIterator<llvm::MachineInstr, false>, llvm::DebugLoc const&, llvm::Register, llvm::Register, bool, bool, bool) const AArch64InstrInfo.cpp:0:0\n #9 0x00000000063093e9 llvm::TargetInstrInfo::lowerCopy(llvm::MachineInstr*, llvm::TargetRegisterInfo const*) const (build/bin/llc+0x63093e9)\n#10 0x0000000005ee361f (anonymous namespace)::ExpandPostRA::run(llvm::MachineFunction&) ExpandPostRAPseudos.cpp:0:0\n#11 0x0000000005ee3ebe (anonymous namespace)::ExpandPostRALegacy::runOnMachineFunction(llvm::MachineFunction&) ExpandPostRAPseudos.cpp:0:0\n```",
+    "comments": [
+      {
+        "author": "davemgreen",
+        "body": "Same thing happens with the old XAR code: https://godbolt.org/z/xMMjYY817. We should be either excluding v1i64 types or handling them with inserts/extracts to  v2i64."
+      },
+      {
+        "author": "davemgreen",
+        "body": "The original probably had the xor. The code was updated in https://github.com/llvm/llvm-project/commit/36bb17aa6544c1f62309a6162555262f282e1d13 to handle more cases."
+      },
+      {
+        "author": "tstellar",
+        "body": "Is there a backport PR for this one?"
+      },
+      {
+        "author": "nikic",
+        "body": "Backport PR created at: https://github.com/llvm/llvm-project/pull/143163 Hope I got the conflict resolution right."
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "release:backport",
+      "release:cherry-pick-failed",
+      "crash"
+    ],
+    "title": "[AArch64] llvm.fshl with <1 x i64> asserts with unimplemented reg-to-reg copy"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/141746",
+  "knowledge_cutoff": "2025-05-28T11:04:38Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 32837f376f3c795d3ae6e632adc4f1a60180a646\nAuthor: David Green <david.green@arm.com>\nDate:   Thu May 29 10:22:24 2025 +0100\n\n    [AArch64] Handle XAR with v1i64 operand types (#141754)\n    \n    When converting ROTR(XOR(a, b)) to XAR(a, b), or ROTR(a, a) to XAR(a, zero)\n    we were not handling v1i64 types, meaning illegal copies get generated. This\n    addresses that by generating insert_subreg and extract_subreg for v1i64 to\n    keep the values with the correct types.\n    \n    Fixes #141746\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelDAGToDAG.cpp b/llvm/lib/Target/AArch64/AArch64ISelDAGToDAG.cpp\nindex 2eb8c6008db0..34f6db9374cb 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelDAGToDAG.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelDAGToDAG.cpp\n@@ -4637,15 +4637,38 @@ bool AArch64DAGToDAGISel::trySelectXAR(SDNode *N) {\n \n   if (!IsXOROperand) {\n     SDValue Zero = CurDAG->getTargetConstant(0, DL, MVT::i64);\n-    SDNode *MOV = CurDAG->getMachineNode(AArch64::MOVIv2d_ns, DL, VT, Zero);\n+    SDNode *MOV =\n+        CurDAG->getMachineNode(AArch64::MOVIv2d_ns, DL, MVT::v2i64, Zero);\n     SDValue MOVIV = SDValue(MOV, 0);\n     R1 = N1->getOperand(0);\n     R2 = MOVIV;\n   }\n \n+  // If the input is a v1i64, widen to a v2i64 to use XAR.\n+  assert((VT == MVT::v1i64 || VT == MVT::v2i64) && \"Unexpected XAR type!\");\n+  if (VT == MVT::v1i64) {\n+    EVT SVT = MVT::v2i64;\n+    SDValue Undef =\n+        SDValue(CurDAG->getMachineNode(AArch64::IMPLICIT_DEF, DL, SVT), 0);\n+    SDValue DSub = CurDAG->getTargetConstant(AArch64::dsub, DL, MVT::i32);\n+    R1 = SDValue(CurDAG->getMachineNode(AArch64::INSERT_SUBREG, DL, SVT, Undef,\n+                                        R1, DSub),\n+                 0);\n+    if (R2.getValueType() == MVT::v1i64)\n+      R2 = SDValue(CurDAG->getMachineNode(AArch64::INSERT_SUBREG, DL, SVT,\n+                                          Undef, R2, DSub),\n+                   0);\n+  }\n+\n   SDValue Ops[] = {R1, R2, Imm};\n-  CurDAG->SelectNodeTo(N, AArch64::XAR, N0.getValueType(), Ops);\n+  SDNode *XAR = CurDAG->getMachineNode(AArch64::XAR, DL, MVT::v2i64, Ops);\n \n+  if (VT == MVT::v1i64) {\n+    SDValue DSub = CurDAG->getTargetConstant(AArch64::dsub, DL, MVT::i32);\n+    XAR = CurDAG->getMachineNode(AArch64::EXTRACT_SUBREG, DL, VT,\n+                                 SDValue(XAR, 0), DSub);\n+  }\n+  ReplaceNode(N, XAR);\n   return true;\n }\n \n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=arm64-apple-macosx11.0.0"
+      ],
+      "file": "<issue-body>",
+      "tests": [
+        {
+          "test_body": "target triple = \"arm64-apple-macosx11.0.0\"\n\ndefine <1 x i64> @test(<1 x i64> %v.val) #0 {\n  %fshl = tail call <1 x i64> @llvm.fshl.v1i64(<1 x i64> %v.val, <1 x i64> %v.val, <1 x i64> splat (i64 1))\n  ret <1 x i64> %fshl\n}\n\nattributes #0 = { \"target-features\"=\"+sha3\" }",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

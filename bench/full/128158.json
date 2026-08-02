@@ -1,0 +1,74 @@
+{
+  "base_commit": "998b28f19672ba49925e25f1a78c1252f017c247",
+  "bug_id": "128158",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "combinei64TruncSrlAdd"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          53712,
+          53718
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "3ec83f5774f391076cef094249fe9fa48cdc61fc"
+  },
+  "issue": {
+    "author": "dtcxzyw",
+    "body": "Reproducer: https://godbolt.org/z/76no4o4cM\n```\n; bin/llc test.ll -o -\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\ndefine i32 @main(i64 %retval.sroa.0.0.copyload.i.i.pre) {\nentry:\n  br label %for.body.i\n\nfor.body.i:                                       ; preds = %for.body.i, %entry\n  %0 = add i64 %retval.sroa.0.0.copyload.i.i.pre, -4294967296\n  %tobool.not.not.i.i = icmp ult i64 %0, 38654705664\n  br i1 %tobool.not.not.i.i, label %for.body.i, label %for.cond6.preheader.i.i\n\nfor.cond6.preheader.i.i:                          ; preds = %for.body.i\n  ret i32 0\n}\n```\n```\nllc: /data/zyw/llvm-project/llvm/lib/IR/Type.cpp:312: static llvm::IntegerType* llvm::IntegerType::get(llvm::LLVMContext&, unsigned int): Assertion `NumBits >= MIN_INT_BITS && \"bitwidth too small\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.      Program arguments: ../llvm-build/bin/llc reduced.ll\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\n2.      Running pass 'X86 DAG->DAG Instruction Selection' on function '@main'\n #0 0x00007ffff3bf09c2 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/data/zyw/llvm-build/bin/../lib/libLLVMSupport.so.21.0git+0x1f09c2)\n #1 0x00007ffff3bedb5f llvm::sys::RunSignalHandlers() (/data/zyw/llvm-build/bin/../lib/libLLVMSupport.so.21.0git+0x1edb5f)\n #2 0x00007ffff3bedca4 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #3 0x00007ffff3242520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #4 0x00007ffff32969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #5 0x00007ffff3242476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #6 0x00007ffff32287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #7 0x00007ffff322871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #8 0x00007ffff3239e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #9 0x00007ffff4125abd llvm::IntegerType::get(llvm::LLVMContext&, unsigned int) (/data/zyw/llvm-build/bin/../lib/libLLVMCore.so.21.0git+0x325abd)\n#10 0x00007ffff61c362d llvm::EVT::getExtendedIntegerVT(llvm::LLVMContext&, unsigned int) (/data/zyw/llvm-build/bin/../lib/libLLVMCodeGen.so.21.0git+0x7c362d)\n#11 0x00007ffff78af4cb combineTruncate(llvm::SDNode*, llvm::SelectionDAG&, llvm::X86Subtarget const&) X86ISelLowering.cpp:0:0\n#12 0x00007ffff67335c1 (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#13 0x00007ffff6734ff4 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#14 0x00007ffff673794d llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/data/zyw/llvm-build/bin/../lib/libLLVMSelectionDAG.so.21.0git+0x13794d)\n#15 0x00007ffff699fae2 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/data/zyw/llvm-build/bin/../lib/libLLVMSelectionDAG.so.21.0git+0x39fae2)\n#16 0x00007ffff69a328c llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/data/zyw/llvm-build/bin/../lib/libLLVMSelectionDAG.so.21.0git+0x3a328c)\n#17 0x00007ffff69a4aa9 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/data/zyw/llvm-build/bin/../lib/libLLVMSelectionDAG.so.21.0git+0x3a4aa9)\n#18 0x00007ffff6994e37 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/data/zyw/llvm-build/bin/../lib/libLLVMSelectionDAG.so.21.0git+0x394e37)\n#19 0x00007ffff5e01ed5 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#20 0x00007ffff40a6d11 llvm::FPPassManager::runOnFunction(llvm::Function&) (/data/zyw/llvm-build/bin/../lib/libLLVMCore.so.21.0git+0x2a6d11)\n#21 0x00007ffff40a6ef1 llvm::FPPassManager::runOnModule(llvm::Module&) (/data/zyw/llvm-build/bin/../lib/libLLVMCore.so.21.0git+0x2a6ef1)\n#22 0x00007ffff40a78b3 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/data/zyw/llvm-build/bin/../lib/libLLVMCore.so.21.0git+0x2a78b3)\n#23 0x000055555556f2e5 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#24 0x0000555555563507 main (../llvm-build/bin/llc+0xf507)\n#25 0x00007ffff3229d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#26 0x00007ffff3229e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#27 0x00005555555642d5 _start (../llvm-build/bin/llc+0x102d5)\nAborted (core dumped)\n```\nllvm version: 6d5ba79c6604a6f66400d573b8aabc34cb75d0b5\nIt is a recent regression. I think it is not related with https://github.com/llvm/llvm-project/issues/128139.\n\n",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "@dtcxzyw This might be due to #126448 "
+      },
+      {
+        "author": "dyung",
+        "body": "We are also seeing this assertion failure in multiple internal tests and I bisected one back to #126448."
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid",
+      "generated by fuzzer"
+    ],
+    "title": "[SDAG] Assertion `NumBits >= MIN_INT_BITS && \"bitwidth too small\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/128158",
+  "knowledge_cutoff": "2025-02-21T10:13:56Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 3ec83f5774f391076cef094249fe9fa48cdc61fc\nAuthor: Yingwei Zheng <dtcxzyw2333@gmail.com>\nDate:   Sat Feb 22 12:05:59 2025 +0800\n\n    [X86][DAGCombiner] Fix assertion failure in `combinei64TruncSrlAdd` (#128194)\n    \n    Closes https://github.com/llvm/llvm-project/issues/128158.\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex f8f7d3e36789..95fd7f9b9428 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -53712,7 +53712,7 @@ static SDValue combinei64TruncSrlAdd(SDValue N, EVT VT, SelectionDAG &DAG,\n                                  m_ConstInt(SrlConst)))))\n     return SDValue();\n \n-  if (SrlConst.ule(31) || AddConst.lshr(SrlConst).shl(SrlConst) != AddConst)\n+  if (SrlConst.ule(32) || AddConst.lshr(SrlConst).shl(SrlConst) != AddConst)\n     return SDValue();\n \n   SDValue AddLHSSrl =\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-unknown"
+      ],
+      "file": "llvm/test/CodeGen/X86/combine-i64-trunc-srl-add.ll",
+      "tests": [
+        {
+          "test_body": "define i32 @test_trunc_add(i64 %x) {\n  %add = add i64 %x, 3940649673949184\n  %shr = lshr i64 %add, 48\n  %conv = trunc i64 %shr to i32\n  ret i32 %conv\n}\n",
+          "test_name": "test_trunc_add"
+        },
+        {
+          "test_body": "define i32 @pr128158(i64 %x) {\nentry:\n  br label %for.body\n\nfor.body:                                         ; preds = %for.body, %entry\n  %add = add i64 %x, -4294967296\n  %cmp = icmp ult i64 %add, 38654705664\n  br i1 %cmp, label %for.body, label %exit\n\nexit:                                             ; preds = %for.body\n  ret i32 0\n}\n",
+          "test_name": "pr128158"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

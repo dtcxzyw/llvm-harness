@@ -1,0 +1,77 @@
+{
+  "base_commit": "1fb8e3d76e87a6c6f0d8fc7aa4e7ed75e3641fee",
+  "bug_id": "167842",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp": [
+        "GISelValueTracking::computeKnownBitsImpl"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp": [
+        [
+          247,
+          252
+        ],
+        [
+          255,
+          263
+        ]
+      ]
+    },
+    "components": [
+      "GlobalISel"
+    ],
+    "fix_commit": "93a8ca8fc738379333242ee51d9e080fbb283c6e"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/s4n78xc9a\nTestcase:\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-musl\"\n\ndefine <4 x i32> @backsmith_pure_2(<8 x i16> %BS_ARG_1, i1 %exitcond.not) {\nentry:\n  br label %for.body\n\nfor.cond.cleanup:                                 ; preds = %for.body\n  %vecinit18 = insertelement <4 x i32> zeroinitializer, i32 %BS_VAR_2.025, i64 0\n  ret <4 x i32> %vecinit18\n\nfor.body:                                         ; preds = %for.body, %entry\n  %BS_VAR_2.025 = phi i32 [ 0, %entry ], [ %2, %for.body ]\n  %0 = extractelement <8 x i16> %BS_ARG_1, i32 %BS_VAR_2.025\n  %1 = and i16 %0, 255\n  %cmp2 = icmp eq i16 %1, 0\n  %conv4 = zext i1 %cmp2 to i8\n  %vecinit7 = insertelement <4 x i8> zeroinitializer, i8 %conv4, i64 0\n  %2 = bitcast <4 x i8> %vecinit7 to i32\n  br i1 %exitcond.not, label %for.cond.cleanup, label %for.body\n}\n```\n\nllc output:\n```\nllc: /root/llvm-project/llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp:176: void llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, const llvm::APInt&, unsigned int): Assertion `DstTy.getNumElements() == DemandedElts.getBitWidth() && \"DemandedElt width should equal the fixed vector number of elements\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -global-isel -O2 <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'InstructionSelect' on function '@backsmith_pure_2'\n #0 0x00000000041c2638 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x41c2638)\n #1 0x00000000041bf4e4 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x000073240b442520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000073240b4969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000073240b442476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000073240b4287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x000073240b42871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x000073240b439e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x000000000477f004 llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x477f004)\n #9 0x000000000477b652 llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x477b652)\n#10 0x000000000477b652 llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x477b652)\n#11 0x000000000477b7a1 llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x477b7a1)\n#12 0x000000000477be1f llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x477be1f)\n#13 0x000000000477fd21 llvm::GISelValueTracking::getKnownBits(llvm::Register) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x477fd21)\n#14 0x0000000000bbd248 (anonymous namespace)::AArch64InstructionSelector::testMOPredicate_MO(unsigned int, llvm::MachineOperand const&, llvm::GIMatchTableExecutor::MatcherState const&) const AArch64InstructionSelector.cpp:0:0\n#15 0x0000000000bef022 (anonymous namespace)::AArch64InstructionSelector::select(llvm::MachineInstr&) AArch64InstructionSelector.cpp:0:0\n#16 0x0000000004825835 llvm::InstructionSelect::selectMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4825835)\n#17 0x0000000004827cc8 llvm::InstructionSelect::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4827cc8)\n#18 0x00000000030a1219 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#19 0x00000000036f0a06 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36f0a06)\n#20 0x00000000036f0db1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36f0db1)\n#21 0x00000000036f161f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36f161f)\n#22 0x00000000008fca42 compileModule(char**, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#23 0x00000000007c84f9 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c84f9)\n#24 0x000073240b429d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#25 0x000073240b429e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#26 0x00000000008f1275 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8f1275)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "cofibrant",
+        "body": "If no-one minds, I'd like to take a look at this?"
+      },
+      {
+        "author": "davemgreen",
+        "body": "Yeah go for it. I think it is not expecting a the COPY doing a subreg extract with a vector type."
+      },
+      {
+        "author": "cofibrant",
+        "body": "I think I have a fix--just adding some tests and preparing the patch."
+      }
+    ],
+    "labels": [
+      "llvm:globalisel",
+      "crash-on-valid"
+    ],
+    "title": "[AArch64][GISel] llc crashed at -O1/O2/O3: Assertion `DstTy.getNumElements() == DemandedElts.getBitWidth() && \"DemandedElt width should equal the fixed vector number of elements\"' failed"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/167842",
+  "knowledge_cutoff": "2025-11-13T08:11:12Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 93a8ca8fc738379333242ee51d9e080fbb283c6e\nAuthor: Nathan Corbyn <n_corbyn@apple.com>\nDate:   Tue Nov 18 16:42:58 2025 +0000\n\n    [AArch64][GISel] Don't crash in known-bits when copying from vectors to non-vectors (#168081)\n    \n    Updates the demanded elements before recursing through copies in case\n    the type of the source register changes from a non-vector register to a\n    vector register.\n    \n    Fixes #167842.\n\ndiff --git a/llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp b/llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp\nindex c1fb8b6d78ff..ecba323f8d6b 100644\n--- a/llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp\n+++ b/llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp\n@@ -247,6 +247,7 @@ void GISelValueTracking::computeKnownBitsImpl(Register R, KnownBits &Known,\n     for (unsigned Idx = 1; Idx < MI.getNumOperands(); Idx += 2) {\n       const MachineOperand &Src = MI.getOperand(Idx);\n       Register SrcReg = Src.getReg();\n+      LLT SrcTy = MRI.getType(SrcReg);\n       // Look through trivial copies and phis but don't look through trivial\n       // copies or phis of the form `%1:(s32) = OP %0:gpr32`, known-bits\n       // analysis is currently unable to determine the bit width of a\n@@ -255,9 +256,15 @@ void GISelValueTracking::computeKnownBitsImpl(Register R, KnownBits &Known,\n       // We can't use NoSubRegister by name as it's defined by each target but\n       // it's always defined to be 0 by tablegen.\n       if (SrcReg.isVirtual() && Src.getSubReg() == 0 /*NoSubRegister*/ &&\n-          MRI.getType(SrcReg).isValid()) {\n+          SrcTy.isValid()) {\n+        // In case we're forwarding from a vector register to a non-vector\n+        // register we need to update the demanded elements to reflect this\n+        // before recursing.\n+        APInt NowDemandedElts = SrcTy.isFixedVector() && !DstTy.isFixedVector()\n+                                    ? APInt::getAllOnes(SrcTy.getNumElements())\n+                                    : DemandedElts; // Known to be APInt(1, 1)\n         // For COPYs we don't do anything, don't increase the depth.\n-        computeKnownBitsImpl(SrcReg, Known2, DemandedElts,\n+        computeKnownBitsImpl(SrcReg, Known2, NowDemandedElts,\n                              Depth + (Opcode != TargetOpcode::COPY));\n         Known2 = Known2.anyextOrTrunc(BitWidth);\n         Known = Known.intersectWith(Known2);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -global-isel -o - %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/GlobalISel/knownbits-copy-vector-crash.ll",
+      "tests": [
+        {
+          "test_body": "\ntarget triple = \"aarch64-unknown-unknown\"\n\n; Check we don't crash here when computing known bits.\n\ndefine <4 x i32> @test(<8 x i16> %in, i1 %continue) {\nentry:\n  br label %loop\n\nexit:\n  %result = insertelement <4 x i32> zeroinitializer, i32 %index, i64 0\n  ret <4 x i32> %result\n\nloop:\n  %index = phi i32 [ 0, %entry ], [ %insert.bitcast, %loop ]\n  %extracted = extractelement <8 x i16> %in, i32 %index\n  %masked = and i16 %extracted, 255\n  %maskedIsZero = icmp eq i16 %masked, 0\n  %maskedIsZero.zext = zext i1 %maskedIsZero to i8\n  %insert = insertelement <4 x i8> zeroinitializer, i8 %maskedIsZero.zext, i64 0\n  %insert.bitcast = bitcast <4 x i8> %insert to i32\n  br i1 %continue, label %exit, label %loop\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

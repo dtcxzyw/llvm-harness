@@ -1,0 +1,81 @@
+{
+  "base_commit": "b2f3ac836aac166b8fb21690a0a480c816de0521",
+  "bug_id": "104864",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp": [
+        "ComputePTXValueVTs"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp": [
+        [
+          236,
+          241
+        ]
+      ]
+    },
+    "components": [
+      "NVPTX"
+    ],
+    "fix_commit": "fda2fea3d161e07ec3a8441359f761ce9dd9a977"
+  },
+  "issue": {
+    "author": "justinfargnoli",
+    "body": "Lowering `v2i8` as a return type is causing a compiler crash. \r\n\r\nReproducer on compiler explorer: https://godbolt.org/z/znxzW9Eqj\r\n\r\n_Originally posted by @Artem-B in https://github.com/llvm/llvm-project/pull/104524#discussion_r1722353170_\r\n            ",
+    "comments": [
+      {
+        "author": "justinfargnoli",
+        "body": "Reproducer: \r\n```\r\ndefine <2 x i8> @byte2() {\r\n  ret <2 x i8> zeroinitializer\r\n}\r\n```"
+      },
+      {
+        "author": "justinfargnoli",
+        "body": "This is caused by `SelectionDAG` wanting to lower `v2i8` as ***1*** `v2i16` value while `ComputePTXValueVTs` wants to lower it to ***2*** `i8` values. "
+      },
+      {
+        "author": "justinfargnoli",
+        "body": "@manasij7479 is going to look into this. "
+      }
+    ],
+    "labels": [
+      "crash",
+      "backend:NVPTX"
+    ],
+    "title": "[NVPTX] Failure to lower `v2i8`"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/104864",
+  "knowledge_cutoff": "2024-08-19T21:30:25Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/NVPTX"
+  ],
+  "patch": "commit fda2fea3d161e07ec3a8441359f761ce9dd9a977\nAuthor: Manasij Mukherjee <manasij7479@gmail.com>\nDate:   Fri Oct 4 15:15:30 2024 -0600\n\n    [NVPTX] Promote v2i8 to v2i16 (#111189)\n    \n    Promote v2i8 to v2i16, fixes a crash.\n    Re-enable a test in NVPTX/vector-returns.ll\n    \n    https://github.com/llvm/llvm-project/issues/104864\n\ndiff --git a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp\nindex 8718b7890bf5..57bc5fe0ac36 100644\n--- a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp\n+++ b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp\n@@ -236,6 +236,10 @@ static void ComputePTXValueVTs(const TargetLowering &TLI, const DataLayout &DL,\n         // v*i8 are formally lowered as v4i8\n         EltVT = MVT::v4i8;\n         NumElts = (NumElts + 3) / 4;\n+      } else if (EltVT.getSimpleVT() == MVT::i8 && NumElts == 2) {\n+        // v2i8 is promoted to v2i16\n+        NumElts = 1;\n+        EltVT = MVT::v2i16;\n       }\n       for (unsigned j = 0; j != NumElts; ++j) {\n         ValueVTs.push_back(EltVT);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -march=nvptx64 -mcpu=sm_20"
+      ],
+      "file": "llvm/test/CodeGen/NVPTX/vector-returns.ll",
+      "tests": [
+        {
+          "test_body": "target triple = \"nvptx-nvidia-cuda\"\n\ndefine <1 x i8> @byte1() {\n  ret <1 x i8> zeroinitializer\n}\n",
+          "test_name": "byte1"
+        },
+        {
+          "test_body": "target triple = \"nvptx-nvidia-cuda\"\n\ndefine <2 x i8> @byte2() {\n  ret <2 x i8> zeroinitializer\n}\n",
+          "test_name": "byte2"
+        },
+        {
+          "test_body": "target triple = \"nvptx-nvidia-cuda\"\n\ndefine <3 x i8> @byte3() {\n  ret <3 x i8> zeroinitializer\n}\n",
+          "test_name": "byte3"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,60 @@
+{
+  "base_commit": "f79f58d5f1be370ccc212236e1c10b55835eb3c7",
+  "bug_id": "80294",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/StatepointLowering.cpp": [
+        "SelectionDAGBuilder::visitGCRelocate"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/StatepointLowering.cpp": [
+        [
+          1287,
+          1293
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "e20462a069670c24ff512cca32688a29803852f4"
+  },
+  "issue": {
+    "author": "TatyanaDoubts",
+    "body": "https://godbolt.org/z/1Pxe4dqzd\r\n\r\nRun llc with Test.ll\r\n\r\nTest.ll\r\n```\r\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128-ni:1-p2:32:8:8:32-ni:2\"\r\ntarget triple = \"x86_64-unknown-linux-gnu\"\r\n\r\n; Function Attrs: uwtable\r\ndefine void @foo() gc \"statepoint-example\" {\r\nbb:\r\n  %icmp = icmp eq i32 0, 0\r\n  br i1 %icmp, label %bb3, label %bb1\r\n\r\nbb1:                                              ; preds = %bb\r\n  %call = call token (i64, i32, ptr, i32, i32, ...) @llvm.experimental.gc.statepoint.p0(i64 0, i32 0, ptr nonnull elementtype(void ()) null, i32 0, i32 0, i32 0, i32 0) [ \"deopt\"(i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, ptr addrspace(1) null, i32 0, ptr null, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, double 0.000000e+00, i32 0, ptr null, i32 0, ptr addrspace(1) null, i32 0, ptr addrspace(1) null, i32 0, ptr addrspace(1) null, i32 0, ptr addrspace(1) null), \"gc-live\"(ptr addrspace(1) null, ptr addrspace(1) null, ptr addrspace(1) null, ptr addrspace(1) null, ptr addrspace(1) null, ptr addrspace(1) undef, ptr addrspace(1) null) ]\r\n  %call2 = call coldcc ptr addrspace(1) @llvm.experimental.gc.relocate.p1(token %call, i32 0, i32 5) ; (null, undef)\r\n  br label %bb3\r\n\r\nbb3:                                              ; preds = %bb1, %bb\r\n  %phi = phi ptr addrspace(1) [ null, %bb ], [ %call2, %bb1 ]\r\n  store atomic i32 0, ptr addrspace(1) %phi unordered, align 4\r\n  ret void\r\n}\r\n\r\ndeclare token @llvm.experimental.gc.statepoint.p0(i64 immarg, i32 immarg, ptr, i32 immarg, i32 immarg, ...)\r\n\r\ndeclare ptr addrspace(1) @llvm.experimental.gc.relocate.p1(token, i32 immarg, i32 immarg)\r\n```",
+    "comments": [],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "Assertion `I != VRBaseMap.end() && \"Node emitted out of order - late\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/80294",
+  "knowledge_cutoff": "2024-02-01T14:10:09Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit e20462a069670c24ff512cca32688a29803852f4\nAuthor: Danila Malyutin <danilaml@users.noreply.github.com>\nDate:   Tue Feb 13 22:58:01 2024 +0400\n\n    [StatepointLowering] Use Constant instead of TargetConstant for undef value (#81635)\n    \n    Prevents isel errors when trying to lower gc relocate of undef value\n    (which turns into CopyToReg of TargetConstant). Such relocates may occur\n    after DCE (e.g. after GVN removes some dead blocks) if there are not\n    passes like instcombine scheduled after to clean them up.\n    \n    Fixes #80294\n    \n    ---------\n    \n    Co-authored-by: Matt Arsenault <arsenm2@gmail.com>\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/StatepointLowering.cpp b/llvm/lib/CodeGen/SelectionDAG/StatepointLowering.cpp\nindex 1320479915e3..d7f4d1c89375 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/StatepointLowering.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/StatepointLowering.cpp\n@@ -1287,7 +1287,7 @@ void SelectionDAGBuilder::visitGCRelocate(const GCRelocateInst &Relocate) {\n   if (SD.isUndef() && SD.getValueType().getSizeInBits() <= 64) {\n     // Lowering relocate(undef) as arbitrary constant. Current constant value\n     // is chosen such that it's unlikely to be a valid pointer.\n-    setValue(&Relocate, DAG.getTargetConstant(0xFEFEFEFE, SDLoc(SD), MVT::i64));\n+    setValue(&Relocate, DAG.getConstant(0xFEFEFEFE, SDLoc(SD), MVT::i64));\n     return;\n   }\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -verify-machineinstrs < %s"
+      ],
+      "file": "llvm/test/CodeGen/X86/statepoint-relocate-undef.ll",
+      "tests": [
+        {
+          "test_body": "\ntarget datalayout = \"e-i64:64-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-pc-linux-gnu\"\n\ndeclare void @use(...)\ndeclare void @f()\ndeclare token @llvm.experimental.gc.statepoint.p0(i64, i32, ptr, i32, i32, ...)\ndeclare ptr addrspace(1) @llvm.experimental.gc.relocate.p1(token, i32, i32)\n\n;; Check that llvm doesn't crash if relocate with undef base/derived ptr survives until isel\ndefine void @test_gcrelocate_undef(ptr addrspace(1) %ptr) gc \"statepoint-example\" {\n  %tok = tail call token (i64, i32, ptr, i32, i32, ...)\n      @llvm.experimental.gc.statepoint.p0(i64 0, i32 0, ptr elementtype(void ()) @f, i32 0, i32 0, i32 0, i32 0) [\"gc-live\" (ptr addrspace(1) %ptr, ptr addrspace(1) undef), \"deopt\" (ptr addrspace(1) %ptr, i32 undef)]\n  %a = call ptr addrspace(1) @llvm.experimental.gc.relocate.p1(token %tok, i32 0, i32 1)\n  call void (...) @use(ptr addrspace(1) %a)\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

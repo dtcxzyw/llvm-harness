@@ -1,0 +1,97 @@
+{
+  "base_commit": "cd4c5280c73d42fd41819cc8927d00787ade88e0",
+  "bug_id": "159772",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {},
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64InstrInfo.td": [
+        [
+          9907,
+          9914
+        ],
+        [
+          10236,
+          10243
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "f27442b80acf94ccab3bf915ff0730a0d794e059"
+  },
+  "issue": {
+    "author": "jan-wassenberg",
+    "body": "```\nfatal error: error in backend: Cannot select: 0x703cbd93e700: v4bf16 = bitcast 0x703cba89b230\n  0x703cba89b230: v4f16 = insert_vector_elt 0x703cbe83b460, 0x703cb942cc40, Constant:i64<2>\n    0x703cbe83b460: v4f16 = bitcast 0x703cbe82f7e0\n      0x703cbe82f7e0: v4i16 = AArch64ISD::ZIP1 0x703cbe83bd90, 0x703cb942cf50\n        0x703cbe83bd90: v4i16 = scalar_to_vector 0x703cba89baf0\n          0x703cba89baf0: i32,ch = load<(load (s16) from %ir.1830, !alias.scope !19723), anyext from i16> 0x703cbb931d08, 0x703cbd275070, undef:i64\n            0x703cbd275070: i64,ch = CopyFromReg 0x703cbb931d08, Register:i64 %568\n        0x703cb942cf50: v4i16 = BUILD_VECTOR Constant:i32<0>, Constant:i32<0>, undef:i32, undef:i32\n    0x703cb942cc40: f16 = extract_vector_elt 0x703cbd275d90, Constant:i64<0>\n      0x703cbd275d90: v8f16 = bitcast 0x703cbe82f8c0\n        0x703cbe82f8c0: v8i16 = insert_subvector undef:v8i16, 0x703cbe83bd90, Constant:i64<0>\n          0x703cbe83bd90: v4i16 = scalar_to_vector 0x703cba89baf0\n            0x703cba89baf0: i32,ch = load<(load (s16) from %ir.1830, !alias.scope !19723), anyext from i16> 0x703cbb931d08, 0x703cbd275070, undef:i64\n              0x703cbd275070: i64,ch = CopyFromReg 0x703cbb931d08, Register:i64 %568\nIn function: _ZN3hwy11N_NEON_BF166detail14ForeachCappedRINS_10bfloat16_tELm2ELm2ENS0_12_GLOBAL__N_17TestDotELi0EE2DoEmm\n```\n\nThis comes after replacing a scalar loop with masked vector code in https://github.com/google/highway/pull/2703.\nThe code being patched is https://github.com/google/highway/blob/master/hwy/contrib/dot/dot-inl.h.\n\nCompilation is for aarch64, optimized build, and NEON with BF16, hence something like armv9-a+sve2-aes. (Arm 8.6 may be sufficient).",
+    "comments": [
+      {
+        "author": "vekterli",
+        "body": "A somewhat reduced (but still dependent on `<hwy/highway.h>`) test case reproducing the crash: https://godbolt.org/z/jMTn9vWz7\n\nCompiles OK on 19.1.0, fails on 20.1.0...trunk"
+      },
+      {
+        "author": "davemgreen",
+        "body": "Oh, that's kind of surprising that we haven't ran into it already.\nllvm reproducer from above: https://godbolt.org/z/5bo9TT59s\nAnd a smaller version: https://godbolt.org/z/Yenh3Weav"
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "crash"
+    ],
+    "title": "[clang] Crash on aarch64 bf16 SIMD"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/159772",
+  "knowledge_cutoff": "2025-09-19T12:57:44Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit f27442b80acf94ccab3bf915ff0730a0d794e059\nAuthor: David Green <david.green@arm.com>\nDate:   Mon Sep 29 07:24:57 2025 +0100\n\n    [AArch64] Add missing bitcast patterns for bf16<->f16 converts. (#159816)\n    \n    This fills in the missing patterns for bicasting v4f16 to/from v4bf16,\n    and v8f16 to/from v8f16. Clean up some formatting whilst here.\n    \n    Fixes #159772\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.td b/llvm/lib/Target/AArch64/AArch64InstrInfo.td\nindex 04b3c90c2e17..f788c7510f80 100644\n--- a/llvm/lib/Target/AArch64/AArch64InstrInfo.td\n+++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.td\n@@ -9907,8 +9907,14 @@ def : Pat<(v4bf16 (bitconvert (v2f32 FPR64:$src))),\n def : Pat<(v4bf16 (bitconvert (v1f64 FPR64:$src))),\n           (v4bf16 (REV64v4i16 FPR64:$src))>;\n }\n-def : Pat<(v4f16 (bitconvert (v4i16 FPR64:$src))), (v4f16 FPR64:$src)>;\n-def : Pat<(v4bf16 (bitconvert (v4i16 FPR64:$src))), (v4bf16 FPR64:$src)>;\n+def : Pat<(v4f16 (bitconvert (v4i16 FPR64:$src))),\n+          (v4f16 FPR64:$src)>;\n+def : Pat<(v4f16 (bitconvert (v4bf16 FPR64:$src))),\n+          (v4f16 FPR64:$src)>;\n+def : Pat<(v4bf16 (bitconvert (v4i16 FPR64:$src))),\n+          (v4bf16 FPR64:$src)>;\n+def : Pat<(v4bf16 (bitconvert (v4f16 FPR64:$src))),\n+          (v4bf16 FPR64:$src)>;\n \n let Predicates = [IsLE] in {\n def : Pat<(v8i8  (bitconvert (v1i64 FPR64:$src))), (v8i8  FPR64:$src)>;\n@@ -10236,8 +10242,14 @@ def : Pat<(v8bf16 (bitconvert (v2f64 FPR128:$src))),\n def : Pat<(v8bf16 (bitconvert (v4f32 FPR128:$src))),\n           (v8bf16 (REV32v8i16 FPR128:$src))>;\n }\n-def : Pat<(v8f16 (bitconvert (v8i16 FPR128:$src))), (v8f16 FPR128:$src)>;\n-def : Pat<(v8bf16 (bitconvert (v8i16 FPR128:$src))), (v8bf16 FPR128:$src)>;\n+def : Pat<(v8f16 (bitconvert (v8i16 FPR128:$src))),\n+          (v8f16 FPR128:$src)>;\n+def : Pat<(v8bf16 (bitconvert (v8i16 FPR128:$src))),\n+          (v8bf16 FPR128:$src)>;\n+def : Pat<(v8f16 (bitconvert (v8bf16 FPR128:$src))),\n+          (v8f16 FPR128:$src)>;\n+def : Pat<(v8bf16 (bitconvert (v8f16 FPR128:$src))),\n+          (v8bf16 FPR128:$src)>;\n \n let Predicates = [IsLE] in {\n def : Pat<(v16i8 (bitconvert (f128  FPR128:$src))), (v16i8 FPR128:$src)>;\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64 -mattr=+bf16"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/bf16-vector-bitcast.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <4 x half> @v4bf16_to_v4f16(float %0, <4 x bfloat> %a) #0 {\nentry:\n  %1 = bitcast <4 x bfloat> %a to <4 x half>\n  ret <4 x half> %1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "v4bf16_to_v4f16"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <4 x bfloat> @v2i32_to_v4bf16(float %0, <2 x i32> %a) #0 {\nentry:\n  %1 = bitcast <2 x i32> %a to <4 x bfloat>\n  ret <4 x bfloat> %1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "v2i32_to_v4bf16"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <8 x bfloat> @v8f16_to_v8bf16(float %0, <8 x half> %a) #0 {\nentry:\n  %1 = bitcast <8 x half> %a to <8 x bfloat>\n  ret <8 x bfloat> %1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "v8f16_to_v8bf16"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <8 x bfloat> @v4i32_to_v8bf16(float %0, <4 x i32> %a) #0 {\nentry:\n  %1 = bitcast <4 x i32> %a to <8 x bfloat>\n  ret <8 x bfloat> %1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "v4i32_to_v8bf16"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <8 x half> @v8bf16_to_v8f16(float %0, <8 x bfloat> %a) #0 {\nentry:\n  %1 = bitcast <8 x bfloat> %a to <8 x half>\n  ret <8 x half> %1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "v8bf16_to_v8f16"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <2 x i32> @v4bf16_to_v2i32(float %0, <4 x bfloat> %a) #0 {\nentry:\n  %1 = bitcast <4 x bfloat> %a to <2 x i32>\n  ret <2 x i32> %1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "v4bf16_to_v2i32"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <4 x bfloat> @v4f16_to_v4bf16(float %0, <4 x half> %a) #0 {\nentry:\n  %1 = bitcast <4 x half> %a to <4 x bfloat>\n  ret <4 x bfloat> %1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "v4f16_to_v4bf16"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <4 x i32> @v8bf16_to_v4i32(float %0, <8 x bfloat> %a) #0 {\nentry:\n  %1 = bitcast <8 x bfloat> %a to <4 x i32>\n  ret <4 x i32> %1\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "v8bf16_to_v4i32"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

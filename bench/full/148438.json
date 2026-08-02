@@ -1,0 +1,74 @@
+{
+  "base_commit": "7345508c6febc57eaac985ef2fb14beabdc4d461",
+  "bug_id": "148438",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp": [
+        "AArch64TTIImpl::getArithmeticInstrCost"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp": [
+        [
+          4126,
+          4135
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "58d79aaba6765606f78fc6ec6b9ae1db3b44d834"
+  },
+  "issue": {
+    "author": "sjoerdmeijer",
+    "body": "For the IR shown in https://godbolt.org/z/Gv1nEe6de, the SLP vectoriser is running into this assert:\n\n```\nopt: /root/llvm-project/llvm/include/llvm/CodeGen/ValueTypes.h:312: llvm::MVT llvm::EVT::getSimpleVT() const: Assertion `isSimple() && \"Expected a SimpleValueType!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/opt -o /app/output.s -S -S -passes=slp-vectorizer <source>\n1.\tRunning pass \"function(slp-vectorizer)\" on module \"<source>\"\n2.\tRunning pass \"slp-vectorizer\" on function \"_Z1bPbPA6_b\"\n #0 0x0000000005642db8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x5642db8)\n #1 0x000000000563fc64 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x000072d577242520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000072d5772969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000072d577242476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000072d5772287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x000072d57722871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x000072d577239e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000000ba7819 llvm::AArch64TTIImpl::getArithmeticInstrCost(unsigned int, llvm::Type*, llvm::TargetTransformInfo::TargetCostKind, llvm::TargetTransformInfo::OperandValueInfo, llvm::TargetTransformInfo::OperandValueInfo, llvm::ArrayRef<llvm::Value const*>, llvm::Instruction const*) const (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0xba7819)\n #9 0x0000000004d27ce6 llvm::TargetTransformInfo::getArithmeticInstrCost(unsigned int, llvm::Type*, llvm::TargetTransformInfo::TargetCostKind, llvm::TargetTransformInfo::OperandValueInfo, llvm::TargetTransformInfo::OperandValueInfo, llvm::ArrayRef<llvm::Value const*>, llvm::Instruction const*, llvm::TargetLibraryInfo const*) const (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x4d27ce6)\n#10 0x00000000034dd04d llvm::InstructionCost llvm::function_ref<llvm::InstructionCost (llvm::InstructionCost)>::callback_fn<llvm::slpvectorizer::BoUpSLP::getEntryCost(llvm::slpvectorizer::BoUpSLP::TreeEntry const*, llvm::ArrayRef<llvm::Value*>, llvm::SmallPtrSetImpl<llvm::Value*>&)::'lambda13'(llvm::InstructionCost)>(long, llvm::InstructionCost) SLPVectorizer.cpp:0:0\n#11 0x0000000003530881 llvm::slpvectorizer::BoUpSLP::getEntryCost(llvm::slpvectorizer::BoUpSLP::TreeEntry const*, llvm::ArrayRef<llvm::Value*>, llvm::SmallPtrSetImpl<llvm::Value*>&)::'lambda0'(llvm::function_ref<llvm::InstructionCost (unsigned int)>, llvm::function_ref<llvm::InstructionCost (llvm::InstructionCost)>)::operator()(llvm::function_ref<llvm::InstructionCost (unsigned int)>, llvm::function_ref<llvm::InstructionCost (llvm::InstructionCost)>) const SLPVectorizer.cpp:0:0\n#12 0x000000000353a29f llvm::slpvectorizer::BoUpSLP::getEntryCost(llvm::slpvectorizer::BoUpSLP::TreeEntry const*, llvm::ArrayRef<llvm::Value*>, llvm::SmallPtrSetImpl<llvm::Value*>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x353a29f)\n#13 0x0000000003570987 llvm::slpvectorizer::BoUpSLP::getTreeCost(llvm::ArrayRef<llvm::Value*>, llvm::InstructionCost) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x3570987)\n#14 0x000000000357b60a llvm::SLPVectorizerPass::tryToVectorizeList(llvm::ArrayRef<llvm::Value*>, llvm::slpvectorizer::BoUpSLP&, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x357b60a)\n#15 0x000000000357d9ba llvm::SLPVectorizerPass::vectorizeGEPIndices(llvm::BasicBlock*, llvm::slpvectorizer::BoUpSLP&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x357d9ba)\n#16 0x000000000358a3f5 llvm::SLPVectorizerPass::runImpl(llvm::Function&, llvm::ScalarEvolution*, llvm::TargetTransformInfo*, llvm::TargetLibraryInfo*, llvm::AAResults*, llvm::LoopInfo*, llvm::DominatorTree*, llvm::AssumptionCache*, llvm::DemandedBits*, llvm::OptimizationRemarkEmitter*) (.part.0) SLPVectorizer.cpp:0:0\n#17 0x000000000358ae3b llvm::SLPVectorizerPass::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x358ae3b)\n#18 0x0000000002d8a12e llvm::detail::PassModel<llvm::Function, llvm::SLPVectorizerPass, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x2d8a12e)\n#19 0x00000000054375c1 llvm::PassManager<llvm::Function, llvm::AnalysisManager<llvm::Function>>::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x54375c1)\n```\n\nI haven't reduced the IR, but hopefully this is a good start.",
+    "comments": [
+      {
+        "author": "sjoerdmeijer",
+        "body": "CC: @alexey-bataev "
+      },
+      {
+        "author": "RKSimon",
+        "body": "Looks to be a crash in the aarch64 cost model:\n\nhttps://github.com/llvm/llvm-project/blob/cad62df49a79df5e5136cfad280c5abc9f62c60b/llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp#L4132-L4141"
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "crash",
+      "generated by fuzzer"
+    ],
+    "title": "[SLP] Assertion `isSimple() && \"Expected a SimpleValueType!\"' failed"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/148438",
+  "knowledge_cutoff": "2025-07-13T14:57:43Z",
+  "lit_test_dir": [
+    "llvm/test/Analysis/CostModel"
+  ],
+  "patch": "commit 58d79aaba6765606f78fc6ec6b9ae1db3b44d834\nAuthor: David Green <david.green@arm.com>\nDate:   Tue Jul 15 10:25:08 2025 +0100\n\n    [AArch64] Guard against non-simple types in udiv sve costs. (#148580)\n    \n    The code here probably needs to change to handle types more uniformly,\n    but this patch prevents it from trying to use a simple type where it does\n    not exist.\n    \n    Fixes #148438.\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp b/llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp\nindex 890440206569..07baf29ce701 100644\n--- a/llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp\n@@ -4126,10 +4126,8 @@ InstructionCost AArch64TTIImpl::getArithmeticInstrCost(\n       if (TLI->isOperationLegalOrCustom(ISD, LT.second) && ST->hasSVE()) {\n         // SDIV/UDIV operations are lowered using SVE, then we can have less\n         // costs.\n-        if (isa<FixedVectorType>(Ty) && cast<FixedVectorType>(Ty)\n-                                                ->getPrimitiveSizeInBits()\n-                                                .getFixedValue() < 128) {\n-          EVT VT = TLI->getValueType(DL, Ty);\n+        if (VT.isSimple() && isa<FixedVectorType>(Ty) &&\n+            Ty->getPrimitiveSizeInBits().getFixedValue() < 128) {\n           static const CostTblEntry DivTbl[]{\n               {ISD::SDIV, MVT::v2i8, 5},  {ISD::SDIV, MVT::v4i8, 8},\n               {ISD::SDIV, MVT::v8i8, 8},  {ISD::SDIV, MVT::v2i16, 5},\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt < %s -mtriple=aarch64-unknown-linux-gnu -mattr=+sve2 -passes=\"print<cost-model>\" -cost-kind=all 2>&1 -disable-output"
+      ],
+      "file": "llvm/test/Analysis/CostModel/AArch64/sve-div.ll",
+      "tests": [
+        {
+          "test_body": "target datalayout = \"e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128\"\n\ndefine void @udiv() {\n  %V2i64 = udiv <2 x i64> undef, undef\n  %V4i64 = udiv <4 x i64> undef, undef\n  %V8i64 = udiv <8 x i64> undef, undef\n  %V2i32 = udiv <2 x i32> undef, undef\n  %V4i32 = udiv <4 x i32> undef, undef\n  %V6i32 = udiv <6 x i32> undef, undef\n  %V8i32 = udiv <8 x i32> undef, undef\n  %V16i32 = udiv <16 x i32> undef, undef\n  %V2i16 = udiv <2 x i16> undef, undef\n  %V4i16 = udiv <4 x i16> undef, undef\n  %V8i16 = udiv <8 x i16> undef, undef\n  %V16i16 = udiv <16 x i16> undef, undef\n  %V32i16 = udiv <32 x i16> undef, undef\n  %V2i8 = udiv <2 x i8> undef, undef\n  %V4i8 = udiv <4 x i8> undef, undef\n  %V6i8 = udiv <6 x i8> undef, undef\n  %V8i8 = udiv <8 x i8> undef, undef\n  %V16i8 = udiv <16 x i8> undef, undef\n  %V32i8 = udiv <32 x i8> undef, undef\n  %V64i8 = udiv <64 x i8> undef, undef\n  %NV2i64 = udiv <vscale x 2 x i64> undef, undef\n  %NV4i64 = udiv <vscale x 4 x i64> undef, undef\n  %NV8i64 = udiv <vscale x 8 x i64> undef, undef\n  %NV2i32 = udiv <vscale x 2 x i32> undef, undef\n  %NV4i32 = udiv <vscale x 4 x i32> undef, undef\n  %NV8i32 = udiv <vscale x 8 x i32> undef, undef\n  %NV16i32 = udiv <vscale x 16 x i32> undef, undef\n  %NV2i16 = udiv <vscale x 2 x i16> undef, undef\n  %NV4i16 = udiv <vscale x 4 x i16> undef, undef\n  %NV8i16 = udiv <vscale x 8 x i16> undef, undef\n  %NV16i16 = udiv <vscale x 16 x i16> undef, undef\n  %NV32i16 = udiv <vscale x 32 x i16> undef, undef\n  %NV2i8 = udiv <vscale x 2 x i8> undef, undef\n  %NV4i8 = udiv <vscale x 4 x i8> undef, undef\n  %NV8i8 = udiv <vscale x 8 x i8> undef, undef\n  %NV16i8 = udiv <vscale x 16 x i8> undef, undef\n  %NV32i8 = udiv <vscale x 32 x i8> undef, undef\n  %NV64i8 = udiv <vscale x 64 x i8> undef, undef\n  ret void\n}\n",
+          "test_name": "udiv"
+        },
+        {
+          "test_body": "target datalayout = \"e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128\"\n\ndefine void @sdiv() {\n  %V2i64 = sdiv <2 x i64> undef, undef\n  %V4i64 = sdiv <4 x i64> undef, undef\n  %V8i64 = sdiv <8 x i64> undef, undef\n  %V2i32 = sdiv <2 x i32> undef, undef\n  %V4i32 = sdiv <4 x i32> undef, undef\n  %V6i32 = sdiv <6 x i32> undef, undef\n  %V8i32 = sdiv <8 x i32> undef, undef\n  %V16i32 = sdiv <16 x i32> undef, undef\n  %V2i16 = sdiv <2 x i16> undef, undef\n  %V4i16 = sdiv <4 x i16> undef, undef\n  %V8i16 = sdiv <8 x i16> undef, undef\n  %V16i16 = sdiv <16 x i16> undef, undef\n  %V32i16 = sdiv <32 x i16> undef, undef\n  %V2i8 = sdiv <2 x i8> undef, undef\n  %V4i8 = sdiv <4 x i8> undef, undef\n  %V6i8 = sdiv <6 x i8> undef, undef\n  %V8i8 = sdiv <8 x i8> undef, undef\n  %V16i8 = sdiv <16 x i8> undef, undef\n  %V32i8 = sdiv <32 x i8> undef, undef\n  %V64i8 = sdiv <64 x i8> undef, undef\n  %NV2i64 = sdiv <vscale x 2 x i64> undef, undef\n  %NV4i64 = sdiv <vscale x 4 x i64> undef, undef\n  %NV8i64 = sdiv <vscale x 8 x i64> undef, undef\n  %NV2i32 = sdiv <vscale x 2 x i32> undef, undef\n  %NV4i32 = sdiv <vscale x 4 x i32> undef, undef\n  %NV8i32 = sdiv <vscale x 8 x i32> undef, undef\n  %NV16i32 = sdiv <vscale x 16 x i32> undef, undef\n  %NV2i16 = sdiv <vscale x 2 x i16> undef, undef\n  %NV4i16 = sdiv <vscale x 4 x i16> undef, undef\n  %NV8i16 = sdiv <vscale x 8 x i16> undef, undef\n  %NV16i16 = sdiv <vscale x 16 x i16> undef, undef\n  %NV32i16 = sdiv <vscale x 32 x i16> undef, undef\n  %NV2i8 = sdiv <vscale x 2 x i8> undef, undef\n  %NV4i8 = sdiv <vscale x 4 x i8> undef, undef\n  %NV8i8 = sdiv <vscale x 8 x i8> undef, undef\n  %NV16i8 = sdiv <vscale x 16 x i8> undef, undef\n  %NV32i8 = sdiv <vscale x 32 x i8> undef, undef\n  %NV64i8 = sdiv <vscale x 64 x i8> undef, undef\n  ret void\n}\n",
+          "test_name": "sdiv"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

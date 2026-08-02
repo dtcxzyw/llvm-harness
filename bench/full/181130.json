@@ -1,0 +1,98 @@
+{
+  "base_commit": "45e666a8531c1148bdb170b9a120f99e1500c427",
+  "bug_id": "181130",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "DAGCombiner::ForwardStoreValueToDirectLoad"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          20831,
+          20837
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "6e23353c396098bf5cedf26091179f9d8dacb2e9"
+  },
+  "issue": {
+    "author": "Andarwinux",
+    "body": "[test.ll.txt](https://github.com/user-attachments/files/25261699/test.ll.txt)\n```\nfatal error: error in backend: Cannot emit physreg copy instruction\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.      Program arguments: /build/install/llvmbin/clang --target=x86_64-pc-windows-gnu -O3 -march=tigerlake test.ll -c -o /dev/null\n1.      Code generation\n2.      Running pass 'Function Pass Manager' on module 'test.ll'.\n3.      Running pass 'Post-RA pseudo instruction expansion pass' on function '@svt_aom_sig_deriv_me_tf'\n#0 0x000059b4137ea323 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) ld-temp.o:0:0\nclang: error: clang frontend command failed with exit code 70 (use -v to see invocation)\n```",
+    "comments": [
+      {
+        "author": "Andarwinux",
+        "body": "https://github.com/llvm/llvm-project/pull/180795"
+      },
+      {
+        "author": "Michael-Chen-NJU",
+        "body": "Hi @Andarwinux,\n\nThanks again for the testcase! I've successfully reduced it using llvm-reduce. The crash is indeed an assertion failure in LegalizeDAG.cpp triggered by an unexpected illegal type during the operation legalization phase.\n\n```llvm\ntarget datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-pc-windows-gnu\"\n\ndefine <32 x i1> @svt_aom_sig_deriv_me_tf(<4 x i8> %0) {\n  %2 = bitcast <4 x i8> %0 to <32 x i1>\n  ret <32 x i1> %2\n}\n```"
+      },
+      {
+        "author": "Michael-Chen-NJU",
+        "body": "Hi @Andarwinux,\n\nI have successfully identified the root cause. The crash happened because we created an illegal intermediate type (v128i1) during the transformation, which the backend cannot handle.\n\nI've added a check to ensure the InterVT is legal before performing the transformation:\n\n```\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -20828,7 +20828,7 @@ SDValue DAGCombiner::ForwardStoreValueToDirectLoad(LoadSDNode *LD) {\n \n          EVT InterVT = EVT::getVectorVT(*DAG.getContext(), EltVT,\n                                         StMemSize.divideCoefficientBy(EltSize));\n-        if (!TLI.isOperationLegalOrCustom(ISD::EXTRACT_SUBVECTOR, LDMemType))\n+        if (!TLI.isOperationLegalOrCustom(ISD::EXTRACT_SUBVECTOR, LDMemType) || !TLI.isTypeLegal(InterVT))\n            break;\n```\nThis fix successfully prevents the crash on my end using the reduced testcase. Could you please check if this patch resolves the issue in your full environment?"
+      },
+      {
+        "author": "Andarwinux",
+        "body": "Thanks for the quick fix! I can confirm this fixed the problem."
+      },
+      {
+        "author": "Michael-Chen-NJU",
+        "body": "> Thanks for the quick fix! I can confirm this fixed the problem.\n\nGreat! Thanks for the confirmation. I'll update the patch and submit the PR shortly, including a regression test based on the reduced case."
+      }
+    ],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[X86] error in backend: Cannot emit physreg copy instruction"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/181130",
+  "knowledge_cutoff": "2026-02-12T12:32:54Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 6e23353c396098bf5cedf26091179f9d8dacb2e9\nAuthor: \u9648\u5b50\u6602 <2802328816@qq.com>\nDate:   Sat Feb 14 21:05:31 2026 +0800\n\n    [DAGCombiner] Fix crash caused by illegal InterVT in ForwardStoreValueToDirectLoad (#181175)\n    \n    This patch fixes an assertion failure in ForwardStoreValueToDirectLoad\n    during DAGCombine.\n    \n    The crash occurs when `STLF (Store-to-Load Forwarding)` creates an\n    illegal intermediate bitcast type (e.g., `v128i1` when bridging a\n    128-bit store to a `<32 x i1>` load on X86). Since `v128i1` is not a\n    legal mask type for the backend, it violates the expectations of the\n    LegalizeDAG pass.\n    \n    The fix adds a `TLI.isTypeLegal(InterVT)` check to ensure that the\n    intermediate type used for the transformation is supported by the\n    target.\n    \n    Fixes #181130\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex 19bcdeeefb14..e513a16ee0e2 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -20831,7 +20831,8 @@ SDValue DAGCombiner::ForwardStoreValueToDirectLoad(LoadSDNode *LD) {\n \n         EVT InterVT = EVT::getVectorVT(*DAG.getContext(), EltVT,\n                                        StMemSize.divideCoefficientBy(EltSize));\n-        if (!TLI.isOperationLegalOrCustom(ISD::EXTRACT_SUBVECTOR, LDMemType))\n+        if (!TLI.isOperationLegalOrCustom(ISD::EXTRACT_SUBVECTOR, LDMemType) ||\n+            !TLI.isTypeLegal(InterVT))\n           break;\n \n         // In case of big-endian the offset is normalized to zero, denoting\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64--",
+        "llc < %s -mtriple=x86_64-pc-windows-gnu -mcpu=x86-64-v4"
+      ],
+      "file": "llvm/test/CodeGen/X86/dag-stlf-mismatch.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <32 x i1> @v32i1_bitcast_crash(<4 x i8> %arg) #0 {\n  %res = bitcast <4 x i8> %arg to <32 x i1>\n  ret <32 x i1> %res\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "v32i1_bitcast_crash"
+        },
+        {
+          "test_body": "define float @test_stlf_variable(ptr %p, i32 %val, float %v) {\n  store i32 %val, ptr %p, align 4\n  %f = load float, ptr %p, align 4\n  %r = fmul float %f, %v\n  ret float %r\n}\n",
+          "test_name": "test_stlf_variable"
+        },
+        {
+          "test_body": "define float @test_stlf_bitcast(ptr %p, float %v) {\n  store <2 x i64> zeroinitializer, ptr %p, align 4\n  %f = load float, ptr %p, align 4\n  %r = fmul float %f, %v\n  ret float %r\n}\n",
+          "test_name": "test_stlf_bitcast"
+        },
+        {
+          "test_body": "define float @test_stlf_vector(ptr %p, float %v) {\n  store <4 x float> zeroinitializer, ptr %p, align 4\n  %f = load float, ptr %p, align 4\n  %r = fmul float %f, %v\n  ret float %r\n}\n",
+          "test_name": "test_stlf_vector"
+        },
+        {
+          "test_body": "define float @test_stlf_integer(ptr %p, float %v) {\n  store i32 0, ptr %p, align 4\n  %f = load float, ptr %p, align 4\n  %r = fmul float %f, %v\n  ret float %r\n}\n",
+          "test_name": "test_stlf_integer"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

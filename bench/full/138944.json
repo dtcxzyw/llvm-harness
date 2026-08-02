@@ -1,0 +1,69 @@
+{
+  "base_commit": "a230bb029813b2988019dce342e2e622af14bd1d",
+  "bug_id": "138944",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "X86TargetLowering::getNegatedExpression"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          54726,
+          54737
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "143cce72b1f50bc37363315793b80ae92d2b0ae3"
+  },
+  "issue": {
+    "author": "wjristow",
+    "body": "We've had a compile-time crash reported to us, happening with optimization, fast-math, and FMA (`-O1 -ffast-math -mfma`), which we've bisected to [llvmorg-19-init-9453-gcbb0477e9a8d](https://github.com/llvm/llvm-project/commit/cbb0477e9a8d1e695d10a7e263d5e26757114f70).\n\nI'm not sure if there is a problem in that commit directly, or if it's exposing a latent problem.  Specifically, in investigating, my colleague @OCHyams noticed that an older commit ([llvmorg-16-init-15033-g6161a8dd5c5a](https://github.com/llvm/llvm-project/commit/6161a8dd5c5a1f190fd964576fb743620e972cc7)) appears to be related.  Reverting the change of that older commit avoids the crash.\n\nHere is the reduced test-case, which fails in llvm19, llvm20 and trunk:\n\n```\ntypedef float __m128 __attribute__((__vector_size__(16)));\ntypedef int __v4si __attribute__((__vector_size__(16)));\n__m128 x1, x2, x3, x4;\nstruct Container {\n  __m128 f;\n};\nclass fVec {\npublic:\n  Container mData;\n  fVec(const __m128 &);\n  fVec operator-() const;\n};\nvoid consume(fVec);\nfVec::fVec(const __m128 &m) { mData.f = m; }\nfVec fVec::operator-() const {\n  __m128 k = -mData.f;\n  return k;\n}\nfVec process(fVec m) {\n  __m128 t1, t2, t3, t4;\n  x4 = __builtin_ia32_rcpps(m.mData.f);\n  x3 = __builtin_ia32_cmpneqps(x1, x2);\n  t1 = m.mData.f * x4;\n  t2 = x4 + x4;\n  t3 = (__v4si)t1 & (__v4si)x3;\n  t4 = t2 - t3;\n  return t4;\n}\nvoid foo(fVec vIn) {\n  fVec v1 = -vIn;\n  fVec v2 = process(v1);\n  consume(v2);\n}\n```\n\nCompiling this with a compiler that includes llvmorg-19-init-9453-gcbb0477e9a8d, with the switches `-O1 -ffast-math -mfma` ([godbolt link](https://godbolt.org/z/vqbdGGdvf)), gets the following crash:\n\n```\nclang++: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:7791: llvm::SDValue llvm::SelectionDAG::getNode(unsigned int, const llvm::SDLoc&, llvm::EVT, llvm::SDValue, llvm::SDValue, llvm::SDValue, llvm::SDNodeFlags): Assertion `N1.getOpcode() != ISD::DELETED_NODE && N2.getOpcode() != ISD::DELETED_NODE && N3.getOpcode() != ISD::DELETED_NODE && \"Operand is DELETED_NODE!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/clang++ -gdwarf-4 -g -o /app/output.s -mllvm --x86-asm-syntax=intel -fno-verbose-asm -S --gcc-toolchain=/opt/compiler-explorer/gcc-snapshot -fcolor-diagnostics -fno-crash-diagnostics -O1 -ffast-math -mfma <source>\n1.\t<eof> parser at end of file\n2.\tCode generation\n3.\tRunning pass 'Function Pass Manager' on module '<source>'.\n4.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@_Z3foo4fVec'\n #0 0x0000000003f76d78 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3f76d78)\n #1 0x0000000003f74a04 llvm::sys::CleanupOnSignal(unsigned long) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3f74a04)\n #2 0x0000000003eb98c8 CrashRecoverySignalHandler(int) CrashRecoveryContext.cpp:0:0\n #3 0x000072e7f1c42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #4 0x000072e7f1c969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #5 0x000072e7f1c42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #6 0x000072e7f1c287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #7 0x000072e7f1c2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #8 0x000072e7f1c39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #9 0x00000000052cd595 llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDValue, llvm::SDValue, llvm::SDNodeFlags) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x52cd595)\n#10 0x00000000052bff72 llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::ArrayRef<llvm::SDValue>, llvm::SDNodeFlags) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x52bff72)\n#11 0x0000000002b95deb llvm::X86TargetLowering::getNegatedExpression(llvm::SDValue, llvm::SelectionDAG&, bool, bool, llvm::TargetLoweringBase::NegatibleCost&, unsigned int) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x2b95deb)\n#12 0x000000000510cd2f llvm::TargetLowering::getCheaperOrNeutralNegatedExpression(llvm::SDValue, llvm::SelectionDAG&, bool, bool, llvm::TargetLoweringBase::NegatibleCost, unsigned int) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x510cd2f)\n#13 0x00000000051214a1 llvm::SDValue (anonymous namespace)::DAGCombiner::visitFMA<llvm::EmptyMatchContext>(llvm::SDNode*) DAGCombiner.cpp:0:0\n#14 0x00000000051bbe90 (anonymous namespace)::DAGCombiner::visit(llvm::SDNode*) DAGCombiner.cpp:0:0\n#15 0x00000000051bd31c (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#16 0x00000000051bec58 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#17 0x00000000051c150b llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x51c150b)\n#18 0x0000000005300e75 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x5300e75)\n#19 0x0000000005304025 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x5304025)\n#20 0x00000000053052e5 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x53052e5)\n#21 0x00000000052f5cff llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x52f5cff)\n#22 0x000000000329e06a llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#23 0x00000000038c12cf llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x38c12cf)\n#24 0x00000000038c1681 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x38c1681)\n#25 0x00000000038c1f21 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x38c1f21)\n#26 0x000000000422ed5e clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x422ed5e)\n#27 0x0000000004918b90 clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4918b90)\n#28 0x00000000065e9acc clang::ParseAST(clang::Sema&, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x65e9acc)\n#29 0x0000000004918f78 clang::CodeGenAction::ExecuteAction() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4918f78)\n#30 0x0000000004c0c235 clang::FrontendAction::Execute() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4c0c235)\n#31 0x0000000004b8b83e clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4b8b83e)\n#32 0x0000000004d000e9 clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4d000e9)\n#33 0x0000000000da766f cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xda766f)\n#34 0x0000000000d9d83a ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&) driver.cpp:0:0\n#35 0x000000000497f839 void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::'lambda'()>(long) Job.cpp:0:0\n#36 0x0000000003eb9d64 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3eb9d64)\n#37 0x000000000497fe4f clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (.part.0) Job.cpp:0:0\n#38 0x000000000494229d clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x494229d)\n#39 0x000000000494332e clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x494332e)\n#40 0x000000000494b185 clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x494b185)\n#41 0x0000000000da35d8 clang_main(int, char**, llvm::ToolContext const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xda35d8)\n#42 0x0000000000c28a64 main (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xc28a64)\n#43 0x000072e7f1c29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#44 0x000072e7f1c29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#45 0x0000000000d9d2e5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xd9d2e5)\nclang++: error: clang frontend command failed with exit code 134 (use -v to see invocation)\nCompiler returned: 134\n```\n",
+    "comments": [
+      {
+        "author": "wjristow",
+        "body": "cc @dtcxzyw.  And given the reference to [llvmorg-16-init-15033-g6161a8dd5c5a](https://github.com/llvm/llvm-project/commit/6161a8dd5c5a1f190fd964576fb743620e972cc7) also cc @RKSimon."
+      },
+      {
+        "author": "dtcxzyw",
+        "body": "Reduced reproducer: https://godbolt.org/z/obrnaGP9z\nI will have a look.\n"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash"
+    ],
+    "title": "Assertion Failure: \"Operand is DELETED_NODE!\" exposed after llvm19 upstream commit cbb0477e9a8d"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/138944",
+  "knowledge_cutoff": "2025-05-07T19:27:06Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 143cce72b1f50bc37363315793b80ae92d2b0ae3\nAuthor: Yingwei Zheng <dtcxzyw2333@gmail.com>\nDate:   Sat May 10 13:14:01 2025 +0800\n\n    [X86][TargetLowering] Avoid deleting temporary nodes in `getNegatedExpression` (#139029)\n    \n    In the original case, the third call to `getCheaperNegatedExpression`\n    deletes the SDNode returned by the first call.\n    Similar to 74e6030bcbcc8e628f9a99a424342a0c656456f9, this patch uses\n    `HandleSDNodes` to prevent nodes from being deleted by subsequent calls.\n    Closes https://github.com/llvm/llvm-project/issues/138944.\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex f04603867a58..231b677c300a 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -54726,12 +54726,19 @@ SDValue X86TargetLowering::getNegatedExpression(SDValue Op, SelectionDAG &DAG,\n     if (!Flags.hasNoSignedZeros())\n       break;\n \n+    // Because getCheaperNegatedExpression can delete nodes we need a handle to\n+    // keep temporary nodes alive.\n+    std::list<HandleSDNode> Handles;\n+\n     // This is always negatible for free but we might be able to remove some\n     // extra operand negations as well.\n     SmallVector<SDValue, 4> NewOps(Op.getNumOperands(), SDValue());\n-    for (int i = 0; i != 3; ++i)\n+    for (int i = 0; i != 3; ++i) {\n       NewOps[i] = getCheaperNegatedExpression(\n           Op.getOperand(i), DAG, LegalOperations, ForCodeSize, Depth + 1);\n+      if (!!NewOps[i])\n+        Handles.emplace_back(NewOps[i]);\n+    }\n \n     bool NegA = !!NewOps[0];\n     bool NegB = !!NewOps[1];\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64 -mattr=+fma"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr138982.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <4 x float> @pr138982(<4 x float> %in_vec) {\nentry:\n  %fneg = fneg <4 x float> %in_vec\n  %rcp = tail call <4 x float> @llvm.x86.sse.rcp.ps(<4 x float> %fneg)\n  %cmp = fcmp une <4 x float> zeroinitializer, %in_vec\n  %sel = select <4 x i1> %cmp, <4 x float> %rcp, <4 x float> splat (float 1.000000e+00)\n  %fma = call nsz <4 x float> @llvm.fma.v4f32(<4 x float> %rcp, <4 x float> zeroinitializer, <4 x float> %sel)\n  ret <4 x float> %fma\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

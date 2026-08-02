@@ -1,0 +1,69 @@
+{
+  "base_commit": "3db749afcb5079dac332942a3e0b258cdb629a02",
+  "bug_id": "76734",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp": [
+        "combineShiftToAVG"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp": [
+        [
+          1064,
+          1073
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "771fd1ad2a988e8bb586c2165d6877f06e5ed19b"
+  },
+  "issue": {
+    "author": "regehr",
+    "body": "I'm getting a crash from codegen on this input:\r\n```llvm\r\ndefine void @f(ptr %0, <4 x i16> %1) {\r\n  %3 = zext <4 x i16> %1 to <4 x i32>\r\n  %4 = add <4 x i32> %3, <i32 1, i32 1, i32 1, i32 1>\r\n  %5 = trunc <4 x i32> %4 to <4 x i19>\r\n  %new0 = add <4 x i19> %5, <i19 1, i19 1, i19 1, i19 1>\r\n  %new1 = lshr <4 x i19> %new0, <i19 1, i19 1, i19 1, i19 1>\r\n  %last = zext <4 x i19> %new1 to <4 x i32>\r\n  %6 = trunc <4 x i32> %last to <4 x i16>\r\n  store <4 x i16> %6, ptr %0, align 4\r\n  ret void\r\n}\r\n```\r\n\r\n```\r\nregehr@john-home:~/test/assertion-fail$ ~/llvm-project/for-alive/bin/llc test-229001578104.ll -march=aarch64 \r\nllc: /home/regehr/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:5781: llvm::SDValue llvm::SelectionDAG::getNode(unsigned int, const llvm::SDLoc&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags): Assertion `N1.getValueType().bitsGT(VT) && \"Invalid truncate node, src < dst!\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /home/regehr/llvm-project/for-alive/bin/llc test-229001578104.ll -march=aarch64\r\n1.\tRunning pass 'Function Pass Manager' on module 'test-229001578104.ll'.\r\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@f'\r\n #0 0x00007f9c97c012a0 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMSupport.so.18git+0x2012a0)\r\n #1 0x00007f9c97bfe2af llvm::sys::RunSignalHandlers() (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMSupport.so.18git+0x1fe2af)\r\n #2 0x00007f9c97bfe405 SignalHandler(int) Signals.cpp:0:0\r\n #3 0x00007f9c97242520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #4 0x00007f9c972969fc __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\r\n #5 0x00007f9c972969fc __pthread_kill_internal ./nptl/pthread_kill.c:78:10\r\n #6 0x00007f9c972969fc pthread_kill ./nptl/pthread_kill.c:89:10\r\n #7 0x00007f9c97242476 gsignal ./signal/../sysdeps/posix/raise.c:27:6\r\n #8 0x00007f9c972287f3 abort ./stdlib/abort.c:81:7\r\n #9 0x00007f9c9722871b _nl_load_domain ./intl/loadmsgcat.c:1177:9\r\n#10 0x00007f9c97239e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n#11 0x00007f9c9a7529d5 llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags) (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMSelectionDAG.so.18git+0x3529d5)\r\n#12 0x00007f9c9a7bf114 combineShiftToAVG(llvm::SDValue, llvm::SelectionDAG&, llvm::TargetLowering const&, llvm::APInt const&, llvm::APInt const&, unsigned int) (.isra.0) TargetLowering.cpp:0:0\r\n#13 0x00007f9c9a7f4780 llvm::TargetLowering::SimplifyDemandedBits(llvm::SDValue, llvm::APInt const&, llvm::APInt const&, llvm::KnownBits&, llvm::TargetLowering::TargetLoweringOpt&, unsigned int, bool) const (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMSelectionDAG.so.18git+0x3f4780)\r\n#14 0x00007f9c9a7f5a66 llvm::TargetLowering::SimplifyDemandedBits(llvm::SDValue, llvm::APInt const&, llvm::APInt const&, llvm::KnownBits&, llvm::TargetLowering::TargetLoweringOpt&, unsigned int, bool) const (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMSelectionDAG.so.18git+0x3f5a66)\r\n#15 0x00007f9c9a80017a llvm::TargetLowering::SimplifyDemandedBits(llvm::SDValue, llvm::APInt const&, llvm::KnownBits&, llvm::TargetLowering::TargetLoweringOpt&, unsigned int, bool) const (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMSelectionDAG.so.18git+0x40017a)\r\n#16 0x00007f9c9a4d7e61 (anonymous namespace)::DAGCombiner::SimplifyDemandedBits(llvm::SDValue) (.constprop.0) DAGCombiner.cpp:0:0\r\n#17 0x00007f9c9a521084 (anonymous namespace)::DAGCombiner::visitTRUNCATE(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#18 0x00007f9c9a548a15 (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#19 0x00007f9c9a54a6ed llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::AAResults*, llvm::CodeGenOptLevel) (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMSelectionDAG.so.18git+0x14a6ed)\r\n#20 0x00007f9c9a79371b llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMSelectionDAG.so.18git+0x39371b)\r\n#21 0x00007f9c9a7975d2 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMSelectionDAG.so.18git+0x3975d2)\r\n#22 0x00007f9c9a799297 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMSelectionDAG.so.18git+0x399297)\r\n#23 0x00007f9c99c0d602 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMCodeGen.so.18git+0x40d602)\r\n#24 0x00007f9c980d8006 llvm::FPPassManager::runOnFunction(llvm::Function&) (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMCore.so.18git+0x2d8006)\r\n#25 0x00007f9c980d8249 llvm::FPPassManager::runOnModule(llvm::Module&) (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMCore.so.18git+0x2d8249)\r\n#26 0x00007f9c980d8ae2 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/home/regehr/llvm-project/for-alive/bin/../lib/libLLVMCore.so.18git+0x2d8ae2)\r\n#27 0x00005643f03bfbd1 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#28 0x00005643f03b433c main (/home/regehr/llvm-project/for-alive/bin/llc+0x1333c)\r\n#29 0x00007f9c97229d90 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16\r\n#30 0x00007f9c97229e40 call_init ./csu/../csu/libc-start.c:128:20\r\n#31 0x00007f9c97229e40 __libc_start_main ./csu/../csu/libc-start.c:379:5\r\n#32 0x00005643f03b4845 _start (/home/regehr/llvm-project/for-alive/bin/llc+0x13845)\r\nAborted (core dumped)\r\nregehr@john-home:~/test/assertion-fail$ \r\n```\r\n",
+    "comments": [
+      {
+        "author": "davemgreen",
+        "body": "Thanks for the report. There is a potential fix in #76791."
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "crash-on-valid"
+    ],
+    "title": "Assertion `N1.getValueType().bitsGT(VT) && \"Invalid truncate node, src < dst!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/76734",
+  "knowledge_cutoff": "2024-01-02T16:33:27Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 771fd1ad2a988e8bb586c2165d6877f06e5ed19b\nAuthor: David Green <david.green@arm.com>\nDate:   Wed Jan 3 10:52:01 2024 +0000\n\n    [DAG] Extend input types if needed in combineShiftToAVG. (#76791)\n    \n    This atempts to fix #76734 which is a crash in invalid TRUNC nodes types\n    from unoptimized input code in combineShiftToAVG. The NVT can be VT if\n    the larger type was legal and the adds will not overflow, in which case\n    the inputs should be extended.\n    \n    From what I can tell this appears to be valid (if not optimal for this\n    case): https://alive2.llvm.org/ce/z/fRieHR\n    \n    The result has also been changed to getExtOrTrunc in case that VT==NVT,\n    which is not handled by SEXT/ZEXT.\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\nindex 4581bb19e97e..66cdd7525908 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp\n@@ -1064,10 +1064,9 @@ static SDValue combineShiftToAVG(SDValue Op, SelectionDAG &DAG,\n \n   SDLoc DL(Op);\n   SDValue ResultAVG =\n-      DAG.getNode(AVGOpc, DL, NVT, DAG.getNode(ISD::TRUNCATE, DL, NVT, ExtOpA),\n-                  DAG.getNode(ISD::TRUNCATE, DL, NVT, ExtOpB));\n-  return DAG.getNode(IsSigned ? ISD::SIGN_EXTEND : ISD::ZERO_EXTEND, DL, VT,\n-                     ResultAVG);\n+      DAG.getNode(AVGOpc, DL, NVT, DAG.getExtOrTrunc(IsSigned, ExtOpA, DL, NVT),\n+                  DAG.getExtOrTrunc(IsSigned, ExtOpB, DL, NVT));\n+  return DAG.getExtOrTrunc(IsSigned, ResultAVG, DL, VT);\n }\n \n /// Look at Op. At this point, we know that only the OriginalDemandedBits of the\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=arm64-eabi -aarch64-neon-syntax=apple"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/arm64-vhadd.ll",
+      "tests": [
+        {
+          "test_body": "define <8 x i8> @sextmask3v8i8(<8 x i16> %src1, <8 x i8> %src2) {\n  %1 = ashr <8 x i16> %src1, splat (i16 7)\n  %sextsrc2 = sext <8 x i8> %src2 to <8 x i16>\n  %add = add nsw <8 x i16> %1, %sextsrc2\n  %2 = ashr <8 x i16> %add, splat (i16 1)\n  %result = trunc <8 x i16> %2 to <8 x i8>\n  ret <8 x i8> %result\n}\n",
+          "test_name": "sextmask3v8i8"
+        },
+        {
+          "test_body": "define <4 x i16> @ext_via_i19(<4 x i16> %a) {\n  %t3 = zext <4 x i16> %a to <4 x i32>\n  %t4 = add <4 x i32> %t3, splat (i32 1)\n  %t5 = trunc <4 x i32> %t4 to <4 x i19>\n  %new0 = add <4 x i19> %t5, splat (i19 1)\n  %new1 = lshr <4 x i19> %new0, splat (i19 1)\n  %last = zext <4 x i19> %new1 to <4 x i32>\n  %t6 = trunc <4 x i32> %last to <4 x i16>\n  ret <4 x i16> %t6\n}\n",
+          "test_name": "ext_via_i19"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

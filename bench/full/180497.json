@@ -1,0 +1,78 @@
+{
+  "base_commit": "a47551f22099bdcb15508626f199958190a9768f",
+  "bug_id": "180497",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "AArch64TargetLowering::LowerINSERT_VECTOR_ELT"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          16557,
+          16582
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "9584e9c9b2691503ac0d2aa039c9e273322ef63e"
+  },
+  "issue": {
+    "author": "sjoerdmeijer",
+    "body": "This IR:\n\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine <vscale x 1 x i1> @_Z4testbjhyhixbixjthshiPhPjPxS1_PbPA17_A17_yS_PA17_A17_aPA17_A17_xPA17_A17_bSB_PS3_SB_S5_PA24_sS_S2_PA24_SG_PiS_PA18_A18_jPtPA18_A18_t() #0 {\nentry:\n  %broadcast.splatinsert1188 = insertelement <vscale x 1 x i1> zeroinitializer, i1 false, i64 0\n  ret <vscale x 1 x i1> %broadcast.splatinsert1188\n}\n\nattributes #0 = { \"target-cpu\"=\"grace\" }\n```\n\nTriggers this assert / unreachable:\n\n```\nunexpected element count for vector\nUNREACHABLE executed at llvm-project/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:227!\n```\n\nStack trace:\n\n```\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@_Z4testbjhyhixbixjthshiPhPjPxS1_PbPA17_A17_yS_PA17_A17_aPA17_A17_xPA17_A17_bSB_PS3_SB_S5_PA24_sS_S2_PA24_SG_PiS_PA18_A18_jPtPA18_A18_t'\n #0 0x00000000042e2088 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x42e2088)\n #1 0x00000000042def64 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x000071a0f8842520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000071a0f88969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000071a0f8842476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000071a0f88287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00000000042238fa (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x42238fa)\n #7 0x0000000000b16d73 (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xb16d73)\n #8 0x0000000000b7d917 llvm::AArch64TargetLowering::LowerINSERT_VECTOR_ELT(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xb7d917)\n #9 0x0000000000be06e3 llvm::AArch64TargetLowering::LowerOperation(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xbe06e3)\n```\n\nSee also: https://godbolt.org/z/8nna63zq9\n\nThis can be triggered from source-code.",
+    "comments": [
+      {
+        "author": "woruyu",
+        "body": "I would like to fix it!"
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "SVE",
+      "crash"
+    ],
+    "title": "[AArch64] getPromotedVTForPredicate: Unreachable \"unexpected element count for vector\""
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/180497",
+  "knowledge_cutoff": "2026-02-09T10:22:12Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 9584e9c9b2691503ac0d2aa039c9e273322ef63e\nAuthor: Paul Walker <paul.walker@arm.com>\nDate:   Tue Apr 21 11:19:13 2026 +0100\n\n    [LLVM][CodeGen][SVE] Implement custom lowering for insert_vector_elt_nxv1i1. (#192494)\n    \n    Fixes https://github.com/llvm/llvm-project/issues/180497\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex c2ef1373d825..2b08a89566de 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -16557,26 +16557,34 @@ SDValue AArch64TargetLowering::LowerINSERT_VECTOR_ELT(SDValue Op,\n                                    !Subtarget->isNeonAvailable()))\n     return LowerFixedLengthInsertVectorElt(Op, DAG);\n \n-  EVT VT = Op.getOperand(0).getValueType();\n+  EVT VT = Op.getValueType();\n+  SDValue Vec = Op.getOperand(0);\n+  SDValue Elt = Op.getOperand(1);\n+  SDValue Idx = Op.getOperand(2);\n \n   if (VT.getScalarType() == MVT::i1) {\n-    EVT VectorVT = getPromotedVTForPredicate(VT);\n     SDLoc DL(Op);\n-    SDValue ExtendedVector =\n-        DAG.getAnyExtOrTrunc(Op.getOperand(0), DL, VectorVT);\n-    SDValue ExtendedValue =\n-        DAG.getAnyExtOrTrunc(Op.getOperand(1), DL,\n-                             VectorVT.getScalarType().getSizeInBits() < 32\n-                                 ? MVT::i32\n-                                 : VectorVT.getScalarType());\n-    ExtendedVector =\n-        DAG.getNode(ISD::INSERT_VECTOR_ELT, DL, VectorVT, ExtendedVector,\n-                    ExtendedValue, Op.getOperand(2));\n-    return DAG.getAnyExtOrTrunc(ExtendedVector, DL, VT);\n+\n+    // MVT::nxv1i8 is not a legal type so widen->insert->shrink instead.\n+    if (VT == MVT::nxv1i1) {\n+      SDValue WidenVec =\n+          DAG.getInsertSubvector(DL, DAG.getPOISON(MVT::nxv2i1), Vec, 0);\n+      SDValue Insert = DAG.getNode(ISD::INSERT_VECTOR_ELT, DL, MVT::nxv2i1,\n+                                   WidenVec, Elt, Idx);\n+      return DAG.getExtractSubvector(DL, MVT::nxv1i1, Insert, 0);\n+    }\n+\n+    EVT PromoteVT = getPromotedVTForPredicate(VT);\n+    SDValue PromoteVec = DAG.getNode(ISD::ANY_EXTEND, DL, PromoteVT, Vec);\n+    if (PromoteVT.getVectorElementType() == MVT::i64)\n+      Elt = DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i64, Elt);\n+    SDValue Insert = DAG.getNode(ISD::INSERT_VECTOR_ELT, DL, PromoteVT,\n+                                 PromoteVec, Elt, Idx);\n+    return DAG.getNode(ISD::TRUNCATE, DL, VT, Insert);\n   }\n \n   // Check for non-constant or out of range lane.\n-  ConstantSDNode *CI = dyn_cast<ConstantSDNode>(Op.getOperand(2));\n+  ConstantSDNode *CI = dyn_cast<ConstantSDNode>(Idx);\n   if (!CI || CI->getZExtValue() >= VT.getVectorNumElements())\n     return SDValue();\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-linux-gnu -mattr=+sve,+bf16 < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/sve-insert-element.ll",
+      "tests": [
+        {
+          "test_body": "define <vscale x 2 x double> @test_insert_with_index_nxv2f64(<vscale x 2 x double> %a, double %d, i64 %idx) {\n  %res = insertelement <vscale x 2 x double> %a, double %d, i64 %idx\n  ret <vscale x 2 x double> %res\n}\n",
+          "test_name": "test_insert_with_index_nxv2f64"
+        },
+        {
+          "test_body": "define <vscale x 2 x i1> @test_predicate_insert_2xi1(<vscale x 2 x i1> %val, i1 %elt, i32 %idx) {\n  %res = insertelement <vscale x 2 x i1> %val, i1 %elt, i32 %idx\n  ret <vscale x 2 x i1> %res\n}\n",
+          "test_name": "test_predicate_insert_2xi1"
+        },
+        {
+          "test_body": "define <vscale x 1 x i1> @test_predicate_insert_1xi1_immediate(<vscale x 1 x i1> %vec, i1 %elt) {\n  %res = insertelement <vscale x 1 x i1> %vec, i1 %elt, i32 0\n  ret <vscale x 1 x i1> %res\n}\n",
+          "test_name": "test_predicate_insert_1xi1_immediate"
+        },
+        {
+          "test_body": "define <vscale x 1 x i1> @test_predicate_insert_1xi1(<vscale x 1 x i1> %vec, i1 %elt, i32 %idx) {\n  %res = insertelement <vscale x 1 x i1> %vec, i1 %elt, i32 %idx\n  ret <vscale x 1 x i1> %res\n}\n",
+          "test_name": "test_predicate_insert_1xi1"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

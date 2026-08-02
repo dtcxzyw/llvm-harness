@@ -1,0 +1,73 @@
+{
+  "base_commit": "7b26069828aa88064b92f73f764b708754e441ec",
+  "bug_id": "170828",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp": [
+        "emitReduction"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp": [
+        [
+          26980,
+          26992
+        ]
+      ]
+    },
+    "components": [
+      "SLPVectorizer"
+    ],
+    "fix_commit": "9730d3128435350c5ef90c198979df25004ccc1f"
+  },
+  "issue": {
+    "author": "sjoerdmeijer",
+    "body": "This IR:\n\n```\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine <16 x i64> @_Z1hhPb() {\nentry:\n  %0 = zext <16 x i8> splat (i8 1) to <16 x i64>\n  %1 = sub <16 x i64> zeroinitializer, %0\n  %2 = zext <16 x i8> zeroinitializer to <16 x i64>\n  %3 = sub <16 x i64> zeroinitializer, %2\n  %4 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %1, <16 x i64> %3)\n  %5 = zext <16 x i8> zeroinitializer to <16 x i64>\n  %6 = sub <16 x i64> zeroinitializer, %5\n  %7 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %4, <16 x i64> %6)\n  %8 = zext <16 x i8> zeroinitializer to <16 x i64>\n  %9 = sub <16 x i64> zeroinitializer, %8\n  %10 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %7, <16 x i64> %9)\n  %11 = sub <16 x i64> zeroinitializer, zeroinitializer\n  %12 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %10, <16 x i64> %11)\n  %13 = sub <16 x i64> zeroinitializer, zeroinitializer\n  %14 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %12, <16 x i64> %13)\n  %15 = sub <16 x i64> zeroinitializer, zeroinitializer\n  %16 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %14, <16 x i64> %15)\n  %17 = sub <16 x i64> zeroinitializer, zeroinitializer\n  %18 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %16, <16 x i64> %17)\n  ret <16 x i64> %18\n}\n\ndeclare <16 x i64> @llvm.smin.v16i64(<16 x i64>, <16 x i64>) #0\n\nuselistorder ptr @llvm.smin.v16i64, { 6, 5, 4, 3, 2, 1, 0 }\n\nattributes #0 = { nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none) }\n```\n\nCompiled with `opt -passes=slp-vectorizer  -S -slp-revec`, this triggers this assert in the SLP vectoriser:\n\n```\nopt: /root/llvm-project/llvm/lib/IR/Instructions.cpp:3048: static llvm::CastInst* llvm::CastInst::Create(llvm::Instruction::CastOps, llvm::Value*, llvm::Type*, const llvm::Twine&, llvm::InsertPosition): Assertion `castIsValid(op, S, Ty) && \"Invalid cast!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/opt -o /app/output.s -S -passes=slp-vectorizer -S -slp-revec <source>\n1.\tRunning pass \"function(slp-vectorizer)\" on module \"<source>\"\n2.\tRunning pass \"slp-vectorizer\" on function \"_Z1hhPb\"\n #0 0x00000000059e50e8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x59e50e8)\n #1 0x00000000059e1f94 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x000074b0eb642520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000074b0eb6969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000074b0eb642476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000074b0eb6287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x000074b0eb62871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x000074b0eb639e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000005739846 (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x5739846)\n #9 0x00000000011bfe3b llvm::IRBuilderBase::CreateIntCast(llvm::Value*, llvm::Type*, bool, llvm::Twine const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x11bfe3b)\n#10 0x00000000037a147b (anonymous namespace)::HorizontalReduction::emitReduction(llvm::IRBuilderBase&, llvm::TargetTransformInfo const&, llvm::Type*)::'lambda0'(llvm::Value*, unsigned int, bool)::operator()(llvm::Value*, unsigned int, bool) const SLPVectorizer.cpp:0:0\n#11 0x000000000383243b (anonymous namespace)::HorizontalReduction::tryToReduce(llvm::slpvectorizer::BoUpSLP&, llvm::DataLayout const&, llvm::TargetTransformInfo*, llvm::TargetLibraryInfo const&, llvm::AssumptionCache*, llvm::DominatorTree&) SLPVectorizer.cpp:0:0\n#12 0x0000000003833468 llvm::SLPVectorizerPass::vectorizeHorReduction(llvm::PHINode*, llvm::Instruction*, llvm::BasicBlock*, llvm::slpvectorizer::BoUpSLP&, llvm::SmallVectorImpl<llvm::WeakTrackingVH>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x3833468)\n#13 0x000000000383842b llvm::SLPVectorizerPass::vectorizeRootInstruction(llvm::PHINode*, llvm::Instruction*, llvm::BasicBlock*, llvm::slpvectorizer::BoUpSLP&) (.constprop.0) SLPVectorizer.cpp:0:0\n#14 0x000000000383c9c0 llvm::SLPVectorizerPass::vectorizeChainsInBlock(llvm::BasicBlock*, llvm::slpvectorizer::BoUpSLP&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x383c9c0)\n#15 0x0000000003842c06 llvm::SLPVectorizerPass::runImpl(llvm::Function&, llvm::ScalarEvolution*, llvm::TargetTransformInfo*, llvm::TargetLibraryInfo*, llvm::AAResults*, llvm::LoopInfo*, llvm::DominatorTree*, llvm::AssumptionCache*, llvm::DemandedBits*, llvm::OptimizationRemarkEmitter*) (.part.0) SLPVectorizer.cpp:0:0\n#16 0x000000000384382b llvm::SLPVectorizerPass::run(llvm::Function&, llvm::AnalysisManager<llvm::Function>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x384382b)\n```\n\nSee also: https://godbolt.org/z/hd754s4j1\n\nThis looks like a weird case, because the `<16 x i64>` are already very big, but this comes from the loop vectoriser and I guess it chooses the VL based on the smallest datatype which is an i8 vector, but anyway, this IR comes from this C code reproducer:\n\n```\n#include <algorithm>\nlong long a;\nextern bool b[][17];\nshort c;\nvoid h(unsigned char d, bool e[]) {\n  for (char f = 0; f < c; f++)\n    for (short g = 0; g < short(-6365127392424407750LL) - 19753; g++) {\n      a = std::min(a, (long long)-std::min((unsigned char)e[f], d));\n      b[f][g] = 0;\n    }\n}\n```\n\n",
+    "comments": [
+      {
+        "author": "sjoerdmeijer",
+        "body": "CC: @alexey-bataev \n\nI know revectorisation is an experimental feature that is off by default, but I believe @rj-jesus was curious about this feature and might want to take this up as a first issue? "
+      },
+      {
+        "author": "alexey-bataev",
+        "body": "> This looks like a weird case, because the <16 x i64> are already very big,\n\nIt is ok for SLP vectorizer for now, it does not honor the register sizes currently, tends to generate very long vectors, relying on the backend for vector types legalization.\nShould be fixed with the forest vectorization, see discussion here https://github.com/llvm/llvm-project/issues/169125"
+      },
+      {
+        "author": "alexey-bataev",
+        "body": "> CC: [@alexey-bataev](https://github.com/alexey-bataev)\n> \n> I know revectorisation is an experimental feature that is off by default, but I believe [@rj-jesus](https://github.com/rj-jesus) was curious about this feature and might want to take this up as a first issue?\n\nSounds good to me"
+      }
+    ],
+    "labels": [
+      "llvm:SLPVectorizer",
+      "crash-on-valid"
+    ],
+    "title": "[SLP][Revec]  Assertion `castIsValid(op, S, Ty) && \"Invalid cast!\"'"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/170828",
+  "knowledge_cutoff": "2025-12-05T10:13:38Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/SLPVectorizer"
+  ],
+  "patch": "commit 9730d3128435350c5ef90c198979df25004ccc1f\nAuthor: Alexey Bataev <a.bataev@outlook.com>\nDate:   Sun Mar 1 07:50:55 2026 -0800\n\n    [SLP]Fix types for reductions in revec\n    \n    Need to consider vector inputs, when building casts for the reduced\n    values\n    \n    Fixes #170828\n\ndiff --git a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp\nindex cbaaa10bb224..14b36a8619eb 100644\n--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp\n+++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp\n@@ -26980,13 +26980,22 @@ private:\n           VecRes = Builder.CreateShuffleVector(VecRes, Vec, Mask, \"rdx.op\");\n           return;\n         }\n-        if (VecRes->getType()->getScalarType() != DestTy->getScalarType())\n+        if (VecRes->getType()->getScalarType() != DestTy->getScalarType()) {\n+          assert(getNumElements(VecRes->getType()) % getNumElements(DestTy) ==\n+                     0 &&\n+                 \"Expected the number of elements in VecRes to be a multiple \"\n+                 \"of the number of elements in DestTy\");\n           VecRes = Builder.CreateIntCast(\n-              VecRes, getWidenedType(DestTy, getNumElements(VecRes->getType())),\n+              VecRes,\n+              getWidenedType(DestTy->getScalarType(),\n+                             getNumElements(VecRes->getType())),\n               VecResSignedness);\n+        }\n         if (ScalarTy != DestTy->getScalarType())\n           Vec = Builder.CreateIntCast(\n-              Vec, getWidenedType(DestTy, getNumElements(Vec->getType())),\n+              Vec,\n+              getWidenedType(DestTy->getScalarType(),\n+                             getNumElements(Vec->getType())),\n               IsSigned);\n         unsigned VecResVF = getNumElements(VecRes->getType());\n         unsigned VecVF = getNumElements(Vec->getType());\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt -passes=slp-vectorizer -S -slp-revec -mtriple=aarch64-unknown-linux-gnu < %s"
+      ],
+      "file": "llvm/test/Transforms/SLPVectorizer/AArch64/revec-reductions.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <16 x i64> @test() {\n;\nentry:\n  %0 = zext <16 x i8> splat (i8 1) to <16 x i64>\n  %1 = sub <16 x i64> zeroinitializer, %0\n  %2 = zext <16 x i8> zeroinitializer to <16 x i64>\n  %3 = sub <16 x i64> zeroinitializer, %2\n  %4 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %1, <16 x i64> %3)\n  %5 = zext <16 x i8> zeroinitializer to <16 x i64>\n  %6 = sub <16 x i64> zeroinitializer, %5\n  %7 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %4, <16 x i64> %6)\n  %8 = zext <16 x i8> zeroinitializer to <16 x i64>\n  %9 = sub <16 x i64> zeroinitializer, %8\n  %10 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %7, <16 x i64> %9)\n  %11 = sub <16 x i64> zeroinitializer, zeroinitializer\n  %12 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %10, <16 x i64> %11)\n  %13 = sub <16 x i64> zeroinitializer, zeroinitializer\n  %14 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %12, <16 x i64> %13)\n  %15 = sub <16 x i64> zeroinitializer, zeroinitializer\n  %16 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %14, <16 x i64> %15)\n  %17 = sub <16 x i64> zeroinitializer, zeroinitializer\n  %18 = call <16 x i64> @llvm.smin.v16i64(<16 x i64> %16, <16 x i64> %17)\n  ret <16 x i64> %18\n}\n\ndeclare <16 x i64> @llvm.smin.v16i64(<16 x i64>, <16 x i64>)\n",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

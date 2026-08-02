@@ -1,0 +1,70 @@
+{
+  "base_commit": "074f7c2235a7d39f59f5c4d85b8fb87d3459b90d",
+  "bug_id": "81216",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "AArch64TargetLowering::ReplaceBITCASTResults"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          24615,
+          24621
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "92d79922051f732560acf3791b543df1e6580689"
+  },
+  "issue": {
+    "author": "dianqk",
+    "body": "I tried the following code that would trigger the assertion:\r\n\r\n```\r\ntarget datalayout = \"e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128\"\r\ntarget triple = \"aarch64-unknown-linux-gnu\"\r\n\r\ndefine void @foo(ptr %0, <16 x i1> %1) {\r\nbb1.i:\r\n  %.bc = bitcast <16 x i1> %1 to <2 x i8>\r\n  %.extract100 = extractelement <2 x i8> %.bc, i64 0\r\n  %_47 = icmp eq i8 %.extract100, 0\r\n  br i1 %_47, label %bb20, label %bb23\r\n\r\nbb20:                                             ; preds = %bb1.i\r\n  store <16 x i8> zeroinitializer, ptr %0, align 1\r\n  br label %bb23\r\n\r\nbb23:                                             ; preds = %bb20, %bb1.i\r\n  ret void\r\n}\r\n```\r\n\r\nhttps://llvm.godbolt.org/z/narrKadhK\r\n\r\nFrom: https://github.com/rust-lang/rust/issues/120813\r\n\r\n<details><summary>Details</summary>\r\n<p>\r\n\r\n```\r\nllc: /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:5786: SDValue llvm::SelectionDAG::getNode(unsigned int, const SDLoc &, EVT, SDValue, const SDNodeFlags): Assertion `VT.isVector() == N1.getValueType().isVector() && \"TRUNCATE result type type should be vector iff the operand \" \"type is vector!\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.      Program arguments: ../llvm-project/build/bin/llc foo.ll\r\n1.      Running pass 'Function Pass Manager' on module 'foo.ll'.\r\n2.      Running pass 'AArch64 Instruction Selection' on function '@foo'\r\n #0 0x0000556ff83f71ea ___interceptor_backtrace.part.0 (../llvm-project/build/bin/llc+0xe91ea)\r\n #1 0x00007fe4460288c1 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) /home/dianqk/llvm/llvm-project/llvm/lib/Support/Unix/Signals.inc:723:13\r\n #2 0x00007fe446029a2e llvm::sys::RunSignalHandlers() /home/dianqk/llvm/llvm-project/llvm/lib/Support/Signals.cpp:0:5\r\n #3 0x00007fe446029a2e SignalHandler(int) /home/dianqk/llvm/llvm-project/llvm/lib/Support/Unix/Signals.inc:403:3\r\n #4 0x00007fe44ac54eb0 __restore_rt (/nix/store/7jiqcrg061xi5clniy7z5pvkc4jiaqav-glibc-2.38-27/lib/libc.so.6+0x3deb0)\r\n #5 0x00007fe44aca402c __pthread_kill_implementation (/nix/store/7jiqcrg061xi5clniy7z5pvkc4jiaqav-glibc-2.38-27/lib/libc.so.6+0x8d02c)\r\n #6 0x00007fe44ac54e06 gsignal (/nix/store/7jiqcrg061xi5clniy7z5pvkc4jiaqav-glibc-2.38-27/lib/libc.so.6+0x3de06)\r\n #7 0x00007fe44ac3d8f5 abort (/nix/store/7jiqcrg061xi5clniy7z5pvkc4jiaqav-glibc-2.38-27/lib/libc.so.6+0x268f5)\r\n #8 0x00007fe44ac3d819 _nl_load_domain.cold (/nix/store/7jiqcrg061xi5clniy7z5pvkc4jiaqav-glibc-2.38-27/lib/libc.so.6+0x26819)\r\n #9 0x00007fe44ac4d686 (/nix/store/7jiqcrg061xi5clniy7z5pvkc4jiaqav-glibc-2.38-27/lib/libc.so.6+0x36686)\r\n#10 0x00007fe44e60ec7f llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags) /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:5784:5\r\n#11 0x00007fe44e5b719d llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue) /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:5605:10\r\n#12 0x00007fe44e5b719d llvm::SelectionDAG::getZExtOrTrunc(llvm::SDValue, llvm::SDLoc const&, llvm::EVT) /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:1464:5\r\n#13 0x00007fe45441467f replaceBoolVectorBitcast(llvm::SDNode*, llvm::SmallVectorImpl<llvm::SDValue>&, llvm::SelectionDAG&) /home/dianqk/llvm/llvm-project/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:0:27\r\n#14 0x00007fe45441467f llvm::AArch64TargetLowering::ReplaceBITCASTResults(llvm::SDNode*, llvm::SmallVectorImpl<llvm::SDValue>&, llvm::SelectionDAG&) const /home/dianqk/llvm/llvm-project/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:24619:12\r\n#15 0x00007fe454418b7a llvm::AArch64TargetLowering::ReplaceNodeResults(llvm::SDNode*, llvm::SmallVectorImpl<llvm::SDValue>&, llvm::SelectionDAG&) const /home/dianqk/llvm/llvm-project/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:0:5\r\n#16 0x00007fe44e2cf55f llvm::DAGTypeLegalizer::CustomLowerNode(llvm::SDNode*, llvm::EVT, bool) /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.cpp:0:0\r\n#17 0x00007fe44e201ad4 llvm::DAGTypeLegalizer::PromoteIntegerResult(llvm::SDNode*, unsigned int) /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp:46:7\r\n#18 0x00007fe44e2c33b9 llvm::DAGTypeLegalizer::run() /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.cpp:0:9\r\n#19 0x00007fe44e2d3982 llvm::SelectionDAG::LegalizeTypes() /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.cpp:0:34\r\n#20 0x00007fe44e6fffcf llvm::SelectionDAGISel::CodeGenAndEmitDAG() /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:0:23\r\n#21 0x00007fe44e6fe50e llvm::SelectionDAGISel::SelectBasicBlock(llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true>, false, true>, llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true>, false, true>, bool&) /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:0:3\r\n#22 0x00007fe44e6fa8ee llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1511:8\r\n#23 0x00007fe44e6ef0bb llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:517:7\r\n#24 0x00007fe44cb174a4 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) /home/dianqk/llvm/llvm-project/llvm/lib/CodeGen/MachineFunctionPass.cpp:0:13\r\n#25 0x00007fe446f13795 llvm::FPPassManager::runOnFunction(llvm::Function&) /home/dianqk/llvm/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1455:11\r\n#26 0x00007fe446f2bd24 llvm::ilist_iterator<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false>, false, false>::operator++() /home/dianqk/llvm/llvm-project/llvm/include/llvm/ADT/ilist_iterator.h:157:48\r\n#27 0x00007fe446f2bd24 llvm::FPPassManager::runOnModule(llvm::Module&) /home/dianqk/llvm/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1490:20\r\n#28 0x00007fe446f14680 (anonymous namespace)::MPPassManager::runOnModule(llvm::Module&) /home/dianqk/llvm/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:0:27\r\n#29 0x00007fe446f14680 llvm::legacy::PassManagerImpl::run(llvm::Module&) /home/dianqk/llvm/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:542:44\r\n#30 0x0000556ff84e54b5 compileModule(char**, llvm::LLVMContext&) /home/dianqk/llvm/llvm-project/llvm/tools/llc/llc.cpp:0:8\r\n#31 0x0000556ff84de6d0 main /home/dianqk/llvm/llvm-project/llvm/tools/llc/llc.cpp:408:13\r\n#32 0x00007fe44ac3f0ce __libc_start_call_main (/nix/store/7jiqcrg061xi5clniy7z5pvkc4jiaqav-glibc-2.38-27/lib/libc.so.6+0x280ce)\r\n#33 0x00007fe44ac3f189 __libc_start_main@GLIBC_2.2.5 (/nix/store/7jiqcrg061xi5clniy7z5pvkc4jiaqav-glibc-2.38-27/lib/libc.so.6+0x28189)\r\n#34 0x0000556ff83a50c5 _start (../llvm-project/build/bin/llc+0x970c5)\r\nzsh: IOT instruction (core dumped)  ../llvm-project/build/bin/llc foo.ll\r\n```\r\n\r\n</p>\r\n</details> ",
+    "comments": [
+      {
+        "author": "nikic",
+        "body": "Reduced:\r\n```llvm\r\ndefine <2 x i8> @test(<16 x i1> %arg) {\r\n  %bc = bitcast <16 x i1> %arg to <2 x i8>\r\n  ret <2 x i8> %bc\r\n}\r\n```"
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "release:backport",
+      "llvm:crash"
+    ],
+    "title": "[AArch64] Assertion `VT.isVector() == N1.getValueType().isVector() && \"TRUNCATE result type type should be vector iff the operand \" \"type is vector!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/81216",
+  "knowledge_cutoff": "2024-02-09T02:43:58Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 92d79922051f732560acf3791b543df1e6580689\nAuthor: Nikita Popov <npopov@redhat.com>\nDate:   Mon Feb 12 10:00:34 2024 +0100\n\n    [AArch64] Only apply bool vector bitcast opt if result is scalar (#81256)\n    \n    This optimization tries to optimize bitcasts from `<N x i1>` to iN, but\n    currently also triggers for `<N x i1>` to `<M x iK>` bitcasts, if custom\n    lowering has been requested for these for an unrelated reason. Fix this\n    by explicitly checking that the result type is scalar.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/81216.\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex 20290c958a70..2854dd4d9674 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -24615,7 +24615,8 @@ void AArch64TargetLowering::ReplaceBITCASTResults(\n     return;\n   }\n \n-  if (SrcVT.isVector() && SrcVT.getVectorElementType() == MVT::i1)\n+  if (SrcVT.isVector() && SrcVT.getVectorElementType() == MVT::i1 &&\n+      !VT.isVector())\n     return replaceBoolVectorBitcast(N, Results, DAG);\n \n   if (VT != MVT::i16 || (SrcVT != MVT::f16 && SrcVT != MVT::bf16))\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-apple-darwin -mattr=+neon -verify-machineinstrs < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/vec-combine-compare-to-bitmask.ll",
+      "tests": [
+        {
+          "test_body": "define i6 @no_combine_illegal_num_elements(<6 x i32> %vec) {\n  %cmp_result = icmp ne <6 x i32> %vec, zeroinitializer\n  %bitmask = bitcast <6 x i1> %cmp_result to i6\n  ret i6 %bitmask\n}\n",
+          "test_name": "no_combine_illegal_num_elements"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <2 x i8> @vector_to_vector_cast(<16 x i1> %arg) #0 {\n  %bc = bitcast <16 x i1> %arg to <2 x i8>\n  ret <2 x i8> %bc\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "vector_to_vector_cast"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

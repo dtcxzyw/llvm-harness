@@ -1,0 +1,130 @@
+{
+  "base_commit": "9d2dd009b60793f562ba1b00e3d02773f060e4b6",
+  "bug_id": "76927",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "AArch64TargetLowering::AArch64TargetLowering",
+        "AArch64TargetLowering::LowerOperation",
+        "LowerFLDEXP"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          1080,
+          1085
+        ],
+        [
+          6688,
+          6693
+        ],
+        [
+          6705,
+          6710
+        ]
+      ],
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.h": [
+        [
+          1143,
+          1148
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "c4b66bf4d065d3bbc2e2fac8512a6df8e013c704"
+  },
+  "issue": {
+    "author": "omjavaid",
+    "body": "Flang crash on gfortran/regression internal_dummy_2.f08 test on various AArch64 machines. This test was enabled by recent commit 82c07c75. If the said feature is not implemented flang should report an appropriate message.\r\n\r\n```\r\n******************** TEST 'test-suite :: Fortran/gfortran/regression/gfortran-regression-compile-regression__internal_dummy_2_f08.test' FAILED ********************\r\n\r\n/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/test/sandbox/build/tools/timeit-target --limit-core 0 --limit-cpu 7200 --timeout 7200 --limit-file-size 209715200 --limit-rss-size 838860800 --redirect-input /dev/null --summary /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/test/sandbox/build/Fortran/gfortran/regression/Output/gfortran-regression-compile-regression__internal_dummy_2_f08.test.time /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/test/sandbox/build/Fortran/gfortran/regression/..//dummy\r\n/usr/bin/diff /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/test/sandbox/build/Fortran/gfortran/regression/..//gfortran-compile-empty.reference.out /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/test/sandbox/build/Fortran/gfortran/regression/gfortran-regression-compile-regression__internal_dummy_2_f08.out\r\n0a1,49\r\n> flang-new: warning: -lpgmath: 'linker' input unused [-Wunused-command-line-argument]\r\n> unimplemented operand\r\n> UNREACHABLE executed at /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/llvm/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:6102!\r\n> PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\n> Stack dump:\r\n> 0.\tProgram arguments: /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new -fc1 -triple aarch64-unknown-linux-gnu -emit-obj -mrelocation-model pic -pic-level 2 -pic-is-pie -target-cpu generic -target-feature +neon -target-feature +v8a -module-dir /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/test/sandbox/build/Fortran/gfortran/regression/gfortran-regression-compile-regression__internal_dummy_2_f08.wd -mframe-pointer=non-leaf -o internal_dummy_2.o -x f95-cpp-input /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/test/test-suite/Fortran/gfortran/regression/internal_dummy_2.f08\r\n> 1.\tRunning pass 'Function Pass Manager' on module 'FIRModule'.\r\n> 2.\tRunning pass 'AArch64 Instruction Selection' on function '@_QQmain'\r\n>  #0 0x0000aaaad080a000 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x29b4000)\r\n>  #1 0x0000aaaad0807d70 llvm::sys::RunSignalHandlers() (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x29b1d70)\r\n>  #2 0x0000aaaad080a8f8 SignalHandler(int) Signals.cpp:0:0\r\n>  #3 0x0000ffffa10d9598 (linux-vdso.so.1+0x598)\r\n>  #4 0x0000ffffa0bf0d78 raise /build/glibc-Q8DG8B/glibc-2.31/signal/../sysdeps/unix/sysv/linux/raise.c:51:1\r\n>  #5 0x0000ffffa0bddaac abort /build/glibc-Q8DG8B/glibc-2.31/stdlib/abort.c:81:7\r\n>  #6 0x0000aaaad0784ec8 (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x292eec8)\r\n>  #7 0x0000aaaacf528e38 llvm::AArch64TargetLowering::LowerOperation(llvm::SDValue, llvm::SelectionDAG&) const (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x16d2e38)\r\n>  #8 0x0000aaaad270e160 (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) LegalizeDAG.cpp:0:0\r\n>  #9 0x0000aaaad270d674 llvm::SelectionDAG::Legalize() (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x48b7674)\r\n> #10 0x0000aaaad27d5af8 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x497faf8)\r\n> #11 0x0000aaaad27d3a70 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x497da70)\r\n> #12 0x0000aaaad27d0970 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x497a970)\r\n> #13 0x0000aaaad2bc8bc0 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x4d72bc0)\r\n> #14 0x0000aaaad4a348c8 llvm::FPPassManager::runOnFunction(llvm::Function&) (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x6bde8c8)\r\n> #15 0x0000aaaad4a3c634 llvm::FPPassManager::runOnModule(llvm::Module&) (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x6be6634)\r\n> #16 0x0000aaaad4a35248 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x6bdf248)\r\n> #17 0x0000aaaad0a11038 Fortran::frontend::CodeGenAction::executeAction() (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x2bbb038)\r\n> #18 0x0000aaaad083e91c Fortran::frontend::FrontendAction::execute() (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x29e891c)\r\n> #19 0x0000aaaad082d5f4 Fortran::frontend::CompilerInstance::executeAction(Fortran::frontend::FrontendAction&) (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x29d75f4)\r\n> #20 0x0000aaaad08427f0 Fortran::frontend::executeCompilerInvocation(Fortran::frontend::CompilerInstance*) (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x29ec7f0)\r\n> #21 0x0000aaaacf3a5530 fc1_main(llvm::ArrayRef<char const*>, char const*) (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x154f530)\r\n> #22 0x0000aaaacf3a45a4 main (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x154e5a4)\r\n> #23 0x0000ffffa0bdde10 __libc_start_main /build/glibc-Q8DG8B/glibc-2.31/csu/../csu/libc-start.c:342:3\r\n> #24 0x0000aaaacf3a3918 _start (/home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin/flang-new+0x154d918)\r\n> flang-new: error: unable to execute command: Aborted\r\n> flang-new: error: flang frontend command failed due to signal (use -v to see invocation)\r\n> flang-new version 18.0.0git (https://github.com/llvm/llvm-project.git fc0fdd1ae20062e4d77c1b7ffc5b06773c752815)\r\n> Target: aarch64-unknown-linux-gnu\r\n> Thread model: posix\r\n> InstalledDir: /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/stage2.install/bin\r\n> flang-new: note: diagnostic msg: \r\n> ********************\r\n> \r\n> PLEASE ATTACH THE FOLLOWING FILES TO THE BUG REPORT:\r\n> Preprocessed source(s) and associated run script(s) are located at:\r\n> flang-new: note: diagnostic msg: /tmp/internal_dummy_2-7c482f\r\n> flang-new: note: diagnostic msg: /tmp/internal_dummy_2-7c482f.sh\r\n> flang-new: note: diagnostic msg: \r\n> \r\n> ********************\r\n\\ No newline at end of file\r\n\r\n+ /usr/bin/diff /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/test/sandbox/build/Fortran/gfortran/regression/..//gfortran-compile-empty.reference.out /home/tcwg-buildbot/worker/clang-aarch64-full-2stage/test/sandbox/build/Fortran/gfortran/regression/gfortran-regression-compile-regression__internal_dummy_2_f08.out\r\n\r\n********************\r\n\r\n```",
+    "comments": [
+      {
+        "author": "banach-space",
+        "body": "Thanks for reporting! Could you share a reproducer and let us know which project is this commit from? \r\n\r\n> This test was enabled by recent commit 82c07c75"
+      },
+      {
+        "author": "omjavaid",
+        "body": "This is from [llvm-test-suite](https://github.com/llvm/llvm-test-suite) gfortran tests. I pushed a commit 4049776b to disable this tests. It fails on following LLVM buildbots\r\n\r\nhttps://lab.llvm.org/buildbot/#/builders/198\r\nhttps://lab.llvm.org/buildbot/#/builders/184\r\nhttps://lab.llvm.org/buildbot/#/builders/197\r\nhttps://lab.llvm.org/buildbot/#/builders/176\r\n"
+      },
+      {
+        "author": "banach-space",
+        "body": "> I pushed a commit 4049776b to disable this tests.\r\n\r\nThanks! Would you mind sharing links to commits that you refer to? It's much easier if all the information is in one place :) \r\n\r\nLooking at one particular failure (https://lab.llvm.org/buildbot/#/builders/184/builds/9092/steps/13/logs/FAIL__test-suite__gfortran-regression-compile-regr):\r\n```bash\r\n> UNREACHABLE executed at ../llvm/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:6102!\r\n```\r\n\r\nLooks like a something specific to AArch64. Do we run these tests on any other platforms?\r\n\r\nCC @klausler who pushed 82c07c75."
+      },
+      {
+        "author": "omjavaid",
+        "body": "@banach-space i am not aware of all the commits from the LLVM side which should have fixed this test. @klausler might know better which Fortran features or bug fix should have fixed this tests."
+      },
+      {
+        "author": "banach-space",
+        "body": "> @banach-space i am not aware of all the commits from the LLVM side which should have fixed this test.\r\n\r\nWhat I meant is sharing [82c07c75](https://github.com/llvm/llvm-test-suite/commit/82c07c75972330c43c4fb93a863fdbbc3f087873) instead of 82c07c75 ;-)"
+      },
+      {
+        "author": "Leporacanthicus",
+        "body": "The underlying reason for the failure is the lack of trampolines in AArch64. The basic problem is passing arguments from an outer scope through to a function pointer.\r\n\r\nI'll come back with some supporting material in a little bit."
+      },
+      {
+        "author": "Leporacanthicus",
+        "body": "This raises the issue:\r\nhttps://github.com/JuliaLang/julia/issues/27174\r\n\r\nThere's an RFC about support for this here: https://github.com/llvm/llvm-project/pull/66157\r\nI pointed out the above bug in that review."
+      },
+      {
+        "author": "Leporacanthicus",
+        "body": "Although that is supposed to be fixed here: https://github.com/llvm/llvm-project/pull/70267\r\n\r\nSo not entirely sure what the problem is..."
+      },
+      {
+        "author": "klausler",
+        "body": "Tom Eccles gave me an all-clear for aarch64, so I don't know what went wrong there.  I should probably just stop upstreaming test enablements to llvm-test-suite.\r\n\r\nWhat's left to be done for this bug?"
+      },
+      {
+        "author": "Leporacanthicus",
+        "body": "> Tom Eccles gave me an all-clear for aarch64, so I don't know what went wrong there. I should probably just stop upstreaming test enablements to llvm-test-suite.\r\n\r\nThat's a bit extreme. You are certainly not the first, unlikely the last to do an \"Oops, I broke something I couldn't test locally\".\r\n> \r\n> What's left to be done for this bug?\r\n\r\nI first thought it was as easy as \"it's not been implemented\", but there seems to be code there to solve this. See PR mentioned above.\r\n\r\nI haven't looked into the details, as I've got another important task to work on. The PR above says it should work on Linux, will not work on Windows or MacOS - but this is a Linux build, so shouldn't be a problem that it doesn't work on other OSes.\r\n\r\nI may be able to take a look after I've got my current work sorted out (at least as far as trying to narrow down the underlying problem a bit more closely)."
+      },
+      {
+        "author": "ceseo",
+        "body": "> Although that is supposed to be fixed here: #70267\r\n> \r\n> So not entirely sure what the problem is...\r\n\r\nMy PR hasn't been merged yet. Someone else mentioned a while back on Phabricator that he would try another approach to solve this problem without relying on a compiler-rt dependency. I don't know the current status of that."
+      },
+      {
+        "author": "Leporacanthicus",
+        "body": "> > Although that is supposed to be fixed here: #70267\r\n> > So not entirely sure what the problem is...\r\n> \r\n> My PR hasn't been merged yet. Someone else mentioned a while back on Phabricator that he would try another approach to solve this problem without relying on a compiler-rt dependency. I don't know the current status of that.\r\n\r\nAh, that'll be why it still fails... :) Mystery solved. It helps if you actually can read the PR page correctly, and when you (as in I) see the \"Squash and merge\" don't accept that as \"already merged\".\r\n\r\n@klausler I'm not sure if there's a way to enable the test for only some OS/Processor (e.g. x86 & Linux only) or not. Otherwise, I guess we have to wait until the above ticket is resolved..."
+      },
+      {
+        "author": "ceseo",
+        "body": "@Leporacanthicus my suggestion would be to approve this PR and I'd add a comment stating that, in the future, it would be better to remove the compiler-rt dependency, like X86 does."
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "compiler-rt:builtins",
+      "crash"
+    ],
+    "title": "Flang crash upon running internal_dummy_2.f08 gfortran regression test"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/76927",
+  "knowledge_cutoff": "2024-01-04T09:09:07Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit c4b66bf4d065d3bbc2e2fac8512a6df8e013c704\nAuthor: Carlos Seo <carlos.seo@linaro.org>\nDate:   Wed Jul 24 11:18:08 2024 -0300\n\n    [AArch64] Implement INIT/ADJUST_TRAMPOLINE (#70267)\n    \n    Add support for llvm.init.trampoline and llvm.adjust.trampoline\n    intrinsics for AArch64.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/65573\n    Fixes https://github.com/llvm/llvm-project/issues/76927\n    Fixes https://github.com/llvm/llvm-project/issues/83555\n    Updates https://github.com/llvm/llvm-project/pull/66157\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex 7efe99c63a37..d86e52d49000 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -1080,6 +1080,10 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,\n   // Try to create BICs for vector ANDs.\n   setTargetDAGCombine(ISD::AND);\n \n+  // llvm.init.trampoline and llvm.adjust.trampoline\n+  setOperationAction(ISD::INIT_TRAMPOLINE, MVT::Other, Custom);\n+  setOperationAction(ISD::ADJUST_TRAMPOLINE, MVT::Other, Custom);\n+\n   // Vector add and sub nodes may conceal a high-half opportunity.\n   // Also, try to fold ADD into CSINC/CSINV..\n   setTargetDAGCombine({ISD::ADD, ISD::ABS, ISD::SUB, ISD::XOR, ISD::SINT_TO_FP,\n@@ -6688,6 +6692,56 @@ static SDValue LowerFLDEXP(SDValue Op, SelectionDAG &DAG) {\n   return Final;\n }\n \n+SDValue AArch64TargetLowering::LowerADJUST_TRAMPOLINE(SDValue Op,\n+                                                      SelectionDAG &DAG) const {\n+  // Note: x18 cannot be used for the Nest parameter on Windows and macOS.\n+  if (Subtarget->isTargetDarwin() || Subtarget->isTargetWindows())\n+    report_fatal_error(\n+        \"ADJUST_TRAMPOLINE operation is only supported on Linux.\");\n+\n+  return Op.getOperand(0);\n+}\n+\n+SDValue AArch64TargetLowering::LowerINIT_TRAMPOLINE(SDValue Op,\n+                                                    SelectionDAG &DAG) const {\n+\n+  // Note: x18 cannot be used for the Nest parameter on Windows and macOS.\n+  if (Subtarget->isTargetDarwin() || Subtarget->isTargetWindows())\n+    report_fatal_error(\"INIT_TRAMPOLINE operation is only supported on Linux.\");\n+\n+  SDValue Chain = Op.getOperand(0);\n+  SDValue Trmp = Op.getOperand(1); // trampoline\n+  SDValue FPtr = Op.getOperand(2); // nested function\n+  SDValue Nest = Op.getOperand(3); // 'nest' parameter value\n+  SDLoc dl(Op);\n+\n+  EVT PtrVT = getPointerTy(DAG.getDataLayout());\n+  Type *IntPtrTy = DAG.getDataLayout().getIntPtrType(*DAG.getContext());\n+\n+  TargetLowering::ArgListTy Args;\n+  TargetLowering::ArgListEntry Entry;\n+\n+  Entry.Ty = IntPtrTy;\n+  Entry.Node = Trmp;\n+  Args.push_back(Entry);\n+  Entry.Node = DAG.getConstant(20, dl, MVT::i64);\n+  Args.push_back(Entry);\n+\n+  Entry.Node = FPtr;\n+  Args.push_back(Entry);\n+  Entry.Node = Nest;\n+  Args.push_back(Entry);\n+\n+  // Lower to a call to __trampoline_setup(Trmp, TrampSize, FPtr, ctx_reg)\n+  TargetLowering::CallLoweringInfo CLI(DAG);\n+  CLI.setDebugLoc(dl).setChain(Chain).setLibCallee(\n+      CallingConv::C, Type::getVoidTy(*DAG.getContext()),\n+      DAG.getExternalSymbol(\"__trampoline_setup\", PtrVT), std::move(Args));\n+\n+  std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);\n+  return CallResult.second;\n+}\n+\n SDValue AArch64TargetLowering::LowerOperation(SDValue Op,\n                                               SelectionDAG &DAG) const {\n   LLVM_DEBUG(dbgs() << \"Custom lowering: \");\n@@ -6705,6 +6759,10 @@ SDValue AArch64TargetLowering::LowerOperation(SDValue Op,\n     return LowerGlobalTLSAddress(Op, DAG);\n   case ISD::PtrAuthGlobalAddress:\n     return LowerPtrAuthGlobalAddress(Op, DAG);\n+  case ISD::ADJUST_TRAMPOLINE:\n+    return LowerADJUST_TRAMPOLINE(Op, DAG);\n+  case ISD::INIT_TRAMPOLINE:\n+    return LowerINIT_TRAMPOLINE(Op, DAG);\n   case ISD::SETCC:\n   case ISD::STRICT_FSETCC:\n   case ISD::STRICT_FSETCCS:\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.h b/llvm/lib/Target/AArch64/AArch64ISelLowering.h\nindex ef45e4f01ecd..81e15185f985 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.h\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.h\n@@ -1143,6 +1143,8 @@ private:\n   SDValue LowerSELECT_CC(ISD::CondCode CC, SDValue LHS, SDValue RHS,\n                          SDValue TVal, SDValue FVal, const SDLoc &dl,\n                          SelectionDAG &DAG) const;\n+  SDValue LowerINIT_TRAMPOLINE(SDValue Op, SelectionDAG &DAG) const;\n+  SDValue LowerADJUST_TRAMPOLINE(SDValue Op, SelectionDAG &DAG) const;\n   SDValue LowerJumpTable(SDValue Op, SelectionDAG &DAG) const;\n   SDValue LowerBR_JT(SDValue Op, SelectionDAG &DAG) const;\n   SDValue LowerBRIND(SDValue Op, SelectionDAG &DAG) const;\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-- < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/trampoline.ll",
+      "tests": [
+        {
+          "test_body": "\ndeclare void @llvm.init.trampoline(ptr, ptr, ptr);\ndeclare ptr @llvm.adjust.trampoline(ptr);\n\ndefine i64 @f(ptr nest %c, i64 %x, i64 %y) {\n  %sum = add i64 %x, %y\n  ret i64 %sum\n}\n\ndefine i64 @main() {\n  %val = alloca i64\n  %nval = bitcast ptr %val to ptr\n  %tramp = alloca [36 x i8], align 8\n  call void @llvm.init.trampoline(ptr %tramp, ptr @f, ptr %nval)\n  %fp = call ptr @llvm.adjust.trampoline(ptr %tramp)\n  ret i64 0\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,104 @@
+{
+  "base_commit": "431b9965f59ad68e5c7d7112bc6b7ea154e5f85c",
+  "bug_id": "97849",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "RISCVTargetLowering::RISCVTargetLowering",
+        "lowerBUILD_VECTOR",
+        "lowerBuildVectorOfConstants"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          1329,
+          1334
+        ],
+        [
+          3901,
+          3911
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "e4ee9bf0d2dee8064c539c047ee525e5b7ad44e5"
+  },
+  "issue": {
+    "author": "mshabunin",
+    "body": "Reproduced with LLVM @ _main_ (~ July 5, 2024)\r\n\r\nArch flags: `-march=rv64gc_v_zvfhmin`\r\n\r\n[test_arithm-1e8bff.cpp.txt](https://github.com/user-attachments/files/16112505/test_arithm-1e8bff.cpp.txt)\r\n[test_arithm-1e8bff.sh.txt](https://github.com/user-attachments/files/16112508/test_arithm-1e8bff.sh.txt)\r\n\r\n```\r\nFAILED: modules/core/CMakeFiles/opencv_test_core.dir/test/test_arithm.cpp.o \r\nccache /work/chains/llvm-main/bin/clang++ --target=riscv64-unknown-linux-gnu --sysroot=/work/chains/riscv-gcc-14.1.0/sysroot -DOPENCV_ALLOCATOR_STATS_COUNTER_TYPE=int -D_USE_MATH_DEFINES -D__OPENCV_BUILD=1 -D__OPENCV_TESTS=1 -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -I/work/opencv/3rdparty/clapack/include -I/work/opencv/modules/ts/include -I/work/opencv/modules/core/include -I/work/opencv/modules/imgcodecs/include -I/work/opencv/modules/videoio/include -I/work/opencv/modules/imgproc/include -I/work/opencv/modules/highgui/include -I/work/build-opencv-rvv10/modules/core/test -isystem /work/build-opencv-rvv10 -march=rv64gc --gcc-toolchain=/work/chains/riscv-gcc-14.1.0 -w    -fsigned-char -W -Wall -Wreturn-type -Wnon-virtual-dtor -Waddress -Wsequence-point -Wformat -Wformat-security -Wmissing-declarations -Wmissing-prototypes -Wstrict-prototypes -Wundef -Winit-self -Wpointer-arith -Wshadow -Wsign-promo -Wuninitialized -Winconsistent-missing-override -Wno-delete-non-virtual-dtor -Wno-unnamed-type-template-args -Wno-comment -Wno-deprecated-enum-enum-conversion -Wno-deprecated-anon-enum-enum-conversion -fdiagnostics-show-option -pthread -Qunused-arguments -ffunction-sections -fdata-sections -DCV_RVV_SCALABLE -static -static-libgcc -static-libstdc++ -march=rv64gc_v_zvfhmin -fvisibility=hidden -fvisibility-inlines-hidden -O3 -DNDEBUG  -DNDEBUG -fPIE -std=c++11 -MD -MT modules/core/CMakeFiles/opencv_test_core.dir/test/test_arithm.cpp.o -MF modules/core/CMakeFiles/opencv_test_core.dir/test/test_arithm.cpp.o.d -o modules/core/CMakeFiles/opencv_test_core.dir/test/test_arithm.cpp.o -c /work/opencv/modules/core/test/test_arithm.cpp\r\nSoftPromoteHalfOperand Op #0: t114: v8f16 = BUILD_VECTOR t46, t47, t48, t49, t50, t51, t52, t53\r\n\r\nfatal error: error in backend: Do not know how to soft promote this operator's operand!\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\r\nStack dump:\r\n0.\tProgram arguments: /work/chains/llvm-main/bin/clang++ --target=riscv64-unknown-linux-gnu --sysroot=/work/chains/riscv-gcc-14.1.0/sysroot -march=rv64gc --gcc-toolchain=/work/chains/riscv-gcc-14.1.0 -w -fsigned-char -W -Wall -Wreturn-type -Wnon-virtual-dtor -Waddress -Wsequence-point -Wformat -Wformat-security -Wmissing-declarations -Wmissing-prototypes -Wstrict-prototypes -Wundef -Winit-self -Wpointer-arith -Wshadow -Wsign-promo -Wuninitialized -Winconsistent-missing-override -Wno-delete-non-virtual-dtor -Wno-unnamed-type-template-args -Wno-comment -Wno-deprecated-enum-enum-conversion -Wno-deprecated-anon-enum-enum-conversion -fdiagnostics-show-option -pthread -Qunused-arguments -ffunction-sections -fdata-sections -static -static-libgcc -static-libstdc++ -march=rv64gc_v_zvfhmin -fvisibility=hidden -fvisibility-inlines-hidden -O3 -fPIE -std=c++11 -DOPENCV_ALLOCATOR_STATS_COUNTER_TYPE=int -D_USE_MATH_DEFINES -D__OPENCV_BUILD=1 -D__OPENCV_TESTS=1 -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -I/work/opencv/3rdparty/clapack/include -I/work/opencv/modules/ts/include -I/work/opencv/modules/core/include -I/work/opencv/modules/imgcodecs/include -I/work/opencv/modules/videoio/include -I/work/opencv/modules/imgproc/include -I/work/opencv/modules/highgui/include -I/work/build-opencv-rvv10/modules/core/test -isystem /work/build-opencv-rvv10 -DCV_RVV_SCALABLE -DNDEBUG -DNDEBUG -c -MD -MT modules/core/CMakeFiles/opencv_test_core.dir/test/test_arithm.cpp.o -MF modules/core/CMakeFiles/opencv_test_core.dir/test/test_arithm.cpp.o.d -fcolor-diagnostics -o modules/core/CMakeFiles/opencv_test_core.dir/test/test_arithm.cpp.o /work/opencv/modules/core/test/test_arithm.cpp\r\n1.\t<eof> parser at end of file\r\n2.\tCode generation\r\n3.\tRunning pass 'Function Pass Manager' on module '/work/opencv/modules/core/test/test_arithm.cpp'.\r\n4.\tRunning pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@_ZN11opencv_test12_GLOBAL__N_110InRangeSOp5refopERKSt6vectorIN2cv3MatESaIS4_EERS4_RKS4_'\r\n #0 0x000064d73e39cb0d llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) /work/chains/llvm-project/llvm/lib/Support/Unix/Signals.inc:723:11\r\n #1 0x000064d73e39cffb PrintStackTraceSignalHandler(void*) /work/chains/llvm-project/llvm/lib/Support/Unix/Signals.inc:798:1\r\n #2 0x000064d73e39b026 llvm::sys::RunSignalHandlers() /work/chains/llvm-project/llvm/lib/Support/Signals.cpp:105:5\r\n #3 0x000064d73e39c37e llvm::sys::CleanupOnSignal(unsigned long) /work/chains/llvm-project/llvm/lib/Support/Unix/Signals.inc:368:1\r\n #4 0x000064d73e2c0c34 (anonymous namespace)::CrashRecoveryContextImpl::HandleCrash(int, unsigned long) /work/chains/llvm-project/llvm/lib/Support/CrashRecoveryContext.cpp:0:7\r\n #5 0x000064d73e2c0b58 llvm::CrashRecoveryContext::HandleExit(int) /work/chains/llvm-project/llvm/lib/Support/CrashRecoveryContext.cpp:446:3\r\n #6 0x000064d73e396503 llvm::sys::Process::Exit(int, bool) /work/chains/llvm-project/llvm/lib/Support/Process.cpp:115:7\r\n #7 0x000064d73a497de6 (/work/chains/llvm-main/bin/clang+++0x1fa7de6)\r\n #8 0x000064d73e2cda89 llvm::report_fatal_error(llvm::Twine const&, bool) /work/chains/llvm-project/llvm/lib/Support/ErrorHandling.cpp:104:5\r\n #9 0x000064d73e2cd9d2 /work/chains/llvm-project/llvm/lib/Support/ErrorHandling.cpp:83:3\r\n#10 0x000064d7400dac9d llvm::DAGTypeLegalizer::SoftPromoteHalfOperand(llvm::SDNode*, unsigned int) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeFloatTypes.cpp:0:5\r\n#11 0x000064d7400202b1 llvm::DAGTypeLegalizer::run() /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.cpp:356:26\r\n#12 0x000064d7400249ab llvm::SelectionDAG::LegalizeTypes() /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.cpp:1057:34\r\n#13 0x000064d73ff6fe6e llvm::SelectionDAGISel::CodeGenAndEmitDAG() /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:953:13\r\n#14 0x000064d73ff6f7e3 llvm::SelectionDAGISel::SelectBasicBlock(llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, bool&) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:851:1\r\n#15 0x000064d73ff6f215 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1864:11\r\n#16 0x000064d73ff6c694 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:631:3\r\n#17 0x000064d73c144325 llvm::RISCVDAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) /work/chains/llvm-project/llvm/lib/Target/RISCV/RISCVISelDAGToDAG.h:36:5\r\n#18 0x000064d73ff6b6a0 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:374:3\r\n#19 0x000064d73d260f79 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) /work/chains/llvm-project/llvm/lib/CodeGen/MachineFunctionPass.cpp:94:8\r\n#20 0x000064d73da7e96a llvm::FPPassManager::runOnFunction(llvm::Function&) /work/chains/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1440:23\r\n#21 0x000064d73da837e2 llvm::FPPassManager::runOnModule(llvm::Module&) /work/chains/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1486:16\r\n#22 0x000064d73da7f26b (anonymous namespace)::MPPassManager::runOnModule(llvm::Module&) /work/chains/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1555:23\r\n#23 0x000064d73da7edd4 llvm::legacy::PassManagerImpl::run(llvm::Module&) /work/chains/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:541:16\r\n#24 0x000064d73da83ac1 llvm::legacy::PassManager::run(llvm::Module&) /work/chains/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1682:3\r\n#25 0x000064d73e7ad4b6 (anonymous namespace)::EmitAssemblyHelper::RunCodegenPipeline(clang::BackendAction, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>&, std::unique_ptr<llvm::ToolOutputFile, std::default_delete<llvm::ToolOutputFile>>&) /work/chains/llvm-project/clang/lib/CodeGen/BackendUtil.cpp:1158:3\r\n#26 0x000064d73e7a711d (anonymous namespace)::EmitAssemblyHelper::EmitAssembly(clang::BackendAction, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) /work/chains/llvm-project/clang/lib/CodeGen/BackendUtil.cpp:1182:7\r\n#27 0x000064d73e7a65af clang::EmitBackendOutput(clang::DiagnosticsEngine&, clang::HeaderSearchOptions const&, clang::CodeGenOptions const&, clang::TargetOptions const&, clang::LangOptions const&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) /work/chains/llvm-project/clang/lib/CodeGen/BackendUtil.cpp:1341:3\r\n#28 0x000064d73f23a49b clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) /work/chains/llvm-project/clang/lib/CodeGen/CodeGenAction.cpp:354:3\r\n#29 0x000064d7428ce219 clang::ParseAST(clang::Sema&, bool, bool) /work/chains/llvm-project/clang/lib/Parse/ParseAST.cpp:183:12\r\n#30 0x000064d73f535ac7 clang::ASTFrontendAction::ExecuteAction() /work/chains/llvm-project/clang/lib/Frontend/FrontendAction.cpp:1194:1\r\n#31 0x000064d73f23e426 clang::CodeGenAction::ExecuteAction() /work/chains/llvm-project/clang/lib/CodeGen/CodeGenAction.cpp:1145:5\r\n...\r\n#49 0x000064d73a4bfd35 main /work/chains/llvm-project/build/tools/clang/tools/driver/clang-driver.cpp:17:3\r\n#50 0x000077e540829d90 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16\r\n#51 0x000077e540829e40 call_init ./csu/../csu/libc-start.c:128:20\r\n#52 0x000077e540829e40 __libc_start_main ./csu/../csu/libc-start.c:379:5\r\n#53 0x000064d73a4879b5 _start (/work/chains/llvm-main/bin/clang+++0x1f979b5)\r\nclang++: error: clang frontend command failed with exit code 70 (use -v to see invocation)\r\nclang version 19.0.0git (https://github.com/llvm/llvm-project.git 00c622e596f918d9d83674b58097c8982ae1af95)\r\nTarget: riscv64-unknown-linux-gnu\r\nThread model: posix\r\nInstalledDir: /work/chains/llvm-main/bin\r\nBuild config: +unoptimized, +assertions\r\nclang++: note: diagnostic msg: \r\n********************\r\n```",
+    "comments": [
+      {
+        "author": "mshabunin",
+        "body": "I'm observing similar issue in SoftPromoteHalfOperand in the latest version of LLVM (commit 402eca265f7162e26b8b74d18297fd76c9f100de (HEAD, origin/main, origin/HEAD) Date:   Mon Jul 8 10:01:38 2024 -0700):\r\n```\r\nSoftPromoteHalfOperand Op #0: t50: v16f16 = splat_vector ConstantFP:f16<APFloat(0)>\r\n...\r\n#10 0x000065487542013d llvm::DAGTypeLegalizer::SoftPromoteHalfOperand(llvm::SDNode*, unsigned int) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeFloatTypes.cpp:0:5\r\n#11 0x0000654875365751 llvm::DAGTypeLegalizer::run() /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.cpp:356:26\r\n...\r\n```\r\nShould I file another ticket or add details in this one?"
+      },
+      {
+        "author": "topperc",
+        "body": "> I'm observing similar issue in SoftPromoteHalfOperand in the latest version of LLVM (commit [402eca2](https://github.com/llvm/llvm-project/commit/402eca265f7162e26b8b74d18297fd76c9f100de) (HEAD, origin/main, origin/HEAD) Date: Mon Jul 8 10:01:38 2024 -0700):\r\n> \r\n> ```\r\n> SoftPromoteHalfOperand Op #0: t50: v16f16 = splat_vector ConstantFP:f16<APFloat(0)>\r\n> ...\r\n> #10 0x000065487542013d llvm::DAGTypeLegalizer::SoftPromoteHalfOperand(llvm::SDNode*, unsigned int) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeFloatTypes.cpp:0:5\r\n> #11 0x0000654875365751 llvm::DAGTypeLegalizer::run() /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.cpp:356:26\r\n> ...\r\n> ```\r\n> \r\n> Should I file another ticket or add details in this one?\r\n\r\nFile another ticket"
+      },
+      {
+        "author": "topperc",
+        "body": "> > I'm observing similar issue in SoftPromoteHalfOperand in the latest version of LLVM (commit [402eca2](https://github.com/llvm/llvm-project/commit/402eca265f7162e26b8b74d18297fd76c9f100de) (HEAD, origin/main, origin/HEAD) Date: Mon Jul 8 10:01:38 2024 -0700):\r\n> > ```\r\n> > SoftPromoteHalfOperand Op #0: t50: v16f16 = splat_vector ConstantFP:f16<APFloat(0)>\r\n> > ...\r\n> > #10 0x000065487542013d llvm::DAGTypeLegalizer::SoftPromoteHalfOperand(llvm::SDNode*, unsigned int) /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeFloatTypes.cpp:0:5\r\n> > #11 0x0000654875365751 llvm::DAGTypeLegalizer::run() /work/chains/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.cpp:356:26\r\n> > ...\r\n> > ```\r\n> > \r\n> > \r\n> >     \r\n> >       \r\n> >     \r\n> > \r\n> >       \r\n> >     \r\n> > \r\n> >     \r\n> >   \r\n> > Should I file another ticket or add details in this one?\r\n> \r\n> File another ticket\r\n\r\nI've attempted a fix bb8998dd3b74a6936452d7ddeb341e79c1d8f001"
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash"
+    ],
+    "title": "[RISC-V] Crash in SoftPromoteHalfOperand with \"V\" and \"Zvfhmin\" extensions"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/97849",
+  "knowledge_cutoff": "2024-07-05T17:52:22Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit e4ee9bf0d2dee8064c539c047ee525e5b7ad44e5\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Sun Jul 7 20:25:09 2024 -0700\n\n    [RISCV] Custom legalize vXf16 BUILD_VECTOR without Zfhmin. (#97874)\n    \n    If we don't have Zfhmin, we will call `SoftPromoteHalfOperand` on the\n    BUILD_VECTOR. This operation is not supported by the generic code.\n    \n    Instead, custom lower to a vXi16 BUILD_VECTOR using bitcasts.\n    \n    Fixes #97849.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 1e37f2c3b9c5..3b7b4fb10d92 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -1329,6 +1329,10 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,\n           setOperationAction(ISD::VECTOR_SHUFFLE, VT, Custom);\n           // FIXME: We should prefer BUILD_VECTOR over SPLAT_VECTOR.\n           setOperationAction(ISD::SPLAT_VECTOR, VT, Custom);\n+          // We need to custom legalize f16 build vectors if Zfhmin isn't\n+          // available.\n+          if (!Subtarget.hasStdExtZfhminOrZhinxmin())\n+            setOperationAction(ISD::BUILD_VECTOR, MVT::f16, Custom);\n           MVT F32VecVT = MVT::getVectorVT(MVT::f32, VT.getVectorElementCount());\n           // Don't promote f16 vector operations to f32 if f32 vector type is\n           // not legal.\n@@ -3901,11 +3905,27 @@ static SDValue lowerBuildVectorOfConstants(SDValue Op, SelectionDAG &DAG,\n   return SDValue();\n }\n \n+// Convert to an vXf16 build_vector to vXi16 with bitcasts.\n+static SDValue lowerBUILD_VECTORvXf16(SDValue Op, SelectionDAG &DAG) {\n+  MVT VT = Op.getSimpleValueType();\n+  MVT IVT = VT.changeVectorElementType(MVT::i16);\n+  SmallVector<SDValue, 16> NewOps(Op.getNumOperands());\n+  for (unsigned I = 0, E = Op.getNumOperands(); I != E; ++I)\n+    NewOps[I] = DAG.getBitcast(MVT::i16, Op.getOperand(I));\n+  SDValue Res = DAG.getNode(ISD::BUILD_VECTOR, SDLoc(Op), IVT, NewOps);\n+  return DAG.getBitcast(VT, Res);\n+}\n+\n static SDValue lowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,\n                                  const RISCVSubtarget &Subtarget) {\n   MVT VT = Op.getSimpleValueType();\n   assert(VT.isFixedLengthVector() && \"Unexpected vector!\");\n \n+  // If we don't have scalar f16, we need to bitcast to an i16 vector.\n+  if (VT.getVectorElementType() == MVT::f16 &&\n+      !Subtarget.hasStdExtZfhminOrZhinxmin())\n+    return lowerBUILD_VECTORvXf16(Op, DAG);\n+\n   if (ISD::isBuildVectorOfConstantSDNodes(Op.getNode()) ||\n       ISD::isBuildVectorOfConstantFPSDNodes(Op.getNode()))\n     return lowerBuildVectorOfConstants(Op, DAG, Subtarget);\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=riscv32 -target-abi=ilp32d -mattr=+v,+zfh,+zvfh,+f,+d -verify-machineinstrs < %s",
+        "llc -mtriple=riscv32 -target-abi=ilp32d -mattr=+v,+zfh,+zvfh,+zba,+zbb -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -target-abi=lp64d -mattr=+v,+zfh,+zvfh,+f,+d -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -target-abi=lp64d -mattr=+v,+zfh,+zvfh,+rva22u64 -verify-machineinstrs < %s",
+        "llc -mtriple=riscv32 -target-abi=ilp32d -mattr=+v,+zvfhmin,+f,+d -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -target-abi=lp64d -mattr=+v,+zvfhmin,+f,+d -verify-machineinstrs < %s"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/fixed-vectors-fp-buildvec.ll",
+      "tests": [
+        {
+          "test_body": "define <2 x half> @buildvec_v2f16(half %a, half %b) {\n  %v1 = insertelement <2 x half> poison, half %a, i64 0\n  %v2 = insertelement <2 x half> %v1, half %b, i64 1\n  ret <2 x half> %v2\n}\n",
+          "test_name": "buildvec_v2f16"
+        },
+        {
+          "test_body": "define <2 x half> @vid_addend1_v2f16() {\n  ret <2 x half> <half 0xH3C00, half 0xH4000>\n}\n",
+          "test_name": "vid_addend1_v2f16"
+        },
+        {
+          "test_body": "define <2 x half> @vid_step2_v2f16() {\n  ret <2 x half> <half 0xH0000, half 0xH4000>\n}\n",
+          "test_name": "vid_step2_v2f16"
+        },
+        {
+          "test_body": "define <2 x half> @vid_denominator2_v2f16() {\n  ret <2 x half> <half 0xH3800, half 0xH3C00>\n}\n",
+          "test_name": "vid_denominator2_v2f16"
+        },
+        {
+          "test_body": "define dso_local void @splat_load_licm(ptr %0) {\n  br label %2\n\n2:                                                ; preds = %2, %1\n  %3 = phi i32 [ 0, %1 ], [ %6, %2 ]\n  %4 = getelementptr inbounds float, ptr %0, i32 %3\n  %5 = bitcast ptr %4 to ptr\n  store <4 x float> splat (float 3.000000e+00), ptr %5, align 4\n  %6 = add nuw i32 %3, 4\n  %7 = icmp eq i32 %6, 1024\n  br i1 %7, label %8, label %2\n\n8:                                                ; preds = %2\n  ret void\n}\n",
+          "test_name": "splat_load_licm"
+        },
+        {
+          "test_body": "define <2 x half> @vid_v2f16() {\n  ret <2 x half> <half 0xH0000, half 0xH3C00>\n}\n",
+          "test_name": "vid_v2f16"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

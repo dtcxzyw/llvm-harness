@@ -1,0 +1,303 @@
+{
+  "base_commit": "d478baa238ddb0ef139b3d1be05336e6a954370b",
+  "bug_id": "170450",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "AArch64TargetLowering::shouldExpandAtomicRMWInIR"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          29759,
+          29770
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "fe68fb62eabf65995a2abe05c9710fce22b14620"
+  },
+  "issue": {
+    "author": "k-arrows",
+    "body": "Reproducer:\nhttps://godbolt.org/z/K1b3YT95e\n```cpp\nvoid foo(unsigned int *b) {\n  *b = __scoped_atomic_uinc_wrap(b, ~0U, __ATOMIC_RELAXED, __MEMORY_SCOPE_DEVICE);\n}\n```\n\nBacktrace:\n```console\nfatal error: error in backend: Cannot select: 0x14e14400: i32,ch = AtomicLoadUIncWrap<(load store monotonic (s32) on %ir.5)> 0x14e14390:1, 0x14e141d0, 0x14e14390, example.cpp:2:8\n  0x14e141d0: i64,ch = load<(dereferenceable load (s64) from %ir.2)> 0x14e14160, FrameIndex:i64<0>, undef:i64, example.cpp:2:34\n  0x14e14390: i32,ch = load<(dereferenceable load (s32) from %ir.3)> 0x14e14320, FrameIndex:i64<1>, undef:i64, example.cpp:2:8\nIn function: _Z3fooPj\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-trunk/bin/clang++ -g -o /app/output.s -fno-verbose-asm -S -target aarch64-linux-gnu --gcc-toolchain=/opt/compiler-explorer/arm64/gcc-15.2.0/aarch64-unknown-linux-gnu --sysroot=/opt/compiler-explorer/arm64/gcc-15.2.0/aarch64-unknown-linux-gnu/aarch64-unknown-linux-gnu/sysroot -fcolor-diagnostics -fno-crash-diagnostics -march=armv8.2-a <source>\n1.\t<eof> parser at end of file\n2.\tCode generation\n3.\tRunning pass 'Function Pass Manager' on module '<source>'.\n4.\tRunning pass 'AArch64 Instruction Selection' on function '@_Z3fooPj'\n #0 0x0000000003cdab88 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3cdab88)\n #1 0x0000000003cd855c llvm::sys::CleanupOnSignal(unsigned long) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3cd855c)\n #2 0x0000000003c1e983 llvm::CrashRecoveryContext::HandleExit(int) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3c1e983)\n #3 0x0000000003ccfd9e llvm::sys::Process::Exit(int, bool) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3ccfd9e)\n #4 0x0000000000dcb98b LLVMErrorHandler(void*, char const*, bool) cc1_main.cpp:0:0\n #5 0x0000000003c28be3 llvm::report_fatal_error(llvm::Twine const&, bool) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3c28be3)\n #6 0x00000000051dd1ea llvm::SelectionDAGISel::CannotYetSelect(llvm::SDNode*) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x51dd1ea)\n #7 0x00000000051e2f9d llvm::SelectionDAGISel::SelectCodeCommon(llvm::SDNode*, unsigned char const*, unsigned int) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x51e2f9d)\n #8 0x0000000000f77097 (anonymous namespace)::AArch64DAGToDAGISel::Select(llvm::SDNode*) AArch64ISelDAGToDAG.cpp:0:0\n #9 0x00000000051da2d4 llvm::SelectionDAGISel::DoInstructionSelection() (/opt/compiler-explorer/clang-trunk/bin/clang+++0x51da2d4)\n#10 0x00000000051e68b2 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-trunk/bin/clang+++0x51e68b2)\n#11 0x00000000051e91e1 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x51e91e1)\n#12 0x00000000051eb195 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x51eb195)\n#13 0x00000000051d9e71 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x51d9e71)\n#14 0x00000000030ef21d llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x30ef21d)\n#15 0x0000000003641652 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3641652)\n#16 0x00000000036418e1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x36418e1)\n#17 0x0000000003643157 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3643157)\n#18 0x0000000003f6bd50 clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3f6bd50)\n#19 0x0000000004598c2b clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x4598c2b)\n#20 0x00000000061c5e6c clang::ParseAST(clang::Sema&, bool, bool) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x61c5e6c)\n#21 0x0000000004599785 clang::CodeGenAction::ExecuteAction() (/opt/compiler-explorer/clang-trunk/bin/clang+++0x4599785)\n#22 0x000000000489ae2a clang::FrontendAction::Execute() (/opt/compiler-explorer/clang-trunk/bin/clang+++0x489ae2a)\n#23 0x0000000004819d0b clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x4819d0b)\n#24 0x000000000498f96b clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x498f96b)\n#25 0x0000000000dcda95 cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/opt/compiler-explorer/clang-trunk/bin/clang+++0xdcda95)\n#26 0x0000000000dc594b ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>) driver.cpp:0:0\n#27 0x0000000000dc59ed int llvm::function_ref<int (llvm::SmallVectorImpl<char const*>&)>::callback_fn<clang_main(int, char**, llvm::ToolContext const&)::'lambda'(llvm::SmallVectorImpl<char const*>&)>(long, llvm::SmallVectorImpl<char const*>&) driver.cpp:0:0\n#28 0x0000000004606ab9 void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::'lambda'()>(long) Job.cpp:0:0\n#29 0x0000000003c1e883 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3c1e883)\n#30 0x0000000004606cd9 clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (.part.0) Job.cpp:0:0\n#31 0x00000000045c9662 clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x45c9662)\n#32 0x00000000045ca541 clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x45ca541)\n#33 0x00000000045d312c clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x45d312c)\n#34 0x0000000000dca419 clang_main(int, char**, llvm::ToolContext const&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0xdca419)\n#35 0x0000000000c74c74 main (/opt/compiler-explorer/clang-trunk/bin/clang+++0xc74c74)\n#36 0x0000712af6429d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#37 0x0000712af6429e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#38 0x0000000000dc53e5 _start (/opt/compiler-explorer/clang-trunk/bin/clang+++0xdc53e5)\nclang++: error: clang frontend command failed with exit code 70 (use -v to see invocation)\nCompiler returned: 70\n```",
+    "comments": [
+      {
+        "author": "davemgreen",
+        "body": "This should probably be expanded pre-isel again, similar to #167760. Probably in shouldExpandAtomicCmpXchgInIR this time."
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "crash"
+    ],
+    "title": "[AArch64] crash on __scoped_atomic_uinc_wrap"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/170450",
+  "knowledge_cutoff": "2025-12-03T10:03:41Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit fe68fb62eabf65995a2abe05c9710fce22b14620\nAuthor: David Green <david.green@arm.com>\nDate:   Tue Dec 9 14:22:42 2025 +0000\n\n    [AArch64] Make the list of LSE supported operations explicit (#171126)\n    \n    Similar to #167760 this makes the list of LSE atomics explicit in case\n    new operations are added in the future. UIncWrap, UDecWrap, USubCond and\n    USubSat are excluded.\n    \n    Fixes #170450\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex d1441a744eee..e140aabb9bbe 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -29759,12 +29759,26 @@ AArch64TargetLowering::shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const {\n                                AI->getOperation() == AtomicRMWInst::FMinimum))\n     return AtomicExpansionKind::None;\n \n-  // Nand is not supported in LSE.\n   // Leave 128 bits to LLSC or CmpXChg.\n-  if (AI->getOperation() != AtomicRMWInst::Nand && Size < 128 &&\n-      !AI->isFloatingPointOperation()) {\n-    if (Subtarget->hasLSE())\n-      return AtomicExpansionKind::None;\n+  if (Size < 128 && !AI->isFloatingPointOperation()) {\n+    if (Subtarget->hasLSE()) {\n+      // Nand is not supported in LSE.\n+      switch (AI->getOperation()) {\n+      case AtomicRMWInst::Xchg:\n+      case AtomicRMWInst::Add:\n+      case AtomicRMWInst::Sub:\n+      case AtomicRMWInst::And:\n+      case AtomicRMWInst::Or:\n+      case AtomicRMWInst::Xor:\n+      case AtomicRMWInst::Max:\n+      case AtomicRMWInst::Min:\n+      case AtomicRMWInst::UMax:\n+      case AtomicRMWInst::UMin:\n+        return AtomicExpansionKind::None;\n+      default:\n+        break;\n+      }\n+    }\n     if (Subtarget->outlineAtomics()) {\n       // [U]Min/[U]Max RWM atomics are used in __sync_fetch_ libcalls so far.\n       // Don't outline them unless\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-none-linux-gnu -verify-machineinstrs < %s",
+        "llc -mtriple=aarch64-none-linux-gnu -verify-machineinstrs -mattr=+outline-atomics < %s",
+        "llc -mtriple=aarch64-none-linux-gnu -verify-machineinstrs -mattr=+lse < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/atomic-ops.ll",
+      "tests": [
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_umax_i16(i16 %offset) #0 {\n  %old = atomicrmw umax ptr @var16, i16 %offset monotonic, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_umax_i16"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_cmpxchg_i8(i8 %wanted, i8 %new) #0 {\n  %pair = cmpxchg ptr @var8, i8 %wanted, i8 %new acquire acquire, align 1\n  %old = extractvalue { i8, i1 } %pair, 0\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_cmpxchg_i8"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_xchg_i32(i32 %offset) #0 {\n  %old = atomicrmw xchg ptr @var32, i32 %offset release, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_xchg_i32"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_or_i32(i32 %offset) #0 {\n  %old = atomicrmw or ptr @var32, i32 %offset acquire, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_or_i32"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_xor_i64(i64 %offset) #0 {\n  %old = atomicrmw xor ptr @var64, i64 %offset monotonic, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_xor_i64"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local void @test_atomic_cmpxchg_i64(i64 %wanted, i64 %new) #0 {\n  %pair = cmpxchg ptr @var64, i64 %wanted, i64 %new monotonic monotonic, align 8\n  %old = extractvalue { i64, i1 } %pair, 0\n  store i64 %old, ptr @var64, align 4\n  ret void\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_cmpxchg_i64"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_umin_i32(i32 %offset) #0 {\n  %old = atomicrmw umin ptr @var32, i32 %offset seq_cst, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_umin_i32"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_or_i16(i16 %offset) #0 {\n  %old = atomicrmw or ptr @var16, i16 %offset monotonic, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_or_i16"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_xor_i32(i32 %offset) #0 {\n  %old = atomicrmw xor ptr @var32, i32 %offset seq_cst, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_xor_i32"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_cmpxchg_i32(i32 %wanted, i32 %new) #0 {\n  %pair = cmpxchg ptr @var32, i32 %wanted, i32 %new release monotonic, align 4\n  %old = extractvalue { i32, i1 } %pair, 0\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_cmpxchg_i32"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_max_i32(i32 %offset) #0 {\n  %old = atomicrmw max ptr @var32, i32 %offset release, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_max_i32"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_umin_i16(i16 %offset) #0 {\n  %old = atomicrmw umin ptr @var16, i16 %offset acquire, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_umin_i16"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_xchg_i64(i64 %offset) #0 {\n  %old = atomicrmw xchg ptr @var64, i64 %offset acquire, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_xchg_i64"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_sub_i16(i16 %offset) #0 {\n  %old = atomicrmw sub ptr @var16, i16 %offset release, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_sub_i16"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_udec_wrap_i64(i64 %offset) #0 {\n  %old = atomicrmw udec_wrap ptr @var64, i64 %offset acquire, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_udec_wrap_i64"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_add_i32(i32 %offset) #0 {\n  %old = atomicrmw add ptr @var32, i32 %offset release, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_add_i32"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_usub_cond_i32(i32 %offset) #0 {\n  %old = atomicrmw usub_cond ptr @var32, i32 %offset seq_cst, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_usub_cond_i32"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_uinc_wrap_i32(i32 %offset) #0 {\n  %old = atomicrmw uinc_wrap ptr @var32, i32 %offset seq_cst, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_uinc_wrap_i32"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_or_i8(i8 %offset) #0 {\n  %old = atomicrmw or ptr @var8, i8 %offset seq_cst, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_or_i8"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_max_i64(i64 %offset) #0 {\n  %old = atomicrmw max ptr @var64, i64 %offset monotonic, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_max_i64"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_umax_i8(i8 %offset) #0 {\n  %old = atomicrmw umax ptr @var8, i8 %offset acq_rel, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_umax_i8"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_usub_sat_i8(i8 %offset) #0 {\n  %old = atomicrmw usub_sat ptr @var8, i8 %offset release, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_usub_sat_i8"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_umax_i64(i64 %offset) #0 {\n  %old = atomicrmw umax ptr @var64, i64 %offset release, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_umax_i64"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_min_i8(i8 %offset) #0 {\n  %old = atomicrmw min ptr @var8, i8 %offset acquire, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_min_i8"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_add_i8(i8 %offset) #0 {\n  %old = atomicrmw add ptr @var8, i8 %offset seq_cst, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_add_i8"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_udec_wrap_i8(i8 %offset) #0 {\n  %old = atomicrmw udec_wrap ptr @var8, i8 %offset release, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_udec_wrap_i8"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_max_i8(i8 %offset) #0 {\n  %old = atomicrmw max ptr @var8, i8 %offset seq_cst, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_max_i8"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_xchg_i8(i8 %offset) #0 {\n  %old = atomicrmw xchg ptr @var8, i8 %offset monotonic, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_xchg_i8"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_add_i64(i64 %offset) #0 {\n  %old = atomicrmw add ptr @var64, i64 %offset monotonic, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_add_i64"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_max_i16(i16 %offset) #0 {\n  %old = atomicrmw max ptr @var16, i16 %offset acquire, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_max_i16"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_uinc_wrap_i8(i8 %offset) #0 {\n  %old = atomicrmw uinc_wrap ptr @var8, i8 %offset release, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_uinc_wrap_i8"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_usub_cond_i64(i64 %offset) #0 {\n  %old = atomicrmw usub_cond ptr @var64, i64 %offset acquire, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_usub_cond_i64"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_or_i64(i64 %offset) #0 {\n  %old = atomicrmw or ptr @var64, i64 %offset release, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_or_i64"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_and_i32(i32 %offset) #0 {\n  %old = atomicrmw and ptr @var32, i32 %offset seq_cst, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_and_i32"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_umin_i64(i64 %offset) #0 {\n  %old = atomicrmw umin ptr @var64, i64 %offset acq_rel, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_umin_i64"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_uinc_wrap_i64(i64 %offset) #0 {\n  %old = atomicrmw uinc_wrap ptr @var64, i64 %offset acquire, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_uinc_wrap_i64"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_sub_i8(i8 %offset) #0 {\n  %old = atomicrmw sub ptr @var8, i8 %offset monotonic, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_sub_i8"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_usub_cond_i8(i8 %offset) #0 {\n  %old = atomicrmw usub_cond ptr @var8, i8 %offset release, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_usub_cond_i8"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_and_i8(i8 %offset) #0 {\n  %old = atomicrmw and ptr @var8, i8 %offset release, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_and_i8"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_usub_sat_i32(i32 %offset) #0 {\n  %old = atomicrmw usub_sat ptr @var32, i32 %offset seq_cst, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_usub_sat_i32"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_uinc_wrap_i16(i16 %offset) #0 {\n  %old = atomicrmw uinc_wrap ptr @var16, i16 %offset monotonic, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_uinc_wrap_i16"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_xchg_i16(i16 %offset) #0 {\n  %old = atomicrmw xchg ptr @var16, i16 %offset seq_cst, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_xchg_i16"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_min_i16(i16 %offset) #0 {\n  %old = atomicrmw min ptr @var16, i16 %offset release, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_min_i16"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_and_i16(i16 %offset) #0 {\n  %old = atomicrmw and ptr @var16, i16 %offset monotonic, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_and_i16"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_min_i32(i32 %offset) #0 {\n  %old = atomicrmw min ptr @var32, i32 %offset monotonic, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_min_i32"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_usub_sat_i64(i64 %offset) #0 {\n  %old = atomicrmw usub_sat ptr @var64, i64 %offset acquire, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_usub_sat_i64"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_cmpxchg_i16(i16 %wanted, i16 %new) #0 {\n  %pair = cmpxchg ptr @var16, i16 %wanted, i16 %new seq_cst seq_cst, align 2\n  %old = extractvalue { i16, i1 } %pair, 0\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_cmpxchg_i16"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_udec_wrap_i32(i32 %offset) #0 {\n  %old = atomicrmw udec_wrap ptr @var32, i32 %offset seq_cst, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_udec_wrap_i32"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_xor_i8(i8 %offset) #0 {\n  %old = atomicrmw xor ptr @var8, i8 %offset acquire, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_xor_i8"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_udec_wrap_i16(i16 %offset) #0 {\n  %old = atomicrmw udec_wrap ptr @var16, i16 %offset monotonic, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_udec_wrap_i16"
+        },
+        {
+          "test_body": "@var8 = external dso_local global i8\n\n; Function Attrs: nounwind\ndefine dso_local i8 @test_atomic_load_umin_i8(i8 %offset) #0 {\n  %old = atomicrmw umin ptr @var8, i8 %offset monotonic, align 1\n  ret i8 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_umin_i8"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_sub_i32(i32 %offset) #0 {\n  %old = atomicrmw sub ptr @var32, i32 %offset acquire, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_sub_i32"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_xor_i16(i16 %offset) #0 {\n  %old = atomicrmw xor ptr @var16, i16 %offset release, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_xor_i16"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_usub_sat_i16(i16 %offset) #0 {\n  %old = atomicrmw usub_sat ptr @var16, i16 %offset monotonic, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_usub_sat_i16"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_min_i64(i64 %offset) #0 {\n  %old = atomicrmw min ptr @var64, i64 %offset seq_cst, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_min_i64"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_usub_cond_i16(i16 %offset) #0 {\n  %old = atomicrmw usub_cond ptr @var16, i16 %offset monotonic, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_usub_cond_i16"
+        },
+        {
+          "test_body": "@var32 = external dso_local global i32\n\n; Function Attrs: nounwind\ndefine dso_local i32 @test_atomic_load_umax_i32(i32 %offset) #0 {\n  %old = atomicrmw umax ptr @var32, i32 %offset seq_cst, align 4\n  ret i32 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_umax_i32"
+        },
+        {
+          "test_body": "@var16 = external dso_local global i16\n\n; Function Attrs: nounwind\ndefine dso_local i16 @test_atomic_load_add_i16(i16 %offset) #0 {\n  %old = atomicrmw add ptr @var16, i16 %offset acquire, align 2\n  ret i16 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_add_i16"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_sub_i64(i64 %offset) #0 {\n  %old = atomicrmw sub ptr @var64, i64 %offset seq_cst, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_sub_i64"
+        },
+        {
+          "test_body": "@var64 = external dso_local global i64\n\n; Function Attrs: nounwind\ndefine dso_local i64 @test_atomic_load_and_i64(i64 %offset) #0 {\n  %old = atomicrmw and ptr @var64, i64 %offset acquire, align 8\n  ret i64 %old\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_atomic_load_and_i64"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

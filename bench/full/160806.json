@@ -1,0 +1,86 @@
+{
+  "base_commit": "7b190b79d9547d7a9e327444c623fef89631df03",
+  "bug_id": "160806",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp": [
+        "HexagonTargetLowering::LowerHvxBitcast",
+        "HexagonTargetLowering::initializeHVXLowering"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp": [
+        [
+          117,
+          124
+        ],
+        [
+          2024,
+          2036
+        ],
+        [
+          2039,
+          2045
+        ]
+      ]
+    },
+    "components": [
+      "Hexagon"
+    ],
+    "fix_commit": "297f97298c8054b1fdf775f60378a5a5705f76d7"
+  },
+  "issue": {
+    "author": "androm3da",
+    "body": "This program reduced from Rust's `core_simd` fails as shown below.\n\n```\n$ cat ./test_v64i1_truncate_error.ll\n; Minimal LLVM IR reproducer for \"Cannot select: v64i1 = truncate\" error  \n; Based on error from: crates/core_simd/src/select.rs:71:13\n; Function: Mask::select implementations in portable-simd\n\ntarget datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon-unknown-linux-musl\"\n\ndefine void @test_v64i1_truncate_error(<64 x i32>* %mask_storage, <64 x i32>* %true_vals, <64 x i32>* %false_vals, <64 x i32>* %result) {\nentry:\n  ; Load a wide integer vector that represents mask data\n  %mask_wide = load <64 x i32>, <64 x i32>* %mask_storage\n  \n  ; This truncate from <64 x i32> to <64 x i1> triggers: \"Cannot select: v64i1 = truncate\"\n  ; This operation mimics what happens in Mask::select when converting mask representations\n  %mask = trunc <64 x i32> %mask_wide to <64 x i1>\n  \n  ; Load the input vectors\n  %true_vec = load <64 x i32>, <64 x i32>* %true_vals\n  %false_vec = load <64 x i32>, <64 x i32>* %false_vals\n  \n  ; Use the v64i1 mask in a select operation - this forces LLVM to handle the truncate\n  %selected = select <64 x i1> %mask, <64 x i32> %true_vec, <64 x i32> %false_vec\n  \n  ; Store result to prevent optimization elimination  \n  store <64 x i32> %selected, <64 x i32>* %result\n  ret void\n}\n```\n\n```\n$ ~/src/toolchain_for_hexagon/obj_lld/bin/llc -mattr=-small-data,+hvx-length128b ./test_v64i1_truncate_error.ll \nLLVM ERROR: Cannot select: t12: v64i1 = truncate t63\n  t63: v64i32 = concat_vectors t61, t62\n    t61: v32i32,ch = load<(load (s1024) from %ir.mask_storage, align 256)> t0, t2, undef:i32\n      t2: i32,ch = CopyFromReg t0, Register:i32 %0\n    t62: v32i32,ch = load<(load (s1024) from %ir.mask_storage + 128, basealign 256)> t0, t60, undef:i32\n      t60: i32 = add t2, Constant:i32<128>\n        t2: i32,ch = CopyFromReg t0, Register:i32 %0\nIn function: test_v64i1_truncate_error\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.      Program arguments: /home/brian/src/toolchain_for_hexagon/obj_lld/bin/llc -mattr=-small-data,+hvx-length128b ./test_v64i1_truncate_error.ll\n1.      Running pass 'Function Pass Manager' on module './test_v64i1_truncate_error.ll'.\n2.      Running pass 'Hexagon DAG->DAG Pattern Instruction Selection' on function '@test_v64i1_truncate_error'\n...\n```",
+    "comments": [
+      {
+        "author": "androm3da",
+        "body": "This case seems like it could have a common cause with the previous one.\n\n```\n; Minimal LLVM IR reproducer for \"Cannot select: v64i1 = bitcast\" error\n; Based on error from: crates/core_simd/src/select.rs:107:17\n; Function: u64::select_impl operations in portable-simd\n\ntarget datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon-unknown-linux-musl\"\n\ndefine void @test_v64i1_bitcast_error(i64 %mask_bits, <64 x i32>* %true_vals, <64 x i32>* %false_vals, <64 x i32>* %result) {\nentry:\n  ; This bitcast from i64 to <64 x i1> triggers: \"Cannot select: v64i1 = bitcast\"\n  %mask = bitcast i64 %mask_bits to <64 x i1>\n  \n  ; Load the input vectors  \n  %true_vec = load <64 x i32>, <64 x i32>* %true_vals\n  %false_vec = load <64 x i32>, <64 x i32>* %false_vals\n  \n  ; Use the v64i1 mask in a select operation - this forces LLVM to handle the bitcast\n  %selected = select <64 x i1> %mask, <64 x i32> %true_vec, <64 x i32> %false_vec\n  \n  ; Store result to prevent optimization elimination\n  store <64 x i32> %selected, <64 x i32>* %result\n  ret void\n}\n```\n\n```\n ~/src/toolchain_for_hexagon/obj_lld/bin/llc -mattr=-small-data,+hvx-length128b ./test_v64i1_bitcast_error.ll \nLLVM ERROR: Cannot select: t9: v64i1 = bitcast t2\n  t2: i64,ch = CopyFromReg t0, Register:i64 %0\nIn function: test_v64i1_bitcast_error\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.      Program arguments: /home/brian/src/toolchain_for_hexagon/obj_lld/bin/llc -mattr=-small-data,+hvx-length128b ./test_v64i1_bitcast_error.ll\n1.      Running pass 'Function Pass Manager' on module './test_v64i1_bitcast_error.ll'.\n2.      Running pass 'Hexagon DAG->DAG Pattern Instruction Selection' on function '@test_v64i1_bitcast_error'\n #0 0x00005d8c8598f9e8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/home/brian/src/toolchain_for_hexagon/obj_lld/bin/llc+0x80939e8)\n #1 0x00005d8c8598d0e5 llvm::sys::RunSignalHandlers() (/home/brian/src/toolchain_for_hexagon/obj_lld/bin/llc+0x80910e5)\n\n```"
+      },
+      {
+        "author": "aankit-ca",
+        "body": "@pkarveti You worked on a similar ISEL issue. Can you please take care of this one too?"
+      },
+      {
+        "author": "androm3da",
+        "body": "@iajbar you closed this issue but the pull req says:\n\n> Partially Fixes #160806\n\nMaybe we should reopen it?\n\ncc @pkarveti "
+      },
+      {
+        "author": "iajbar",
+        "body": "I didn\u2019t manually close it. It was closed automatically when the patch was merged."
+      }
+    ],
+    "labels": [
+      "backend:Hexagon",
+      "crash"
+    ],
+    "title": "Cannot select: v64i1 = truncate"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/160806",
+  "knowledge_cutoff": "2025-09-26T04:36:04Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/Hexagon"
+  ],
+  "patch": "commit 297f97298c8054b1fdf775f60378a5a5705f76d7\nAuthor: pkarveti <quic_pkarveti@quicinc.com>\nDate:   Tue Oct 21 23:53:21 2025 +0530\n\n    [Hexagon] Handle bitcast of i64 -> v64i1 when Hvx is enabled (#163332)\n    \n    Partially Fixes #160806\n\ndiff --git a/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp b/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp\nindex a94e131dd721..54c89721bc1f 100644\n--- a/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp\n+++ b/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp\n@@ -117,8 +117,10 @@ HexagonTargetLowering::initializeHVXLowering() {\n   setOperationAction(ISD::VECTOR_SHUFFLE,          ByteW, Legal);\n   setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);\n \n-  if (Subtarget.useHVX128BOps())\n+  if (Subtarget.useHVX128BOps()) {\n     setOperationAction(ISD::BITCAST, MVT::v32i1, Custom);\n+    setOperationAction(ISD::BITCAST, MVT::v64i1, Custom);\n+  }\n   if (Subtarget.useHVX128BOps() && Subtarget.useHVXV68Ops() &&\n       Subtarget.useHVXFloatingPoint()) {\n \n@@ -2024,13 +2026,9 @@ HexagonTargetLowering::LowerHvxBitcast(SDValue Op, SelectionDAG &DAG) const {\n   // Handle bitcast from i32, v2i16, and v4i8 to v32i1.\n   // Splat the input into a 32-element i32 vector, then AND each element\n   // with a unique bitmask to isolate individual bits.\n-  if (ResTy == MVT::v32i1 &&\n-      (ValTy == MVT::i32 || ValTy == MVT::v2i16 || ValTy == MVT::v4i8) &&\n-      Subtarget.useHVX128BOps()) {\n-    SDValue Val32 = Val;\n-    if (ValTy == MVT::v2i16 || ValTy == MVT::v4i8)\n-      Val32 = DAG.getNode(ISD::BITCAST, dl, MVT::i32, Val);\n-\n+  auto bitcastI32ToV32I1 = [&](SDValue Val32) {\n+    assert(Val32.getValueType().getSizeInBits() == 32 &&\n+           \"Input must be 32 bits\");\n     MVT VecTy = MVT::getVectorVT(MVT::i32, 32);\n     SDValue Splat = DAG.getNode(ISD::SPLAT_VECTOR, dl, VecTy, Val32);\n     SmallVector<SDValue, 32> Mask;\n@@ -2039,7 +2037,31 @@ HexagonTargetLowering::LowerHvxBitcast(SDValue Op, SelectionDAG &DAG) const {\n \n     SDValue MaskVec = DAG.getBuildVector(VecTy, dl, Mask);\n     SDValue Anded = DAG.getNode(ISD::AND, dl, VecTy, Splat, MaskVec);\n-    return DAG.getNode(HexagonISD::V2Q, dl, ResTy, Anded);\n+    return DAG.getNode(HexagonISD::V2Q, dl, MVT::v32i1, Anded);\n+  };\n+  // === Case: v32i1 ===\n+  if (ResTy == MVT::v32i1 &&\n+      (ValTy == MVT::i32 || ValTy == MVT::v2i16 || ValTy == MVT::v4i8) &&\n+      Subtarget.useHVX128BOps()) {\n+    SDValue Val32 = Val;\n+    if (ValTy == MVT::v2i16 || ValTy == MVT::v4i8)\n+      Val32 = DAG.getNode(ISD::BITCAST, dl, MVT::i32, Val);\n+    return bitcastI32ToV32I1(Val32);\n+  }\n+  // === Case: v64i1 ===\n+  if (ResTy == MVT::v64i1 && ValTy == MVT::i64 && Subtarget.useHVX128BOps()) {\n+    // Split i64 into lo/hi 32-bit halves.\n+    SDValue Lo = DAG.getNode(ISD::TRUNCATE, dl, MVT::i32, Val);\n+    SDValue HiShifted = DAG.getNode(ISD::SRL, dl, MVT::i64, Val,\n+                                    DAG.getConstant(32, dl, MVT::i64));\n+    SDValue Hi = DAG.getNode(ISD::TRUNCATE, dl, MVT::i32, HiShifted);\n+\n+    // Reuse the same 32-bit logic twice.\n+    SDValue LoRes = bitcastI32ToV32I1(Lo);\n+    SDValue HiRes = bitcastI32ToV32I1(Hi);\n+\n+    // Concatenate into a v64i1 predicate.\n+    return DAG.getNode(ISD::CONCAT_VECTORS, dl, MVT::v64i1, LoRes, HiRes);\n   }\n \n   if (isHvxBoolTy(ResTy) && ValTy.isScalarInteger()) {\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc --mtriple=hexagon -mattr=+hvxv79,+hvx-length128b < %s"
+      ],
+      "file": "llvm/test/CodeGen/Hexagon/bitcast-i64-to-v64i1.ll",
+      "tests": [
+        {
+          "test_body": "define void @bitcast_i64_to_v64i1_full(ptr %in, ptr %out) {\nentry:\n  %load = load i64, ptr %in, align 4\n  %bitcast = bitcast i64 %load to <64 x i1>\n  %e0 = extractelement <64 x i1> %bitcast, i32 0\n  %e1 = extractelement <64 x i1> %bitcast, i32 1\n  %z0 = zext i1 %e0 to i8\n  %z1 = zext i1 %e1 to i8\n  %ptr0 = getelementptr i8, ptr %out, i32 0\n  %ptr1 = getelementptr i8, ptr %out, i32 1\n  store i8 %z0, ptr %ptr0, align 1\n  store i8 %z1, ptr %ptr1, align 1\n  ret void\n}\n",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

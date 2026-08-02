@@ -1,0 +1,67 @@
+{
+  "base_commit": "3aaeace4e2ce39d3a15acc4fe27222a2702c1f59",
+  "bug_id": "177866",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/ShrinkWrap.cpp": [
+        "ShrinkWrapImpl::updateSaveRestorePoints"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/ShrinkWrap.cpp": [
+        [
+          782,
+          788
+        ]
+      ]
+    },
+    "components": [
+      "ShrinkWrap"
+    ],
+    "fix_commit": "f5de33dbf59a30246a6113e507e0cb41c21b9e45"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/aTMh7dhfM\nTestcase:\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-musl\"\n\ndefine void @func_44(i1 %tobool3.not, ptr %g_530) {\nentry:\n  br label %for.cond2.outer\n\nfor.cond2.outer:                                  ; preds = %for.inc, %entry\n  %add23.ph = phi i8 [ 0, %for.inc ], [ 0, %entry ]\n  br label %for.cond2\n\nfor.cond2:                                        ; preds = %cleanup12.split, %for.cond2, %for.cond2.outer\n  %load = load volatile i32, ptr null, align 4\n  br i1 %tobool3.not, label %if.end, label %for.cond2\n\nif.end:                                           ; preds = %for.cond2\n  %tobool7.not = icmp eq i64 0, 0\n  br i1 %tobool7.not, label %for.inc, label %cleanup12.split\n\nfor.inc:                                          ; preds = %if.end\n  %add = or i8 %add23.ph, 0\n  br label %for.cond2.outer\n\ncleanup12.split:                                  ; preds = %if.end\n  store i64 0, ptr %g_530, align 8\n  br label %for.cond2\n}\n```\n\nDump:\n```\nllc: /root/llvm-project/llvm/include/llvm/Support/GenericDomTree.h:558: NodeT* llvm::DominatorTreeBase<NodeT, IsPostDom>::findNearestCommonDominator(NodeT*, NodeT*) const [with NodeT = llvm::MachineBasicBlock; bool IsPostDom = false]: Assertion `NodeB && \"B must be in the tree\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'Shrink Wrapping analysis' on function '@func_44'\n #0 0x0000000004252e38 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4252e38)\n #1 0x000000000424fd14 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007c9a0d042520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007c9a0d0969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007c9a0d042476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007c9a0d0287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007c9a0d02871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007c9a0d039e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x00000000033ec7f8 llvm::MachineBasicBlock* llvm::DominatorTreeBase<llvm::MachineBasicBlock, false>::findNearestCommonDominator<llvm::MachineBasicBlock**>(llvm::iterator_range<llvm::MachineBasicBlock**>) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x33ec7f8)\n #9 0x00000000033ef347 (anonymous namespace)::ShrinkWrapImpl::updateSaveRestorePoints(llvm::MachineBasicBlock&, llvm::RegScavenger*) ShrinkWrap.cpp:0:0\n#10 0x00000000033f0033 (anonymous namespace)::ShrinkWrapImpl::performShrinkWrapping(llvm::ReversePostOrderTraversal<llvm::MachineBasicBlock*, llvm::GraphTraits<llvm::MachineBasicBlock*>> const&, llvm::RegScavenger*) ShrinkWrap.cpp:0:0\n#11 0x00000000033f4428 (anonymous namespace)::ShrinkWrapImpl::run(llvm::MachineFunction&) ShrinkWrap.cpp:0:0\n#12 0x00000000033f61a1 (anonymous namespace)::ShrinkWrapLegacy::runOnMachineFunction(llvm::MachineFunction&) (.part.0) ShrinkWrap.cpp:0:0\n#13 0x000000000310b3f9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#14 0x0000000003768236 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3768236)\n#15 0x00000000037685e1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37685e1)\n#16 0x0000000003768e4f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3768e4f)\n#17 0x00000000008ea142 compileModule(char**, llvm::SmallVectorImpl<llvm::PassPlugin>&, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#18 0x00000000007c591c main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c591c)\n#19 0x00007c9a0d029d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#20 0x00007c9a0d029e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#21 0x00000000008df1e5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8df1e5)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "davemgreen",
+        "body": "This was probably optimizeTerminators - it caused a couple of other issues where shrink-wrap could not correctly handle the resulting block layout."
+      }
+    ],
+    "labels": [
+      "llvm:codegen",
+      "release:backport",
+      "crash-on-valid",
+      "generated by fuzzer"
+    ],
+    "title": "[AArch64] Assertion `NodeB && \"B must be in the tree\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/177866",
+  "knowledge_cutoff": "2026-01-25T18:07:58Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit f5de33dbf59a30246a6113e507e0cb41c21b9e45\nAuthor: David Green <david.green@arm.com>\nDate:   Tue Jan 27 05:42:06 2026 +0000\n\n    [ShrinkWrap] Ensure we do not crash on unreachable blocks. (#178009)\n    \n    Since we started optimizating always-true branches in the AArch64\n    backend (like cbz wzr), shrink wrap has been exposed to some block\n    structures that it does not handle correctly, usually with unreachable\n    blocks. This prevents the call to FindIDom/findNearestCommonDominator\n    from failing when looking at the predecessors of a loop if one is\n    unreachable.\n    \n    Fixes: #177866\n\ndiff --git a/llvm/lib/CodeGen/ShrinkWrap.cpp b/llvm/lib/CodeGen/ShrinkWrap.cpp\nindex 0cf21b261fdb..b27139ca7ac1 100644\n--- a/llvm/lib/CodeGen/ShrinkWrap.cpp\n+++ b/llvm/lib/CodeGen/ShrinkWrap.cpp\n@@ -782,7 +782,11 @@ void ShrinkWrapImpl::updateSaveRestorePoints(MachineBasicBlock &MBB,\n       if (MLI->getLoopDepth(Save) > MLI->getLoopDepth(Restore)) {\n         // Push Save outside of this loop if immediate dominator is different\n         // from save block. If immediate dominator is not different, bail out.\n-        Save = FindIDom<>(*Save, Save->predecessors(), *MDT);\n+        SmallVector<MachineBasicBlock *> Preds;\n+        for (auto *PBB : Save->predecessors())\n+          if (MDT->isReachableFromEntry(PBB))\n+            Preds.push_back(PBB);\n+        Save = FindIDom<>(*Save, Preds, *MDT);\n         if (!Save)\n           break;\n       } else {\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-linux-gnu -o - %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/shrink-wrap-unreachable.ll",
+      "tests": [
+        {
+          "test_body": "\n; Ensure we do not crash on unreachable blocks.\n\ndefine void @func_44(i1 %tobool3.not, ptr %g_530) {\nentry:\n  br label %for.cond2.outer\n\nfor.cond2.outer:                                  ; preds = %for.inc, %entry\n  %add23.ph = phi i8 [ 0, %for.inc ], [ 0, %entry ]\n  br label %for.cond2\n\nfor.cond2:                                        ; preds = %cleanup12.split, %for.cond2, %for.cond2.outer\n  %load = load volatile i32, ptr null, align 4\n  br i1 %tobool3.not, label %if.end, label %for.cond2\n\nif.end:                                           ; preds = %for.cond2\n  %tobool7.not = icmp eq i64 0, 0\n  br i1 %tobool7.not, label %for.inc, label %cleanup12.split\n\nfor.inc:                                          ; preds = %if.end\n  %add = or i8 %add23.ph, 0\n  br label %for.cond2.outer\n\ncleanup12.split:                                  ; preds = %if.end\n  store i64 0, ptr %g_530, align 8\n  br label %for.cond2\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

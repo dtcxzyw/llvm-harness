@@ -1,0 +1,116 @@
+{
+  "base_commit": "382ae50ef836e56bcd0a36a8e9fb1111ee3c5a33",
+  "bug_id": "181362",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp": [
+        "HexagonTargetLowering::LowerHvxConcatVectors",
+        "HexagonTargetLowering::PerformHvxDAGCombine",
+        "HexagonTargetLowering::combineConcatVectorsBeforeLegal",
+        "HexagonTargetLowering::createHvxPrefixPred"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/Hexagon/HexagonISelLowering.h": [
+        [
+          515,
+          520
+        ]
+      ],
+      "llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp": [
+        [
+          1106,
+          1116
+        ],
+        [
+          1131,
+          1157
+        ],
+        [
+          1835,
+          1847
+        ],
+        [
+          3834,
+          3841
+        ],
+        [
+          3843,
+          3849
+        ],
+        [
+          3899,
+          3904
+        ]
+      ]
+    },
+    "components": [
+      "Hexagon"
+    ],
+    "fix_commit": "92249a35ad7ccd89eaefe42be3b9422e01bdbb85"
+  },
+  "issue": {
+    "author": "androm3da",
+    "body": "While building the endgame test case from llvm-test-suite using clang built from c780d890daf3474c73c4ffa736e155c619c3d0be, we see the assertion below.\n\n```\nclang: /local/mnt/workspace/bcain-20260212_145304/llvm-project/llvm/lib/Target/Hexagon/BitTracker.cpp:744: virtual bool llvm::BitTracker::MachineEvaluator::evaluate(const llvm::MachineInstr &, const llvm::BitTracker::CellMapType &, llvm::BitTracker::CellMapType &) const: Assertion `WD >= WS' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.      Program arguments: /local/mnt/workspace/bcain-20260212_145304/install/x86_64-linux-gnu/bin/clang -cc1 -triple hexagon-unknown-linux-musl -O3 -emit-obj -disable-free -clear-ast-before-backend -main-file-name endgame.c -mrelocation-model pic -pic-level 2 -pic-is-pie -mframe-pointer=all -ffp-contract=on -fno-rounding-math -mconstructor-aliases -mllvm -hexagon-autohvx -target-cpu hexagonv68 -target-feature +memops -target-feature -long-calls -target-feature +hvxv68 -target-feature +hvx-length128b -target-feature +hvx-qfloat -mqdsp6-compat -Wreturn-type -fshort-enums -mllvm -machine-sink-split=0 -debugger-tuning=gdb -Werror=date-time -w -ferror-limit 19 -fshort-enums -fno-signed-char -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -vectorize-loops -vectorize-slp -faddrsig -x c /local/mnt/workspace/bcain-reduce-20260212_190946/case-endgame-becf7b/endgame-becf7b.c -o /dev/null\n1.      <eof> parser at end of file\n2.      Code generation\n3.      Running pass 'Function Pass Manager' on module '/local/mnt/workspace/bcain-reduce-20260212_190946/case-endgame-becf7b/endgame-becf7b.c'.\n4.      Running pass 'Hexagon Loop Rescheduling' on function '@endgame'\n...\n```",
+    "comments": [
+      {
+        "author": "androm3da",
+        "body": "Fixed by #181360"
+      },
+      {
+        "author": "androm3da",
+        "body": "Revert #182861 of previous attempt at fixing.\n\nGiven my track record lately, I think I should probably let @aankit-ca handle this one"
+      },
+      {
+        "author": "kparzysz",
+        "body": "Could you attach the preprocessed source?\n\nEdit: I found endgame.c and it's only using system headers.  I'm going to try and see what I get with it.\n\nEdit: I was able to reproduce the issue."
+      },
+      {
+        "author": "kparzysz",
+        "body": "The problem is at this line: https://github.com/llvm/llvm-project/pull/164416/changes#diff-874988b656cd117ecddd76e0f265fa38c002eca553e55dfd71089ee79b59507cR1066\n\nWhat gets stored in `Words` should always be 32-bit values."
+      },
+      {
+        "author": "androm3da",
+        "body": "If this failed to cherry-pick then it should be reopened."
+      },
+      {
+        "author": "androm3da",
+        "body": "Opened a new PR #184735"
+      }
+    ],
+    "labels": [
+      "backend:Hexagon",
+      "release:backport",
+      "release:cherry-pick-failed",
+      "crash"
+    ],
+    "title": "[hexagon] Assertion `WD >= WS' failed in BitTracker.cpp [endgame]"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/181362",
+  "knowledge_cutoff": "2026-02-13T14:11:05Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/Hexagon"
+  ],
+  "patch": "commit 92249a35ad7ccd89eaefe42be3b9422e01bdbb85\nAuthor: Krzysztof Parzyszek <Krzysztof.Parzyszek@amd.com>\nDate:   Tue Feb 24 11:24:16 2026 -0600\n\n    [Hexagon] Avoid contracting predicates in createHvxPrefixPred (#183081)\n    \n    The function createHvxPrefixPred should only need to expand a predicate\n    to match the result's bytes-per-bit. Otherwise, contracting of the\n    predicate may lead to an input that is shorter than 4 bytes, making it\n    unsuitable for VINSERTW0.\n    \n    When calling createHvxPrefixPred for vector concatention, re-group the\n    inputs to the concat to make sure that the resulting inputs to\n    createHvxPrefixPred would not need contraction.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/181362\n\ndiff --git a/llvm/lib/Target/Hexagon/HexagonISelLowering.h b/llvm/lib/Target/Hexagon/HexagonISelLowering.h\nindex 3ef43ae7ad83..f42840cd284d 100644\n--- a/llvm/lib/Target/Hexagon/HexagonISelLowering.h\n+++ b/llvm/lib/Target/Hexagon/HexagonISelLowering.h\n@@ -515,6 +515,10 @@ private:\n                              SelectionDAG &DAG) const;\n \n   SDValue combineTruncateBeforeLegal(SDValue Op, DAGCombinerInfo &DCI) const;\n+\n+  SDValue combineConcatOfShuffles(SDValue Op, SelectionDAG &DAG) const;\n+  SDValue combineConcatOfScalarPreds(SDValue Op, unsigned BitBytes,\n+                                     SelectionDAG &DAG) const;\n   SDValue combineConcatVectorsBeforeLegal(SDValue Op, DAGCombinerInfo & DCI)\n       const;\n   SDValue combineVectorShuffleBeforeLegal(SDValue Op, DAGCombinerInfo & DCI)\ndiff --git a/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp b/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp\nindex cbe1498bb24a..ea0ad78c70bc 100644\n--- a/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp\n+++ b/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp\n@@ -1106,11 +1106,8 @@ HexagonTargetLowering::createHvxPrefixPred(SDValue PredV, const SDLoc &dl,\n   SDValue W0 = isUndef(PredV)\n                   ? DAG.getUNDEF(MVT::i64)\n                   : DAG.getNode(HexagonISD::P2D, dl, MVT::i64, PredV);\n-  if (Bytes < BitBytes) {\n-    Words[IdxW].push_back(HiHalf(W0, DAG));\n-    Words[IdxW].push_back(LoHalf(W0, DAG));\n-  } else\n-    Words[IdxW].push_back(W0);\n+  Words[IdxW].push_back(HiHalf(W0, DAG));\n+  Words[IdxW].push_back(LoHalf(W0, DAG));\n \n   while (Bytes < BitBytes) {\n     IdxW ^= 1;\n@@ -1131,27 +1128,7 @@ HexagonTargetLowering::createHvxPrefixPred(SDValue PredV, const SDLoc &dl,\n     Bytes *= 2;\n   }\n \n-  while (Bytes > BitBytes) {\n-    IdxW ^= 1;\n-    Words[IdxW].clear();\n-\n-    if (Bytes <= 4) {\n-      for (const SDValue &W : Words[IdxW ^ 1]) {\n-        SDValue T = contractPredicate(W, dl, DAG);\n-        Words[IdxW].push_back(T);\n-      }\n-    } else {\n-      for (const SDValue &W : Words[IdxW ^ 1]) {\n-        Words[IdxW].push_back(W);\n-      }\n-    }\n-    Bytes /= 2;\n-  }\n-\n   assert(Bytes == BitBytes);\n-  if (BitBytes == 1 && PredTy == MVT::v2i1)\n-    ByteTy = MVT::getVectorVT(MVT::i16, HwLen);\n-\n   SDValue Vec = ZeroFill ? getZero(dl, ByteTy, DAG) : DAG.getUNDEF(ByteTy);\n   SDValue S4 = DAG.getConstant(HwLen-4, dl, MVT::i32);\n   for (const SDValue &W : Words[IdxW]) {\n@@ -1835,13 +1812,17 @@ HexagonTargetLowering::LowerHvxConcatVectors(SDValue Op, SelectionDAG &DAG)\n   // corresponds to.\n   unsigned BitBytes = HwLen / VecTy.getVectorNumElements();\n \n+  // Make sure that createHvxPrefixPred will only ever need to expand\n+  // the predicate, i.e. bytes-per-bit in the input is not greater than\n+  // the target bytes-per-bit in the result.\n+  SDValue Combined = combineConcatOfScalarPreds(Op, BitBytes, DAG);\n   SmallVector<SDValue,8> Prefixes;\n-  for (SDValue V : Op.getNode()->op_values()) {\n+  for (SDValue V : Combined.getNode()->op_values()) {\n     SDValue P = createHvxPrefixPred(V, dl, BitBytes, true, DAG);\n     Prefixes.push_back(P);\n   }\n \n-  unsigned InpLen = ty(Op.getOperand(0)).getVectorNumElements();\n+  unsigned InpLen = ty(Combined.getOperand(0)).getVectorNumElements();\n   MVT ByteTy = MVT::getVectorVT(MVT::i8, HwLen);\n   SDValue S = DAG.getConstant(HwLen - InpLen*BitBytes, dl, MVT::i32);\n   SDValue Res = getZero(dl, ByteTy, DAG);\n@@ -3834,8 +3815,8 @@ HexagonTargetLowering::combineTruncateBeforeLegal(SDValue Op,\n }\n \n SDValue\n-HexagonTargetLowering::combineConcatVectorsBeforeLegal(\n-    SDValue Op, DAGCombinerInfo &DCI) const {\n+HexagonTargetLowering::combineConcatOfShuffles(SDValue Op,\n+                                               SelectionDAG &DAG) const {\n   // Fold\n   //   concat (shuffle x, y, m1), (shuffle x, y, m2)\n   // into\n@@ -3843,7 +3824,6 @@ HexagonTargetLowering::combineConcatVectorsBeforeLegal(\n   if (Op.getNumOperands() != 2)\n     return SDValue();\n \n-  SelectionDAG &DAG = DCI.DAG;\n   const SDLoc &dl(Op);\n   SDValue V0 = Op.getOperand(0);\n   SDValue V1 = Op.getOperand(1);\n@@ -3899,6 +3879,54 @@ HexagonTargetLowering::combineConcatVectorsBeforeLegal(\n   return DAG.getVectorShuffle(LongTy, dl, Cat, DAG.getUNDEF(LongTy), LongMask);\n }\n \n+// Reassociate concat(p1, p2, ...) into\n+//   concat(concat(p1, ...), concat(pi, ...), ...)\n+// where each inner concat produces a predicate where each bit corresponds\n+// to at most BitBytes bytes.\n+// Concatenating predicates decreases the number of bytes per each predicate\n+// bit.\n+SDValue\n+HexagonTargetLowering::combineConcatOfScalarPreds(SDValue Op, unsigned BitBytes,\n+                                                  SelectionDAG &DAG) const {\n+  const SDLoc &dl(Op);\n+  SmallVector<SDValue> Ops(Op->ops());\n+  MVT ResTy = ty(Op);\n+  MVT InpTy = ty(Ops[0]);\n+  unsigned InpLen = InpTy.getVectorNumElements(); // Scalar predicate\n+  unsigned ResLen = ResTy.getVectorNumElements(); // HVX vector predicate\n+  assert(InpLen <= 8 && \"Too long for scalar predicate\");\n+  assert(ResLen > 8 && \"Too short for HVX vector predicate\");\n+\n+  unsigned Bytes = 8 / InpLen; // Bytes-per-bit in input\n+\n+  // Already in the right form?\n+  if (Bytes <= BitBytes)\n+    return Op;\n+\n+  ArrayRef<SDValue> Inputs(Ops);\n+  unsigned SliceLen = Bytes / BitBytes;\n+\n+  SmallVector<SDValue> Cats;\n+  // (8 / BitBytes) is the desired length of the result of the inner concat.\n+  for (unsigned i = 0; i != ResLen / (8 / BitBytes); ++i) {\n+    SDValue Cat = DAG.getNode(ISD::CONCAT_VECTORS, dl, MVT::v8i1,\n+                              Inputs.slice(SliceLen * i, SliceLen));\n+    Cats.push_back(Cat);\n+  }\n+\n+  return DAG.getNode(ISD::CONCAT_VECTORS, dl, ResTy, Cats);\n+}\n+\n+SDValue HexagonTargetLowering::combineConcatVectorsBeforeLegal(\n+    SDValue Op, DAGCombinerInfo &DCI) const {\n+  MVT ResTy = ty(Op);\n+  MVT ElemTy = ResTy.getVectorElementType();\n+\n+  if (ElemTy != MVT::i1) {\n+    return combineConcatOfShuffles(Op, DCI.DAG);\n+  }\n+  return SDValue();\n+}\n SDValue\n HexagonTargetLowering::PerformHvxDAGCombine(SDNode *N, DAGCombinerInfo &DCI)\n       const {\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=hexagon < %s"
+      ],
+      "file": "llvm/test/CodeGen/Hexagon/autohvx/isel-hvx-rescale-predicate.ll",
+      "tests": [
+        {
+          "test_body": "; REQUIRES: asserts\n\n; Check that this doesn't crash.\n\ndefine <128 x i8> @foo(<128 x i8> %a0, <128 x i8> %a1, <2 x i16> %a2) #0 {\n  %v1 = icmp sge <2 x i16> %a2, zeroinitializer\n  %v2 = shufflevector <2 x i1> %v1, <2 x i1> poison, <128 x i32> <i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1>\n  %v3 = select <128 x i1> %v2, <128 x i8> %a0, <128 x i8> %a1\n  ret <128 x i8> %v3\n}\n\nattributes #0 = { \"target-cpu\"=\"hexagonv68\" \"target-features\"=\"+hvxv68,+hvx-length128b\" }",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

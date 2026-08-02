@@ -1,0 +1,65 @@
+{
+  "base_commit": "7ee4909256a03c5d6d1c558e5ebe4bc1c8fc2816",
+  "bug_id": "158121",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "performSUBCombine"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          15827,
+          15833
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "0e28fd7282492669e106617b52494fa4556bb5c4"
+  },
+  "issue": {
+    "author": "whileone-sk",
+    "body": "Assertion '(!From->hasAnyUseOfValue(i) || From->getValueType(i) == To->getValueType(i)) && \"Cannot use this version of ReplaceAllUsesWith!\"' failed.: \nIt's a failed assertion within the Clang compiler's source code, specifically in the SelectionDAG.cpp.\n\nRUN script red-a48470.sh to reproduce the issue.\n\nsource [red-a48470.c](https://github.com/user-attachments/files/22280348/red-a48470.c)\nscript [red-a48470.sh](https://github.com/user-attachments/files/22280349/red-a48470.sh)\n\nAttached backtrace.\n[verbose-log.txt](https://github.com/user-attachments/files/22280789/verbose-log.txt)\n[red.c](https://github.com/user-attachments/files/22280586/red.c)\n\n\nThis issue was Found via fuzzer.",
+    "comments": [
+      {
+        "author": "whileone-sk",
+        "body": "crash backtrace\n``` #0 0x0000567d17b46472 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x1f99472)\n #1 0x0000567d17b4316f llvm::sys::RunSignalHandlers() (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x1f9616f)\n #2 0x0000567d17b432bc SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #3 0x0000750ae4645330 (/lib/x86_64-linux-gnu/libc.so.6+0x45330)\n #4 0x0000750ae469eb2c __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x0000750ae469eb2c __pthread_kill_internal ./nptl/pthread_kill.c:78:10\n #6 0x0000750ae469eb2c pthread_kill ./nptl/pthread_kill.c:89:10\n #7 0x0000750ae464527e raise ./signal/../sysdeps/posix/raise.c:27:6\n #8 0x0000750ae46288ff abort ./stdlib/abort.c:81:7\n #9 0x0000750ae462881b _nl_load_domain ./intl/loadmsgcat.c:1177:9\n#10 0x0000750ae463b517 (/lib/x86_64-linux-gnu/libc.so.6+0x3b517)\n#11 0x0000567d1902e287 llvm::SelectionDAG::ReplaceAllUsesWith(llvm::SDNode*, llvm::SDNode*) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x3481287)\n#12 0x0000567d18f0cf6c (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#13 0x0000567d18f0e12d llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x336112d)\n#14 0x0000567d19053b76 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x34a6b76)\n#15 0x0000567d19057eaf llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x34aaeaf)\n#16 0x0000567d190593ba llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x34ac3ba)\n#17 0x0000567d19043917 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x3496917)\n#18 0x0000567d16e80b13 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#19 0x0000567d1756f31e llvm::FPPassManager::runOnFunction(llvm::Function&) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x19c231e)\n#20 0x0000567d1756f761 llvm::FPPassManager::runOnModule(llvm::Module&) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x19c2761)\n#21 0x0000567d175700b2 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x19c30b2)\n#22 0x0000567d17de49fa (anonymous namespace)::EmitAssemblyHelper::RunCodegenPipeline(clang::BackendAction, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>&, std::unique_ptr<llvm::ToolOutputFile, std::default_delete<llvm::ToolOutputFile>>&) BackendUtil.cpp:0:0\n#23 0x0000567d17de56ca clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x22386ca)\n#24 0x0000567d1846959e clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x28bc59e)\n#25 0x0000567d1a0b19dc clang::ParseAST(clang::Sema&, bool, bool) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x45049dc)\n#26 0x0000567d187abfc7 clang::FrontendAction::Execute() (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x2bfefc7)\n#27 0x0000567d1872c3bd clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x2b7f3bd)\n#28 0x0000567d188a0a2b clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0x2cf3a2b)\n#29 0x0000567d167f266b cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0xc4566b)\n#30 0x0000567d167e7f77 ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&) driver.cpp:0:0\n#31 0x0000567d167ec90a clang_main(int, char**, llvm::ToolContext const&) (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0xc3f90a)\n#32 0x0000567d166eb4aa main (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0xb3e4aa)\n#33 0x0000750ae462a1ca __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#34 0x0000750ae462a28b call_init ./csu/../csu/libc-start.c:128:20\n#35 0x0000750ae462a28b __libc_start_main ./csu/../csu/libc-start.c:347:5\n#36 0x0000567d167e74f5 _start (/home/skothadiya/CIFUZZR/riscv-gnu-toolchain-build/bin/clang-22+0xc3a4f5)\nclang: error: unable to execute command: Aborted (core dumped)```"
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash"
+    ],
+    "title": "[LLVM][RISCV][ICE] Compiler crash at Assertion Failure at (!From->hasAnyUseOfValue(i) ||, file SelectionDAG.cpp:12171 since a652979b483da6e5a45ebf6428be408de66ac857"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/158121",
+  "knowledge_cutoff": "2025-09-11T17:37:39Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 0e28fd7282492669e106617b52494fa4556bb5c4\nAuthor: Jim Lin <jim@andestech.com>\nDate:   Mon Sep 15 09:30:08 2025 +0800\n\n    [RISCV] Check the types are the same for folding (sub 0, (setcc x, 0, setlt)) to (sra x, xlen - 1) (#158179)\n    \n    We should check the type of x is the same as `sub` operation. Otherwise\n    the shift amount xlen -1 will exceed the bit size of x.\n    \n    Fixes https://github.com/llvm/llvm-project/issues/158121.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex f9b484b98739..5485b916c203 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -15827,7 +15827,8 @@ static SDValue performSUBCombine(SDNode *N, SelectionDAG &DAG,\n   SDValue N1 = N->getOperand(1);\n   // fold (sub 0, (setcc x, 0, setlt)) -> (sra x, xlen - 1)\n   if (isNullConstant(N0) && N1.getOpcode() == ISD::SETCC && N1.hasOneUse() &&\n-      isNullConstant(N1.getOperand(1))) {\n+      isNullConstant(N1.getOperand(1)) &&\n+      N1.getValueType() == N1.getOperand(0).getValueType()) {\n     ISD::CondCode CCVal = cast<CondCodeSDNode>(N1.getOperand(2))->get();\n     if (CCVal == ISD::SETLT) {\n       SDLoc DL(N);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/pr158121.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine i64 @f(ptr %p) {\n  %load = load i8, ptr %p, align 1\n  %conv1 = zext i8 %load to i32\n  %cmp = icmp ult i32 127, %conv1\n  %conv2 = zext i1 %cmp to i32\n  %sub = sub nsw i32 0, %conv2\n  %conv3 = sext i32 %sub to i64\n  ret i64 %conv3\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

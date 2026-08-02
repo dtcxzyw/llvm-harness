@@ -1,0 +1,60 @@
+{
+  "base_commit": "805f01f805716d78c2669e8aee81a45b99dedea0",
+  "bug_id": "90652",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "tryFoldSelectIntoOp"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          15421,
+          15427
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "2647bd73696ae987addd0e74774a44108accb1e6"
+  },
+  "issue": {
+    "author": "dtcxzyw",
+    "body": "Reduced test case: https://godbolt.org/z/ToPME8sW1\r\n```\r\ndefine i1 @test(i64 %x, i1 %cond1, i1 %cond2) {\r\nentry:\r\n  %sadd = call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %x, i64 1)\r\n  %ov = extractvalue { i64, i1 } %sadd, 1\r\n  %or = or i1 %cond2, %ov\r\n  %sel = select i1 %cond1, i1 %cond2, i1 %or\r\n  ret i1 %sel\r\n}\r\n```\r\n```\r\nllc: /root/llvm-project/llvm/include/llvm/CodeGen/SelectionDAG.h:1239: llvm::SDValue llvm::SelectionDAG::getSelect(const llvm::SDLoc&, llvm::EVT, llvm::SDValue, llvm::SDValue, llvm::SDValue): Assertion `LHS.getValueType() == VT && RHS.getValueType() == VT && \"Cannot use select on differing types\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -mtriple=riscv64 <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@test'\r\n #0 0x000000000395b768 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x395b768)\r\n #1 0x0000000003958ebc SignalHandler(int) Signals.cpp:0:0\r\n #2 0x000079ecb9e42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x000079ecb9e969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x000079ecb9e42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x000079ecb9e287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x000079ecb9e2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\r\n #7 0x000079ecb9e39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n #8 0x0000000000bd692f llvm::SelectionDAG::getSelect(llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDValue, llvm::SDValue) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xbd692f)\r\n #9 0x0000000001ab4ab6 tryFoldSelectIntoOp(llvm::SDNode*, llvm::SelectionDAG&, llvm::SDValue, llvm::SDValue, bool) RISCVISelLowering.cpp:0:0\r\n#10 0x0000000001b125a6 llvm::RISCVTargetLowering::PerformDAGCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x1b125a6)\r\n#11 0x00000000035cdb7d (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#12 0x00000000035cf48c (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\r\n#13 0x00000000035d1a6a llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::AAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x35d1a6a)\r\n#14 0x00000000037273d2 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37273d2)\r\n#15 0x000000000372af15 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x372af15)\r\n#16 0x000000000372c987 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (.part.0) SelectionDAGISel.cpp:0:0\r\n#17 0x0000000002976b71 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#18 0x0000000002f36633 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f36633)\r\n#19 0x0000000002f36871 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f36871)\r\n#20 0x0000000002f370d5 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2f370d5)\r\n#21 0x000000000082aa5c compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#22 0x0000000000728f26 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x728f26)\r\n#23 0x000079ecb9e29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#24 0x000079ecb9e29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#25 0x000000000082157e _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x82157e)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```",
+    "comments": [],
+    "labels": [
+      "backend:RISC-V",
+      "crash"
+    ],
+    "title": "[RISCV] Assertion `LHS.getValueType() == VT && RHS.getValueType() == VT && \"Cannot use select on differing types\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/90652",
+  "knowledge_cutoff": "2024-04-30T19:48:46Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 2647bd73696ae987addd0e74774a44108accb1e6\nAuthor: Yingwei Zheng <dtcxzyw2333@gmail.com>\nDate:   Wed May 1 06:51:36 2024 +0800\n\n    [RISCV][ISel] Fix types in `tryFoldSelectIntoOp` (#90659)\n    \n    ```\n    SelectionDAG has 17 nodes:\n      t0: ch,glue = EntryToken\n        t6: i64,ch = CopyFromReg t0, Register:i64 %2\n      t8: i1 = truncate t6\n              t4: i64,ch = CopyFromReg t0, Register:i64 %1\n            t7: i1 = truncate t4\n                t2: i64,ch = CopyFromReg t0, Register:i64 %0\n              t10: i64,i1 = saddo t2, Constant:i64<1>\n            t11: i1 = or t8, t10:1\n          t12: i1 = select t7, t8, t11\n        t13: i64 = any_extend t12\n      t15: ch,glue = CopyToReg t0, Register:i64 $x10, t13\n      t16: ch = RISCVISD::RET_GLUE t15, Register:i64 $x10, t15:1\n    ```\n    \n    `OtherOpVT` should be i1, but `OtherOp->getValueType(0)` returns `i64`,\n    which ignores `ResNo` in `SDValue`.\n    \n    Fix https://github.com/llvm/llvm-project/issues/90652.\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 417ff19404a4..19ef1f2f18ec 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -15421,7 +15421,7 @@ static SDValue tryFoldSelectIntoOp(SDNode *N, SelectionDAG &DAG,\n   EVT VT = N->getValueType(0);\n   SDLoc DL(N);\n   SDValue OtherOp = TrueVal.getOperand(1 - OpToFold);\n-  EVT OtherOpVT = OtherOp->getValueType(0);\n+  EVT OtherOpVT = OtherOp.getValueType();\n   SDValue IdentityOperand =\n       DAG.getNeutralElement(Opc, DL, OtherOpVT, N->getFlags());\n   if (!Commutative)\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/pr90652.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine i1 @test(i64 %x, i1 %cond1, i1 %cond2) {\nentry:\n  %sadd = call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %x, i64 1)\n  %ov = extractvalue { i64, i1 } %sadd, 1\n  %or = or i1 %cond2, %ov\n  %sel = select i1 %cond1, i1 %cond2, i1 %or\n  ret i1 %sel\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

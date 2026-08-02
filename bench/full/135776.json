@@ -1,0 +1,69 @@
+{
+  "base_commit": "f83c5fe01fbee0f53ecf69d887e7a7b054f2a9ae",
+  "bug_id": "135776",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp": [
+        "DAGTypeLegalizer::ScalarizeVecRes_BITCAST"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp": [
+        [
+          400,
+          408
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "12697c5516f8a9e4407e01d99324ce6958910184"
+  },
+  "issue": {
+    "author": "JustinKim98",
+    "body": "While I was trying to cross-compile following llvm IR bit cast using llc with following command in debug mode towards aarch64 architecture.\n\n```bash\nllc example.ll --mtriple=aarch64-linux-gnu -o example.s\n```\n\n(LLVM IR I'm trying to compile)\nhttps://godbolt.org/z/Ejzcj6GY9\n\n```llvm\n; example.ll\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine i32 @bitcast_failure(ptr %0, <1 x i16> %1) {\n  %3 = bitcast <1 x i16> %1 to <1 x half>\n  %4 = extractelement <1 x half> %3, i64 0\n  store half %4, ptr %0, align 2\n  ret i32 0\n}\n```\n\nI'm encountering some kind of weird error. Is this a bug in LLVM? It seems like there's a problem when trying to scalarize 16 bit data types.\nI'm using the newest llvm version that I just cloned from main branch.\n\n```\n# llc --version\nLLVM (http://llvm.org/):\n  LLVM version 21.0.0git\n  DEBUG build with assertions.\n  Default target: x86_64-unknown-linux-gnu\n  Host CPU: znver4\n```\n\nIs this a bug in LLVM? or am I doing something wrong?\n\nHere's the error log\n```\nllc: /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h:161: const llvm::SDValue& llvm::DAGTypeLegalizer::getSDValue(llvm::DAGTypeLegalizer::TableId&): Assertion `Id && \"TableId should be non-zero\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: ./llvm-build-debug/bin/llc example2.ll --mtriple=aarch64-linux-gnu\n1.\tRunning pass 'Function Pass Manager' on module 'example2.ll'.\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@bitcast_failure'\n #0 0x000064116e051396 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) /home/jwkim98/llvm_test/llvm-project/llvm/lib/Support/Unix/Signals.inc:804:22\n #1 0x000064116e0517b7 PrintStackTraceSignalHandler(void*) /home/jwkim98/llvm_test/llvm-project/llvm/lib/Support/Unix/Signals.inc:880:1\n #2 0x000064116e04ebe5 llvm::sys::RunSignalHandlers() /home/jwkim98/llvm_test/llvm-project/llvm/lib/Support/Signals.cpp:105:20\n #3 0x000064116e050c05 SignalHandler(int, siginfo_t*, void*) /home/jwkim98/llvm_test/llvm-project/llvm/lib/Support/Unix/Signals.inc:418:13\n #4 0x0000782303a42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #5 0x0000782303a969fc __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #6 0x0000782303a969fc __pthread_kill_internal ./nptl/pthread_kill.c:78:10\n #7 0x0000782303a969fc pthread_kill ./nptl/pthread_kill.c:89:10\n #8 0x0000782303a42476 gsignal ./signal/../sysdeps/posix/raise.c:27:6\n #9 0x0000782303a287f3 abort ./stdlib/abort.c:81:7\n#10 0x0000782303a2871b _nl_load_domain ./intl/loadmsgcat.c:1177:9\n#11 0x0000782303a39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n#12 0x000064116de34302 llvm::DAGTypeLegalizer::getSDValue(unsigned int&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h:162:31\n#13 0x000064116de92ad3 llvm::DAGTypeLegalizer::GetScalarizedVector(llvm::SDValue) /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h:851:51\n#14 0x000064116de53763 llvm::DAGTypeLegalizer::ScalarizeVecRes_BITCAST(llvm::SDNode*) /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp:406:29\n#15 0x000064116de51b47 llvm::DAGTypeLegalizer::ScalarizeVectorResult(llvm::SDNode*, unsigned int) /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp:57:59\n#16 0x000064116de2eeaa llvm::DAGTypeLegalizer::run() /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.cpp:281:17\n#17 0x000064116de33624 llvm::SelectionDAG::LegalizeTypes() /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.cpp:1060:37\n#18 0x000064116dd8250e llvm::SelectionDAGISel::CodeGenAndEmitDAG() /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:979:36\n#19 0x000064116dd81a23 llvm::SelectionDAGISel::SelectBasicBlock(llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, bool&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:877:1\n#20 0x000064116dd878ed llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1906:33\n#21 0x000064116dd8010b llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:615:7\n#22 0x0000641169bb141a (anonymous namespace)::AArch64DAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/Target/AArch64/AArch64ISelDAGToDAG.cpp:61:0\n#23 0x000064116dd7ee62 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:374:40\n#24 0x000064116c98b2dc llvm::MachineFunctionPass::runOnFunction(llvm::Function&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/CodeGen/MachineFunctionPass.cpp:108:30\n#25 0x000064116d248162 llvm::FPPassManager::runOnFunction(llvm::Function&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1406:20\n#26 0x000064116d248438 llvm::FPPassManager::runOnModule(llvm::Module&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1452:13\n#27 0x000064116d248899 (anonymous namespace)::MPPassManager::runOnModule(llvm::Module&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1521:20\n#28 0x000064116d2438e1 llvm::legacy::PassManagerImpl::run(llvm::Module&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:539:13\n#29 0x000064116d24918f llvm::legacy::PassManager::run(llvm::Module&) /home/jwkim98/llvm_test/llvm-project/llvm/lib/IR/LegacyPassManager.cpp:1649:1\n#30 0x000064116955118a compileModule(char**, llvm::LLVMContext&) /home/jwkim98/llvm_test/llvm-project/llvm/tools/llc/llc.cpp:755:34\n#31 0x000064116954e810 main /home/jwkim98/llvm_test/llvm-project/llvm/tools/llc/llc.cpp:400:35\n#32 0x0000782303a29d90 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16\n#33 0x0000782303a29e40 call_init ./csu/../csu/libc-start.c:128:20\n#34 0x0000782303a29e40 __libc_start_main ./csu/../csu/libc-start.c:379:5\n#35 0x000064116954d3e5 _start (./llvm-build-debug/bin/llc+0xf613e5)\nAborted\n```",
+    "comments": [
+      {
+        "author": "topperc",
+        "body": "I see the problem and I'm working on a fix."
+      },
+      {
+        "author": "topperc",
+        "body": "This should fix it\n\n```\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\nindex f934d8b37561..a01e1cff7456 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\n@@ -400,9 +400,7 @@ SDValue DAGTypeLegalizer::ScalarizeVecRes_MERGE_VALUES(SDNode *N,\n \n SDValue DAGTypeLegalizer::ScalarizeVecRes_BITCAST(SDNode *N) {\n   SDValue Op = N->getOperand(0);\n-  if (Op.getValueType().isVector()\n-      && Op.getValueType().getVectorNumElements() == 1\n-      && !isSimpleLegalType(Op.getValueType()))\n+  if (getTypeAction(Op.getValueType()) == TargetLowering::TypeScalarizeVector)\n     Op = GetScalarizedVector(Op);\n   EVT NewVT = N->getValueType(0).getVectorElementType();\n   return DAG.getNode(ISD::BITCAST, SDLoc(N),\n```"
+      }
+    ],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[clang][llc][AArch64] Instruction selection failure when targeting aarch64 architecture with 16bit vector types"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/135776",
+  "knowledge_cutoff": "2025-04-15T10:52:36Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 12697c5516f8a9e4407e01d99324ce6958910184\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Tue Apr 15 13:56:07 2025 -0700\n\n    [LegalizeTypes] Check getTypeAction before calling GetScalarizedVector. (#135838)\n    \n    Use getTypeAction instead of trying to guess how a type will be\n    legalized. On AArch64, v1f16 is scalarized but v1f16 is widened.\n    \n    Fixes #135776\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\nindex f934d8b37561..a01e1cff7456 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\n@@ -400,9 +400,7 @@ SDValue DAGTypeLegalizer::ScalarizeVecRes_MERGE_VALUES(SDNode *N,\n \n SDValue DAGTypeLegalizer::ScalarizeVecRes_BITCAST(SDNode *N) {\n   SDValue Op = N->getOperand(0);\n-  if (Op.getValueType().isVector()\n-      && Op.getValueType().getVectorNumElements() == 1\n-      && !isSimpleLegalType(Op.getValueType()))\n+  if (getTypeAction(Op.getValueType()) == TargetLowering::TypeScalarizeVector)\n     Op = GetScalarizedVector(Op);\n   EVT NewVT = N->getValueType(0).getVectorElementType();\n   return DAG.getNode(ISD::BITCAST, SDLoc(N),\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64-linux-gnu"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/pr135776.ll",
+      "tests": [
+        {
+          "test_body": "\n\ndefine i32 @bitcast_failure(ptr %0, <1 x i16> %1) {\n  %3 = bitcast <1 x i16> %1 to <1 x half>\n  %4 = extractelement <1 x half> %3, i64 0\n  store half %4, ptr %0, align 2\n  ret i32 0\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

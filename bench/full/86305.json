@@ -1,0 +1,70 @@
+{
+  "base_commit": "7d2d8e2a7245e4e64da22cb3c422ea3be5a0bf0a",
+  "bug_id": "86305",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "X86TargetLowering::LowerFP_ROUND",
+        "X86TargetLowering::LowerFP_TO_BF16"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          21512,
+          21518
+        ],
+        [
+          21619,
+          21625
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "2e4e04c59043a645572cf548de5d9c333a5d6641"
+  },
+  "issue": {
+    "author": "songdongsheng",
+    "body": "Here is the testing code:\r\n\r\n```c\r\n__bf16 f(__bf16 a, __bf16 b, __bf16 c, __bf16 d) { return a * b + c * d; }\r\n```\r\n\r\nLet's compile:\r\n\r\n```bash\r\nclang  --target=x86_64-linux-gnu -mavx512bf16 -c test_bf16.c\r\n```\r\n\r\nNo matter target is `x86_64-linux-gnu`, `x86_64-w64-windows-gnu`, or `x86_64-pc-windows-msvc`, clang always crashed:\r\n\r\n```bash\r\nfatal error: error in backend: Cannot select: 0x1af0871d9a8: v8bf16 = X86ISD::CVTNEPS2BF16 0x1af0871da18\r\n  0x1af0871da18: v4f32 = scalar_to_vector 0x1af0871d238\r\n    0x1af0871d238: f32 = fma 0x1af0871c908, 0x1af0871ce48, 0x1af0871d318\r\n      0x1af0871c908: f32 = bitcast 0x1af0871d3f8\r\n        0x1af0871d3f8: i32 = shl 0x1af0871d7e8, Constant:i8<16>\r\n          0x1af0871d7e8: i32,ch = load<(dereferenceable load (s16) from %ir.8), anyext from i16> 0x1af0871c588, FrameIndex:i64<3>, undef:i64\r\n            0x1af0871ceb8: i64 = FrameIndex<3>\r\n            0x1af0871d858: i64 = undef\r\n          0x1af0871cf98: i8 = Constant<16>\r\n      0x1af0871ce48: f32 = bitcast 0x1af0871cc88\r\n        0x1af0871cc88: i32 = shl 0x1af0871de08, Constant:i8<16>\r\n          0x1af0871de08: i32,ch = load<(dereferenceable load (s16) from %ir.7), anyext from i16> 0x1af0871c588, FrameIndex:i64<2>, undef:i64\r\n            0x1af0871cdd8: i64 = FrameIndex<2>\r\n            0x1af0871d858: i64 = undef\r\n          0x1af0871cf98: i8 = Constant<16>\r\n      0x1af0871d318: f32 = fmul 0x1af0871cac8, 0x1af0871ccf8\r\n        0x1af0871cac8: f32 = bitcast 0x1af0871d468\r\n          0x1af0871d468: i32 = shl 0x1af0871dd28, Constant:i8<16>\r\n            0x1af0871dd28: i32,ch = load<(dereferenceable load (s16) from %ir.6), anyext from i16> 0x1af0871c588, FrameIndex:i64<1>, undef:i64\r\n              0x1af0871c978: i64 = FrameIndex<1>\r\n              0x1af0871d858: i64 = undef\r\n            0x1af0871cf98: i8 = Constant<16>\r\n        0x1af0871ccf8: f32 = bitcast 0x1af0871cc18\r\n          0x1af0871cc18: i32 = shl 0x1af0871dc48, Constant:i8<16>\r\n            0x1af0871dc48: i32,ch = load<(dereferenceable load (s16) from %ir.5), anyext from i16> 0x1af0871c588, FrameIndex:i64<0>, undef:i64\r\n              0x1af0871d938: i64 = FrameIndex<0>\r\n              0x1af0871d858: i64 = undef\r\n            0x1af0871cf98: i8 = Constant<16>\r\nIn function: f\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\r\nStack dump:\r\n0.\tProgram arguments: \\\\opt\\\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\\\bin\\\\clang -mavx512bf16 -c test_bf16.c\r\n1.\t<eof> parser at end of file\r\n2.\tCode generation\r\n3.\tRunning pass 'Function Pass Manager' on module 'test_bf16.c'.\r\n4.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@f'\r\nException Code: 0xE0000046\r\n #0 0x00007ffcd1a0cf19 (C:\\Windows\\System32\\KERNELBASE.dll+0x2cf19)\r\n #1 0x00007ff617f6594a (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x26c594a)\r\n #2 0x00007ff617f65aa9 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x26c5aa9)\r\n #3 0x00007ff617e71313 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x25d1313)\r\n #4 0x00007ff617f76c59 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x26d6c59)\r\n #5 0x00007ff618655099 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x2db5099)\r\n #6 0x00007ff617916d0e (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x2076d0e)\r\n #7 0x00007ff617907f84 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x2067f84)\r\n #8 0x00007ff617974a2b (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x20d4a2b)\r\n #9 0x00007ff61796f829 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x20cf829)\r\n#10 0x00007ff617a77a36 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x21d7a36)\r\n#11 0x00007ff615c45369 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x3a5369)\r\n#12 0x00007ff6179434be (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x20a34be)\r\n#13 0x00007ff6179642d3 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x20c42d3)\r\n#14 0x00007ff615be0ed1 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x340ed1)\r\n#15 0x00007ff615be099d (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x34099d)\r\n#16 0x00007ff615bda829 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x33a829)\r\n#17 0x00007ff61795f115 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x20bf115)\r\n#18 0x00007ff617d1d478 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x247d478)\r\n#19 0x00007ff615e4cc31 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x5acc31)\r\n#20 0x00007ff615e4c6d2 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x5ac6d2)\r\n#21 0x00007ff615e49404 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x5a9404)\r\n#22 0x00007ff615e46f80 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x5a6f80)\r\n#23 0x00007ff615e4594e (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x5a594e)\r\n#24 0x00007ff616bc928d (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x132928d)\r\n#25 0x00007ff615fd99b5 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x7399b5)\r\n#26 0x00007ff615fd97b8 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x7397b8)\r\n#27 0x00007ff615c8a0c8 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x3ea0c8)\r\n#28 0x00007ff615c89a7e (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x3e9a7e)\r\n#29 0x00007ff615c89597 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x3e9597)\r\n#30 0x00007ff615c83427 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x3e3427)\r\n#31 0x00007ff615c80aa3 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x3e0aa3)\r\n#32 0x00007ff617da3060 (C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\\clang.exe+0x2503060)\r\n#33 0x00007ffcd36e7344 (C:\\Windows\\System32\\KERNEL32.DLL+0x17344)\r\n#34 0x00007ffcd3e626b1 (C:\\Windows\\SYSTEM32\\ntdll.dll+0x526b1)\r\nclang: error: clang frontend command failed with exit code 70 (use -v to see invocation)\r\nclang version 18.1.2\r\nTarget: x86_64-pc-windows-msvc\r\nThread model: posix\r\nInstalledDir: C:\\opt\\clang+llvm-18.1.2-x86_64-pc-windows-msvc\\bin\r\nclang: note: diagnostic msg: \r\n********************\r\n\r\nPLEASE ATTACH THE FOLLOWING FILES TO THE BUG REPORT:\r\nPreprocessed source(s) and associated run script(s) are located at:\r\nclang: note: diagnostic msg: C:\\Users\\xyz\\AppData\\Local\\Temp\\test_bf16-c7fe6c.c\r\nclang: note: diagnostic msg: C:\\Users\\xyz\\AppData\\Local\\Temp\\test_bf16-c7fe6c.sh\r\nclang: note: diagnostic msg: \r\n\r\n********************\r\n```\r\n",
+    "comments": [
+      {
+        "author": "dtcxzyw",
+        "body": "cc @RKSimon "
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid"
+    ],
+    "title": "clang crashed when avx512 bf16 feature enabled"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/86305",
+  "knowledge_cutoff": "2024-03-22T16:32:36Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 2e4e04c59043a645572cf548de5d9c333a5d6641\nAuthor: Phoebe Wang <phoebe.wang@intel.com>\nDate:   Mon Mar 25 10:06:12 2024 +0800\n\n    [X86][BF16] Do not lower to VCVTNEPS2BF16 without AVX512VL (#86395)\n    \n    Fixes: #86305\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex 35f756ea5e1d..9acbe17d0bca 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -21512,7 +21512,9 @@ SDValue X86TargetLowering::LowerFP_ROUND(SDValue Op, SelectionDAG &DAG) const {\n   }\n \n   if (VT.getScalarType() == MVT::bf16) {\n-    if (SVT.getScalarType() == MVT::f32 && isTypeLegal(VT))\n+    if (SVT.getScalarType() == MVT::f32 &&\n+        ((Subtarget.hasBF16() && Subtarget.hasVLX()) ||\n+         Subtarget.hasAVXNECONVERT()))\n       return Op;\n     return SDValue();\n   }\n@@ -21619,7 +21621,8 @@ SDValue X86TargetLowering::LowerFP_TO_BF16(SDValue Op,\n   SDLoc DL(Op);\n \n   MVT SVT = Op.getOperand(0).getSimpleValueType();\n-  if (SVT == MVT::f32 && (Subtarget.hasBF16() || Subtarget.hasAVXNECONVERT())) {\n+  if (SVT == MVT::f32 && ((Subtarget.hasBF16() && Subtarget.hasVLX()) ||\n+                          Subtarget.hasAVXNECONVERT())) {\n     SDValue Res;\n     Res = DAG.getNode(ISD::SCALAR_TO_VECTOR, DL, MVT::v4f32, Op.getOperand(0));\n     Res = DAG.getNode(X86ISD::CVTNEPS2BF16, DL, MVT::v8bf16, Res);\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-linux-gnu -mattr=avx512bf16"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr86305.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine void @add(ptr %pa, ptr %pb, ptr %pc) nounwind {\n  %a = load bfloat, ptr %pa\n  %b = load bfloat, ptr %pb\n  %add = fadd bfloat %a, %b\n  store bfloat %add, ptr %pc\n  ret void\n}\n\ndefine <4 x bfloat> @fptrunc_v4f32(<4 x float> %a) nounwind {\n  %b = fptrunc <4 x float> %a to <4 x bfloat>\n  ret <4 x bfloat> %b\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

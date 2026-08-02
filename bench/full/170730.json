@@ -1,0 +1,73 @@
+{
+  "base_commit": "4709018c8c8632093337ddcd67ddba1dbf17d718",
+  "bug_id": "170730",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Transforms/Utils/BasicBlockUtils.cpp": [
+        "llvm::SplitCallBrEdge"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Transforms/Utils/BasicBlockUtils.cpp": [
+        [
+          755,
+          763
+        ]
+      ]
+    },
+    "components": [
+      "BasicBlockUtils"
+    ],
+    "fix_commit": "c9a3ab293bda9b73e9df03459ea26ee536d78d64"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/PaGjcrMTa\nTestcase:\n```llvm\ntarget datalayout = \"e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9\"\ntarget triple = \"amdgcn-amd-amdhsa\"\n\ndefine void @func_33() {\nentry:\n  br label %BS_LABEL_0\n\nBS_LABEL_0:                                       ; preds = %BS_LABEL_0, %entry\n  callbr void asm sideeffect \"\", \"!i,!i\"()\n          to label %BS_LABEL_4 [label %BS_LABEL_0, label %BS_LABEL_4]\n\nBS_LABEL_4:                                       ; preds = %BS_LABEL_0, %BS_LABEL_0\n  ret void\n}\n```\n\nDumps:\n```\nllc: /root/llvm-project/llvm/include/llvm/Support/GenericDomTreeConstruction.h:927: static void llvm::DomTreeBuilder::SemiNCAInfo<DomTreeT>::DeleteEdge(DomTreeT&, llvm::DomTreeBuilder::SemiNCAInfo<DomTreeT>::BatchUpdatePtr, llvm::DomTreeBuilder::SemiNCAInfo<DomTreeT>::NodePtr, llvm::DomTreeBuilder::SemiNCAInfo<DomTreeT>::NodePtr) [with DomTreeT = llvm::DominatorTreeBase<llvm::BasicBlock, false>; llvm::DomTreeBuilder::SemiNCAInfo<DomTreeT>::BatchUpdatePtr = llvm::DomTreeBuilder::SemiNCAInfo<llvm::DominatorTreeBase<llvm::BasicBlock, false> >::BatchUpdateInfo*; llvm::DomTreeBuilder::SemiNCAInfo<DomTreeT>::NodePtr = llvm::BasicBlock*]: Assertion `!IsSuccessor(To, From) && \"Deleted edge still exists in the CFG!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -O1 <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'Fixup each natural loop to have a single exit block' on function '@func_33'\n #0 0x0000000004205548 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4205548)\n #1 0x00000000042023f4 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x000072b21aa42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000072b21aa969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000072b21aa42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000072b21aa287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x000072b21aa2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x000072b21aa39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x00000000036ac527 (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36ac527)\n #9 0x00000000036b29ba void llvm::DomTreeBuilder::ApplyUpdates<llvm::DominatorTreeBase<llvm::BasicBlock, false>>(llvm::DominatorTreeBase<llvm::BasicBlock, false>&, llvm::GraphDiff<llvm::DominatorTreeBase<llvm::BasicBlock, false>::NodePtr, llvm::DominatorTreeBase<llvm::BasicBlock, false>::IsPostDominator>&, llvm::GraphDiff<llvm::DominatorTreeBase<llvm::BasicBlock, false>::NodePtr, llvm::DominatorTreeBase<llvm::BasicBlock, false>::IsPostDominator>*) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36b29ba)\n#10 0x00000000036b39fb llvm::DominatorTreeBase<llvm::BasicBlock, false>::applyUpdates(llvm::ArrayRef<llvm::cfg::Update<llvm::BasicBlock*>>) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36b39fb)\n#11 0x0000000002b61c35 llvm::GenericDomTreeUpdater<llvm::DomTreeUpdater, llvm::DominatorTree, llvm::PostDominatorTree>::applyUpdates(llvm::ArrayRef<llvm::cfg::Update<llvm::BasicBlock*>>) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x2b61c35)\n#12 0x000000000425da75 llvm::SplitCallBrEdge(llvm::BasicBlock*, llvm::BasicBlock*, unsigned int, llvm::DomTreeUpdater*, llvm::GenericCycleInfo<llvm::GenericSSAContext<llvm::Function>>*, llvm::LoopInfo*, bool*) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x425da75)\n#13 0x00000000044639ba unifyLoopExits(llvm::DominatorTree&, llvm::LoopInfo&, llvm::Loop*) UnifyLoopExits.cpp:0:0\n#14 0x0000000004466112 runImpl(llvm::LoopInfo&, llvm::DominatorTree&) UnifyLoopExits.cpp:0:0\n#15 0x000000000373f846 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x373f846)\n#16 0x000000000373fbf1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x373fbf1)\n#17 0x000000000374045f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x374045f)\n#18 0x00000000008fccd4 compileModule(char**, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#19 0x00000000007c6ef9 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c6ef9)\n#20 0x000072b21aa29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#21 0x000072b21aa29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#22 0x00000000008f1ed5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8f1ed5)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "ro-i",
+        "body": "Thanks for reporting! Seems like there is an issue with duplicate target blocks, as in your example `%BS_LABEL_4 [label %BS_LABEL_0, label %BS_LABEL_4]`"
+      }
+    ],
+    "labels": [
+      "crash-on-valid",
+      "llvm:transforms"
+    ],
+    "title": "[AMDGPU][UnifyLoopExits] Assertion `!IsSuccessor(To, From) && \"Deleted edge still exists in the CFG!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/170730",
+  "knowledge_cutoff": "2025-12-04T19:43:48Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/UnifyLoopExits"
+  ],
+  "patch": "commit c9a3ab293bda9b73e9df03459ea26ee536d78d64\nAuthor: Robert Imschweiler <robert.imschweiler@amd.com>\nDate:   Mon Dec 8 19:48:19 2025 +0100\n\n    [AMDGPU][UnifyLoopExits] Fix duplicate successor handling (#170759)\n    \n    Fixes https://github.com/llvm/llvm-project/issues/170730\n    \n    Maybe I can also come up with a more elegant solution. But I think it\n    wouldn't make a lot of sense trying to avoid multiple \"fake\" target\n    blocks. Would require a mapping between original and fake target\n    blocks...\n\ndiff --git a/llvm/lib/Transforms/Utils/BasicBlockUtils.cpp b/llvm/lib/Transforms/Utils/BasicBlockUtils.cpp\nindex da3e60da9df7..b0c04086f5e8 100644\n--- a/llvm/lib/Transforms/Utils/BasicBlockUtils.cpp\n+++ b/llvm/lib/Transforms/Utils/BasicBlockUtils.cpp\n@@ -755,9 +755,11 @@ BasicBlock *llvm::SplitCallBrEdge(BasicBlock *CallBrBlock, BasicBlock *Succ,\n   updateCycleLoopInfo<CycleInfo, Cycle>(CI, CallBrBlock, CallBrTarget, Succ);\n   if (DTU) {\n     DTU->applyUpdates({{DominatorTree::Insert, CallBrBlock, CallBrTarget}});\n-    if (DTU->getDomTree().dominates(CallBrBlock, Succ))\n-      DTU->applyUpdates({{DominatorTree::Delete, CallBrBlock, Succ},\n-                         {DominatorTree::Insert, CallBrTarget, Succ}});\n+    if (DTU->getDomTree().dominates(CallBrBlock, Succ)) {\n+      if (!is_contained(successors(CallBrBlock), Succ))\n+        DTU->applyUpdates({{DominatorTree::Delete, CallBrBlock, Succ}});\n+      DTU->applyUpdates({{DominatorTree::Insert, CallBrTarget, Succ}});\n+    }\n   }\n \n   return CallBrTarget;\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt < %s -passes='lower-switch,unify-loop-exits' -S"
+      ],
+      "file": "llvm/test/Transforms/UnifyLoopExits/basic.ll",
+      "tests": [
+        {
+          "test_body": "define void @callbr_duplicate_successors() {\nentry:\n  br label %loop\n\nloop:                                             ; preds = %loop, %entry\n  callbr void asm sideeffect \"\", \"!i,!i\"()\n          to label %exit [label %loop, label %exit]\n\nexit:                                             ; preds = %loop, %loop\n  ret void\n}\n",
+          "test_name": "callbr_duplicate_successors"
+        },
+        {
+          "test_body": "define void @loop_1_callbr(i1 %PredEntry, i1 %PredB, i1 %PredC, i1 %PredD) {\nentry:\n  br i1 %PredEntry, label %A, label %G\n\nA:                                                ; preds = %D, %entry\n  br label %B\n\nB:                                                ; preds = %A\n  callbr void asm \"\", \"r,!i\"(i1 %PredB)\n          to label %C [label %E]\n\nC:                                                ; preds = %B\n  callbr void asm \"\", \"r,!i\"(i1 %PredC)\n          to label %D [label %F]\n\nD:                                                ; preds = %C\n  callbr void asm \"\", \"r,!i\"(i1 %PredD)\n          to label %A [label %F]\n\nE:                                                ; preds = %B\n  br label %exit\n\nF:                                                ; preds = %G, %D, %C\n  br label %exit\n\nG:                                                ; preds = %entry\n  br label %F\n\nexit:                                             ; preds = %F, %E\n  ret void\n}\n",
+          "test_name": "loop_1_callbr"
+        },
+        {
+          "test_body": "define void @loop_2_callbr(i1 %PredA, i1 %PredB, i1 %PredC) {\nentry:\n  br label %A\n\nA:                                                ; preds = %D, %entry\n  callbr void asm \"\", \"r,!i\"(i1 %PredA)\n          to label %B [label %X]\n\nB:                                                ; preds = %A\n  callbr void asm \"\", \"r,!i\"(i1 %PredB)\n          to label %C [label %Y]\n\nC:                                                ; preds = %B\n  callbr void asm \"\", \"r,!i\"(i1 %PredC)\n          to label %D [label %Z]\n\nD:                                                ; preds = %C\n  br label %A\n\nX:                                                ; preds = %A\n  br label %exit\n\nY:                                                ; preds = %B\n  br label %exit\n\nZ:                                                ; preds = %C\n  br label %exit\n\nexit:                                             ; preds = %Z, %Y, %X\n  ret void\n}\n",
+          "test_name": "loop_2_callbr"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

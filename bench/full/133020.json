@@ -1,0 +1,69 @@
+{
+  "base_commit": "1876a89b259b04af28ca0ffbcff36d5e9e2eb71a",
+  "bug_id": "133020",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        "matchSplatAsGather"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVISelLowering.cpp": [
+        [
+          3566,
+          3572
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "25c5bad2f26e96a44b84765bedd82ee9bcffd22c"
+  },
+  "issue": {
+    "author": "mshockwave",
+    "body": "Given the following IR:\n``` llvm\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"riscv64-unknown-linux-gnu\"\n\ndefine void @foo(<3 x float> %0) #0 {\nentry:\n  %1 = extractelement <3 x float> %0, i64 0\n  %broadcast.splatinsert = insertelement <vscale x 2 x float> zeroinitializer, float %1, i64 0\n  %broadcast.splat = shufflevector <vscale x 2 x float> %broadcast.splatinsert, <vscale x 2 x float> zeroinitializer, <vscale x 2 x i32> zeroinitializer\n  %interleaved.vec = tail call <vscale x 4 x float> @llvm.vector.interleave2.nxv4f32(<vscale x 2 x float> zeroinitializer, <vscale x 2 x float> %broadcast.splat)\n  tail call void @llvm.vp.store.nxv4f32.p0(<vscale x 4 x float> %interleaved.vec, ptr null, <vscale x 4 x i1> splat (i1 true), i32 0)\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+64bit,+a,+c,+d,+experimental,+experimental-zicfilp,+experimental-zicfiss,+f,+m,+relax,+v,+zaamo,+zalrsc,+zba,+zbb,+zbs,+zca,+zcd,+zcmop,+zicsr,+zifencei,+zimop,+zmmul,+zve32f,+zve32x,+zve64d,+zve64f,+zve64x,+zvl128b,+zvl32b,+zvl64b,-zvl1024b,-zvl16384b,-zvl2048b,-zvl256b,-zvl32768b,-zvl4096b,-zvl512b,-zvl65536b,-zvl8192b\" }\n```\nAnd this command:\n```\nllc -O3 input.ll\n```\nThe compiler crashes during RISC-V-specific DAG combining.",
+    "comments": [],
+    "labels": [
+      "backend:RISC-V",
+      "crash-on-valid"
+    ],
+    "title": "[RISCV] Codegen crashes on splat vectors with illegal types"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/133020",
+  "knowledge_cutoff": "2025-03-25T23:50:55Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 25c5bad2f26e96a44b84765bedd82ee9bcffd22c\nAuthor: Min-Yih Hsu <min.hsu@sifive.com>\nDate:   Wed Mar 26 12:07:02 2025 -0700\n\n    [RISCV] Check the legality of source vector types in matchSplatAsGather (#133028)\n    \n    When we're trying to lower `extractelement + splat` with\n    vrgather.vi/.vx, we should also check the legality of source vector type\n    from `extractelement`, as the entire transformation assumes legal types.\n    \n    Fixes #133020\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\nindex 752fed3d479a..5b5dca4b541d 100644\n--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp\n@@ -3566,7 +3566,8 @@ static SDValue matchSplatAsGather(SDValue SplatVal, MVT VT, const SDLoc &DL,\n   // FIXME: Support i1 vectors, maybe by promoting to i8?\n   MVT EltTy = VT.getVectorElementType();\n   MVT SrcVT = Src.getSimpleValueType();\n-  if (EltTy == MVT::i1 || EltTy != SrcVT.getVectorElementType())\n+  if (EltTy == MVT::i1 || EltTy != SrcVT.getVectorElementType() ||\n+      !DAG.getTargetLoweringInfo().isTypeLegal(SrcVT))\n     return SDValue();\n   SDValue Idx = SplatVal.getOperand(1);\n   // The index must be a legal type.\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=riscv32 -mattr=+v,+d,+zvfh -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -mattr=+v,+d,+zvfh -verify-machineinstrs < %s"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/splat-vectors.ll",
+      "tests": [
+        {
+          "test_body": "define <8 x float> @splat_idx_nxv4f32_v8f32_constant_8(<vscale x 4 x float> %v) {\n  %x = extractelement <vscale x 4 x float> %v, i64 8\n  %ins = insertelement <8 x float> poison, float %x, i32 0\n  %splat = shufflevector <8 x float> %ins, <8 x float> poison, <8 x i32> zeroinitializer\n  ret <8 x float> %splat\n}\n",
+          "test_name": "splat_idx_nxv4f32_v8f32_constant_8"
+        },
+        {
+          "test_body": "define <vscale x 2 x float> @splat_idx_illegal_type(<3 x float> %v) {\nentry:\n  %x = extractelement <3 x float> %v, i64 0\n  %ins = insertelement <vscale x 2 x float> poison, float %x, i64 0\n  %splat = shufflevector <vscale x 2 x float> %ins, <vscale x 2 x float> poison, <vscale x 2 x i32> zeroinitializer\n  ret <vscale x 2 x float> %splat\n}\n",
+          "test_name": "splat_idx_illegal_type"
+        },
+        {
+          "test_body": "define <8 x float> @splat_idx_nxv4f32_v8f32_constant_7(<vscale x 4 x float> %v) {\n  %x = extractelement <vscale x 4 x float> %v, i64 7\n  %ins = insertelement <8 x float> poison, float %x, i32 0\n  %splat = shufflevector <8 x float> %ins, <8 x float> poison, <8 x i32> zeroinitializer\n  ret <8 x float> %splat\n}\n",
+          "test_name": "splat_idx_nxv4f32_v8f32_constant_7"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

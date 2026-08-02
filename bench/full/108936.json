@@ -1,0 +1,79 @@
+{
+  "base_commit": "5ac97d397c2088c3ac0a113506e57ab9b1e69ac8",
+  "bug_id": "108936",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/TargetLoweringBase.cpp": [
+        "RTLIB::getFPROUND"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/include/llvm/IR/RuntimeLibcalls.def": [
+        [
+          367,
+          372
+        ]
+      ],
+      "llvm/lib/CodeGen/TargetLoweringBase.cpp": [
+        [
+          169,
+          174
+        ]
+      ]
+    },
+    "components": [
+      "TargetLoweringBase"
+    ],
+    "fix_commit": "76eda76f9f36646b8b393f2369359d02e24e20c8"
+  },
+  "issue": {
+    "author": "DigOrDog",
+    "body": "# Description\r\nThe following code crashes X86 backend with \"LLVM ERROR: Unsupported library call operation!\"\r\n\r\n# Minimal Reproduction\r\nhttps://godbolt.org/\r\n\r\n## code\r\n```\r\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"\r\ntarget triple = \"x86_64-pc-linux-gnu\"\r\n\r\ndefine i32 @main(x86_fp80 %0) {\r\n  %CastFPTrunc = fptrunc x86_fp80 %0 to bfloat\r\n  store bfloat %CastFPTrunc, ptr null, align 2\r\n  unreachable\r\n}\r\n```\r\n\r\n## Stack Trace\r\n```\r\nLLVM ERROR: Unsupported library call operation!\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /opt/compiler-explorer/clang-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -mtriple=x86_64 -O=2 <source>\r\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\r\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@main'\r\n #0 0x000000000385d588 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-trunk/bin/llc+0x385d588)\r\n #1 0x000000000385af2c SignalHandler(int) Signals.cpp:0:0\r\n #2 0x00007c30b8842520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #3 0x00007c30b88969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\r\n #4 0x00007c30b8842476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\r\n #5 0x00007c30b88287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\r\n #6 0x000000000074b35c llvm::UniqueStringSaver::save(llvm::Twine const&) (.cold) StringSaver.cpp:0:0\r\n #7 0x00000000037b48c8 (/opt/compiler-explorer/clang-trunk/bin/llc+0x37b48c8)\r\n #8 0x0000000003688dc7 llvm::TargetLowering::makeLibCall(llvm::SelectionDAG&, llvm::RTLIB::Libcall, llvm::EVT, llvm::ArrayRef<llvm::SDValue>, llvm::TargetLowering::MakeLibCallOptions, llvm::SDLoc const&, llvm::SDValue) const (/opt/compiler-explorer/clang-trunk/bin/llc+0x3688dc7)\r\n #9 0x0000000001d6619e llvm::X86TargetLowering::LowerFP_TO_BF16(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-trunk/bin/llc+0x1d6619e)\r\n#10 0x0000000001e52034 llvm::X86TargetLowering::LowerOperation(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-trunk/bin/llc+0x1e52034)\r\n#11 0x000000000351fd25 (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) LegalizeDAG.cpp:0:0\r\n#12 0x00000000035244be llvm::SelectionDAG::Legalize() (/opt/compiler-explorer/clang-trunk/bin/llc+0x35244be)\r\n#13 0x000000000362057b llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-trunk/bin/llc+0x362057b)\r\n#14 0x000000000362316c llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x362316c)\r\n#15 0x0000000003624dcf llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3624dcf)\r\n#16 0x0000000003610ff1 llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x3610ff1)\r\n#17 0x00000000029195fb llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#18 0x0000000002e64ff2 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2e64ff2)\r\n#19 0x0000000002e65281 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2e65281)\r\n#20 0x0000000002e66c26 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/llc+0x2e66c26)\r\n#21 0x000000000086e124 compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#22 0x000000000075f416 main (/opt/compiler-explorer/clang-trunk/bin/llc+0x75f416)\r\n#23 0x00007c30b8829d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\r\n#24 0x00007c30b8829e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\r\n#25 0x0000000000865efe _start (/opt/compiler-explorer/clang-trunk/bin/llc+0x865efe)\r\nProgram terminated with signal: SIGSEGV\r\nCompiler returned: 139\r\n```",
+    "comments": [
+      {
+        "author": "DigOrDog",
+        "body": "https://godbolt.org/z/KdTz66GKE"
+      }
+    ],
+    "labels": [
+      "compiler-rt:builtins",
+      "crash"
+    ],
+    "title": "[X86-backend] Unsupported library call operation!"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/108936",
+  "knowledge_cutoff": "2024-09-17T07:17:12Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 76eda76f9f36646b8b393f2369359d02e24e20c8\nAuthor: Phoebe Wang <phoebe.wang@intel.com>\nDate:   Wed Sep 18 21:23:10 2024 +0800\n\n    [X86][BF16] Add libcall for F80 -> BF16 (#109116)\n    \n    This fixes #108936, but the calling convention doesn't match with GCC. I\n    doubt we have such a lib function for now, so leave the calling\n    convention as is.\n\ndiff --git a/llvm/include/llvm/IR/RuntimeLibcalls.def b/llvm/include/llvm/IR/RuntimeLibcalls.def\nindex c3d5ef9f4e4f..69cf43140ad4 100644\n--- a/llvm/include/llvm/IR/RuntimeLibcalls.def\n+++ b/llvm/include/llvm/IR/RuntimeLibcalls.def\n@@ -367,6 +367,7 @@ HANDLE_LIBCALL(FPROUND_F128_F16, \"__trunctfhf2\")\n HANDLE_LIBCALL(FPROUND_PPCF128_F16, \"__trunctfhf2\")\n HANDLE_LIBCALL(FPROUND_F32_BF16, \"__truncsfbf2\")\n HANDLE_LIBCALL(FPROUND_F64_BF16, \"__truncdfbf2\")\n+HANDLE_LIBCALL(FPROUND_F80_BF16, \"__truncxfbf2\")\n HANDLE_LIBCALL(FPROUND_F64_F32, \"__truncdfsf2\")\n HANDLE_LIBCALL(FPROUND_F80_F32, \"__truncxfsf2\")\n HANDLE_LIBCALL(FPROUND_F128_F32, \"__trunctfsf2\")\ndiff --git a/llvm/lib/CodeGen/TargetLoweringBase.cpp b/llvm/lib/CodeGen/TargetLoweringBase.cpp\nindex eb3190c7cd24..9fdde4545591 100644\n--- a/llvm/lib/CodeGen/TargetLoweringBase.cpp\n+++ b/llvm/lib/CodeGen/TargetLoweringBase.cpp\n@@ -169,6 +169,8 @@ RTLIB::Libcall RTLIB::getFPROUND(EVT OpVT, EVT RetVT) {\n       return FPROUND_F32_BF16;\n     if (OpVT == MVT::f64)\n       return FPROUND_F64_BF16;\n+    if (OpVT == MVT::f80)\n+      return FPROUND_F80_BF16;\n   } else if (RetVT == MVT::f32) {\n     if (OpVT == MVT::f64)\n       return FPROUND_F64_F32;\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=i686-linux-gnu -mattr=avx512bf16,avx512fp16,avx512vl",
+        "llc < %s -mtriple=x86_64-linux-gnu",
+        "llc < %s -mtriple=x86_64-linux-gnu -mattr=avx512bf16,avx512vl",
+        "llc < %s -mtriple=x86_64-linux-gnu -mattr=avx512bf16,avx512fp16,avx512vl",
+        "llc < %s -mtriple=x86_64-linux-gnu -mattr=avxneconvert,f16c"
+      ],
+      "file": "llvm/test/CodeGen/X86/bfloat.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine bfloat @PR108936(x86_fp80 %0) #0 {\n  %2 = fptrunc x86_fp80 %0 to bfloat\n  ret bfloat %2\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "PR108936"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine void @PR92471(ptr %0, ptr %1) #0 {\n  %3 = load <7 x bfloat>, ptr %0, align 2\n  %4 = fpext <7 x bfloat> %3 to <7 x float>\n  store <7 x float> %4, ptr %1, align 4\n  ret void\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "PR92471"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

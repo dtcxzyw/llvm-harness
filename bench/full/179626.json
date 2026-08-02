@@ -1,0 +1,236 @@
+{
+  "base_commit": "e03b73138ec62cae8f6ecbe960b67bc6fa1ab9b7",
+  "bug_id": "179626",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Analysis/ConstantFolding.cpp": [
+        "FoldBitCast"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Analysis/ConstantFolding.cpp": [
+        [
+          213,
+          296
+        ]
+      ]
+    },
+    "components": [
+      "ConstantFold"
+    ],
+    "fix_commit": "2ce48b2691a49e91dc8ecd6dfb7eeb533f77a5c1"
+  },
+  "issue": {
+    "author": "varev-dev",
+    "body": "https://godbolt.org/z/q6TEvboYM\nopt crashes with an assertion failure in InstCombine when processing a bitwise operation involving a bitcast of \"exotic\" vector type (e.g., casting <3 x i32> to <4 x i24>).\n```c++\nopt -passes=instcombine repro.ll\n```\n```llvm\ndefine void @crash() {\n  %LGV = load <3 x i32>, ptr addrspace(1) null, align 16\n  %B1 = xor <3 x i32> %LGV, splat (i32 1)\n  %1 = bitcast <3 x i32> %B1 to i96\n  %2 = trunc i96 %1 to i24\n  %3 = bitcast i24 %2 to <3 x i8>\n  %B4 = lshr <3 x i8> zeroinitializer, %3\n  store <3 x i8> %B4, ptr addrspace(1) null, align 4\n  ret void\n}\n```\n\nThe crash occurs because the Constant Folding mechanism seems to incorrectly handle bitcasts for these vector types, returning a constant with a mismatching type (wrong element count/total bit width) compared to the requested destination type.\n\nThis triggers a type mismatch assertion when InstCombine attmepts to create the new binary operator.\n\n**Crash Log**\n>opt: .../llvm-project/llvm/lib/IR/Instructions.cpp:2707: static llvm::BinaryOperator* llvm::BinaryOperator::Create(llvm::Instruction::BinaryOps, llvm::Value*, llvm::Value*, const llvm::Twine&, llvm::InsertPosition): Assertion `S1->getType() == S2->getType() && \"Cannot create binary operator with two operands of differing type!\"' failed.\n",
+    "comments": [
+      {
+        "author": "varev-dev",
+        "body": "**Root Cause**\nDebugging revealed that `foldBitCastBitwiseLogic` in `InstCombineCast.cpp` attempts to optimize the bitcast by moving it past the bitwise operation. It calls `Builder.CreateBitCast(C, DestTy)` on the constant operand.\n\nHowever, for the case of casting `<3 x i32>` to `<4 x i24>` (96 bits -> 96 bits), the Constant Folder returns a constant of type `<3 x i24>` (72 bits), incorrectly preserving the element count of the source instead of respecting the `DestTy` layout.\n\nAll of this results in `BinaryOperator::Create` receiving operands of differing types (`<4 x i24>` vs `<3 x i24>`), triggering an assertion.\n\n**Proposed Fix**\nType guard in `visitBitCastBitwiseLogic`. It will ensure that if the constant folding returns a type that does not match the expected destination type, the transformation is aborted to prevent the crash."
+      }
+    ],
+    "labels": [
+      "crash",
+      "constant-folding"
+    ],
+    "title": "[InstCombine] Assertion failed in visitBitCastBitwiseLogic due to type mismatch during constant folding"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/179626",
+  "knowledge_cutoff": "2026-02-04T08:59:36Z",
+  "lit_test_dir": [
+    "llvm/test/Transforms/InstCombine",
+    "llvm/test/Transforms/InstSimplify",
+    "llvm/test/Transforms/SCCP"
+  ],
+  "patch": "commit 2ce48b2691a49e91dc8ecd6dfb7eeb533f77a5c1\nAuthor: Kacper Doga <doga.kacper@gmail.com>\nDate:   Tue Apr 7 15:48:38 2026 +0200\n\n    [ConstantFolding] Fix bitcasting vectors with non-integer ratios (#179640)\n    \n    For both downcast and upcast this patch introduces support for\n    bitcasting vectors with non-integer ratios [1, 2]. Also this patch\n    increases the coherence between casts [3].\n    \n    1. Fixes a crash on downcast where the ratio is not an integer (e.g., <3\n    x i32> to <4 x i24>). Previously this led to leading to an incorrect\n    number of result elements and subsequent crashes in RAUW.\n    Fixes #179626\n    \n    2. Fixes a miscompilation on upcast where ratio is not an integer (e.g.,\n    <4 x i24> to <3 x i32>). Previously this led to wrong result.\n    Fixes #181195\n    \n    3. Fix incoherent value emitting between down/up cast\n    a. When upcasting, emit Poison and Undef not only if the source vector\n    consists of only one of these values. (e.g., `bitcast <4 x i32> <i32\n    undef, i32 undef, i32 1, i32 undef> to <2 x i64>` returns `<2 x i64>\n    <i64 undef, i64 1>`\n    b. When downcasting, when SrcElt is Poison, handle it as Poison and not\n    Undef. (e.g., `bitcast <1 x i32> <i32 poison> to <2 x i16>` returns `<2\n    x i16> poison`\n\ndiff --git a/llvm/lib/Analysis/ConstantFolding.cpp b/llvm/lib/Analysis/ConstantFolding.cpp\nindex 3c64ad6f6b36..589d8e334b88 100644\n--- a/llvm/lib/Analysis/ConstantFolding.cpp\n+++ b/llvm/lib/Analysis/ConstantFolding.cpp\n@@ -213,84 +213,78 @@ Constant *FoldBitCast(Constant *C, Type *DestTy, const DataLayout &DL) {\n   }\n \n   // Now we know that the input and output vectors are both integer vectors\n-  // of the same size, and that their #elements is not the same.  Do the\n-  // conversion here, which depends on whether the input or output has\n-  // more elements.\n+  // of the same size, and that their #elements is not the same.\n+  // Use data buffer for easy non-integer element ratio vectors handling,\n+  // For example: <4 x i24> to <3 x i32>.\n   bool isLittleEndian = DL.isLittleEndian();\n-\n+  unsigned SrcBitSize = SrcEltTy->getPrimitiveSizeInBits();\n+  unsigned DstBitSize = DstEltTy->getPrimitiveSizeInBits();\n   SmallVector<Constant*, 32> Result;\n-  if (NumDstElt < NumSrcElt) {\n-    // Handle: bitcast (<4 x i32> <i32 0, i32 1, i32 2, i32 3> to <2 x i64>)\n-    Constant *Zero = Constant::getNullValue(DstEltTy);\n-    unsigned Ratio = NumSrcElt/NumDstElt;\n-    unsigned SrcBitSize = SrcEltTy->getPrimitiveSizeInBits();\n-    unsigned SrcElt = 0;\n-    for (unsigned i = 0; i != NumDstElt; ++i) {\n-      // Build each element of the result.\n-      Constant *Elt = Zero;\n-      unsigned ShiftAmt = isLittleEndian ? 0 : SrcBitSize*(Ratio-1);\n-      for (unsigned j = 0; j != Ratio; ++j) {\n-        Constant *Src = C->getAggregateElement(SrcElt++);\n-        if (isa_and_nonnull<UndefValue>(Src))\n-          Src = Constant::getNullValue(\n-              cast<VectorType>(C->getType())->getElementType());\n-        else\n-          Src = dyn_cast_or_null<ConstantInt>(Src);\n-        if (!Src)  // Reject constantexpr elements.\n-          return ConstantExpr::getBitCast(C, DestTy);\n-\n-        // Zero extend the element to the right size.\n-        Src = ConstantFoldCastOperand(Instruction::ZExt, Src, Elt->getType(),\n-                                      DL);\n-        assert(Src && \"Constant folding cannot fail on plain integers\");\n-\n-        // Shift it to the right place, depending on endianness.\n-        Src = ConstantFoldBinaryOpOperands(\n-            Instruction::Shl, Src, ConstantInt::get(Src->getType(), ShiftAmt),\n-            DL);\n-        assert(Src && \"Constant folding cannot fail on plain integers\");\n-\n-        ShiftAmt += isLittleEndian ? SrcBitSize : -SrcBitSize;\n-\n-        // Mix it in.\n-        Elt = ConstantFoldBinaryOpOperands(Instruction::Or, Elt, Src, DL);\n-        assert(Elt && \"Constant folding cannot fail on plain integers\");\n+  unsigned SrcElt = 0;\n+\n+  APInt Buffer(2 * std::max(SrcBitSize, DstBitSize), 0);\n+  APInt UndefMask(Buffer.getBitWidth(), 0);\n+  APInt PoisonMask(Buffer.getBitWidth(), 0);\n+  unsigned BufferBitSize = 0;\n+\n+  while (Result.size() != NumDstElt) {\n+    // Load SrcElts into Buffer.\n+    while (BufferBitSize < DstBitSize) {\n+      Constant *Element = C->getAggregateElement(SrcElt++);\n+      if (!Element) // Reject constantexpr elements\n+        return ConstantExpr::getBitCast(C, DestTy);\n+\n+      // Shift Buffer & Masks to fit next SrcElt.\n+      if (!isLittleEndian) {\n+        Buffer <<= SrcBitSize;\n+        UndefMask <<= SrcBitSize;\n+        PoisonMask <<= SrcBitSize;\n       }\n-      Result.push_back(Elt);\n-    }\n-    return ConstantVector::get(Result);\n-  }\n \n-  // Handle: bitcast (<2 x i64> <i64 0, i64 1> to <4 x i32>)\n-  unsigned Ratio = NumDstElt/NumSrcElt;\n-  unsigned DstBitSize = DL.getTypeSizeInBits(DstEltTy);\n-\n-  // Loop over each source value, expanding into multiple results.\n-  for (unsigned i = 0; i != NumSrcElt; ++i) {\n-    auto *Element = C->getAggregateElement(i);\n-\n-    if (!Element) // Reject constantexpr elements.\n-      return ConstantExpr::getBitCast(C, DestTy);\n+      APInt SrcValue;\n+      unsigned BitPosition = isLittleEndian ? BufferBitSize : 0;\n+      if (isa<UndefValue>(Element)) {\n+        // Set masks fragments bits.\n+        UndefMask.setBits(BitPosition, BitPosition + SrcBitSize);\n+        if (isa<PoisonValue>(Element))\n+          PoisonMask.setBits(BitPosition, BitPosition + SrcBitSize);\n+        SrcValue = APInt::getZero(DstBitSize);\n+      } else {\n+        auto *Src = dyn_cast<ConstantInt>(Element);\n+        if (!Src)\n+          return ConstantExpr::getBitCast(C, DestTy);\n+        SrcValue = Src->getValue();\n+      }\n \n-    if (isa<UndefValue>(Element)) {\n-      // Correctly Propagate undef values.\n-      Result.append(Ratio, UndefValue::get(DstEltTy));\n-      continue;\n+      // Insert src element bits into Buffer on correct position.\n+      Buffer.insertBits(SrcValue, BitPosition);\n+      BufferBitSize += SrcBitSize;\n     }\n \n-    auto *Src = dyn_cast<ConstantInt>(Element);\n-    if (!Src)\n-      return ConstantExpr::getBitCast(C, DestTy);\n-\n-    unsigned ShiftAmt = isLittleEndian ? 0 : DstBitSize*(Ratio-1);\n-    for (unsigned j = 0; j != Ratio; ++j) {\n-      // Shift the piece of the value into the right place, depending on\n-      // endianness.\n-      APInt Elt = Src->getValue().lshr(ShiftAmt);\n-      ShiftAmt += isLittleEndian ? DstBitSize : -DstBitSize;\n+    // Create DstElts from Buffer.\n+    while (BufferBitSize >= DstBitSize) {\n+      unsigned ShiftAmt = isLittleEndian ? 0 : BufferBitSize - DstBitSize;\n+      // Emit undef/poison, if all undef mask fragment bits are set.\n+      if (UndefMask.extractBits(DstBitSize, ShiftAmt).isAllOnes()) {\n+        // Push poison, if any bit in poison mask fragment is set.\n+        if (!PoisonMask.extractBits(DstBitSize, ShiftAmt).isZero()) {\n+          Result.push_back(PoisonValue::get(DstEltTy));\n+        } else {\n+          Result.push_back(UndefValue::get(DstEltTy));\n+        }\n+      } else {\n+        // Create and push DstElt.\n+        APInt Elt = Buffer.extractBits(DstBitSize, ShiftAmt);\n+        Result.push_back(ConstantInt::get(DstEltTy, Elt));\n+      }\n \n-      // Truncate and remember this piece.\n-      Result.push_back(ConstantInt::get(DstEltTy, Elt.trunc(DstBitSize)));\n+      // Shift unused Buffer fragment to lower bits.\n+      if (isLittleEndian) {\n+        Buffer.lshrInPlace(DstBitSize);\n+        UndefMask.lshrInPlace(DstBitSize);\n+        PoisonMask.lshrInPlace(DstBitSize);\n+      }\n+      BufferBitSize -= DstBitSize;\n     }\n   }\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt < %s -passes=instcombine -S -data-layout=\"E-p:64:64:64-p1:32:32:32-p2:64:64:64-p3:64:64:64-a0:0:8-f32:32:32-f64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-v64:64:64-v128:128:128-n8:16:32:64\"",
+        "opt < %s -passes=instcombine -S -data-layout=\"e-p:64:64:64-p1:32:32:32-p2:64:64:64-p3:64:64:64-a0:0:8-f32:32:32-f64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-v64:64:64-v128:128:128-n8:16:32:64\"",
+        "opt < %s -passes=instcombine -S -data-layout=\"E-p:64:64:64-p1:32:32:32-p2:64:64:64-p3:64:64:64-a0:0:8-f32:32:32-f64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-v64:64:64-v128:128:128-n8:16:32:64\" -use-constant-fp-for-fixed-length-splat -use-constant-int-for-fixed-length-splat",
+        "opt < %s -passes=instcombine -S -data-layout=\"e-p:64:64:64-p1:32:32:32-p2:64:64:64-p3:64:64:64-a0:0:8-f32:32:32-f64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-v64:64:64-v128:128:128-n8:16:32:64\" -use-constant-fp-for-fixed-length-splat -use-constant-int-for-fixed-length-splat"
+      ],
+      "file": "llvm/test/Transforms/InstCombine/cast.ll",
+      "tests": [
+        {
+          "test_body": "define <2 x i32> @test90() {\n  %t6 = bitcast <4 x half> <half poison, half poison, half poison, half 0xH3C00> to <2 x i32>\n  ret <2 x i32> %t6\n}\n",
+          "test_name": "test90"
+        },
+        {
+          "test_body": "define i32 @test89() {\n  ret i32 bitcast (<2 x i16> <i16 6, i16 poison> to i32)\n}\n",
+          "test_name": "test89"
+        }
+      ]
+    },
+    {
+      "commands": [
+        "opt < %s -passes=instsimplify -S -data-layout=\"e-p:32:32:32-i1:8:8-i8:8:8-f64:32:64-v64:64:64-v128:128:128\"",
+        "opt < %s -passes=instsimplify -use-constant-fp-for-fixed-length-splat -use-constant-int-for-fixed-length-splat -S -data-layout=\"e-p:32:32:32-i1:8:8-i8:8:8-f64:32:64-v64:64:64-v128:128:128\"",
+        "opt < %s -passes=instsimplify -S -data-layout=\"E-p:32:32:32-i1:8:8-i8:8:8-f64:32:64-v64:64:64-v128:128:128\""
+      ],
+      "file": "llvm/test/Transforms/InstSimplify/bitcast-vector-fold.ll",
+      "tests": [
+        {
+          "test_body": "define <4 x float> @test4() {\n  %tmp3 = bitcast <2 x i64> <i64 0, i64 1> to <4 x float>\n  ret <4 x float> %tmp3\n}\n",
+          "test_name": "test4"
+        },
+        {
+          "test_body": "define <8 x i24> @test12() {\n  %c = bitcast <3 x i64> <i64 281474993487873, i64 72057598332895488, i64 1099511693312> to <8 x i24>\n  ret <8 x i24> %c\n}\n",
+          "test_name": "test12"
+        },
+        {
+          "test_body": "define <16 x i8> @bitcast_constexpr_16i8_8i16_u2u2u2u2() {\n  %cast = bitcast <8 x i16> <i16 undef, i16 2, i16 undef, i16 2, i16 undef, i16 2, i16 undef, i16 2> to <16 x i8>\n  ret <16 x i8> %cast\n}\n",
+          "test_name": "bitcast_constexpr_16i8_8i16_u2u2u2u2"
+        },
+        {
+          "test_body": "define <4 x i32> @bitcast_constexpr_4i32_2i64() {\n  %cast = bitcast <2 x i64> <i64 undef, i64 2> to <4 x i32>\n  ret <4 x i32> %cast\n}\n",
+          "test_name": "bitcast_constexpr_4i32_2i64"
+        },
+        {
+          "test_body": "define <16 x i8> @bitcast_constexpr_16i8_8i16_1u1u1u1u() {\n  %cast = bitcast <8 x i16> <i16 1, i16 undef, i16 1, i16 undef, i16 1, i16 undef, i16 1, i16 undef> to <16 x i8>\n  ret <16 x i8> %cast\n}\n",
+          "test_name": "bitcast_constexpr_16i8_8i16_1u1u1u1u"
+        },
+        {
+          "test_body": "define <4 x i32> @bitcast_constexpr_4i32_2i64_1u() {\n  %cast = bitcast <2 x i64> <i64 1, i64 undef> to <4 x i32>\n  ret <4 x i32> %cast\n}\n",
+          "test_name": "bitcast_constexpr_4i32_2i64_1u"
+        },
+        {
+          "test_body": "define <8 x i16> @bitcast_constexpr_8i16_2i64_u65536() {\n  %cast = bitcast <2 x i64> <i64 undef, i64 65536> to <8 x i16>\n  ret <8 x i16> %cast\n}\n",
+          "test_name": "bitcast_constexpr_8i16_2i64_u65536"
+        },
+        {
+          "test_body": "define <2 x float> @foo() {\n  %cast = bitcast i64 -1 to <2 x float>\n  ret <2 x float> %cast\n}\n",
+          "test_name": "foo"
+        },
+        {
+          "test_body": "define <16 x i8> @bitcast_constexpr_16i8_4i32_u2u2() {\n  %cast = bitcast <4 x i32> <i32 undef, i32 2, i32 undef, i32 2> to <16 x i8>\n  ret <16 x i8> %cast\n}\n",
+          "test_name": "bitcast_constexpr_16i8_4i32_u2u2"
+        },
+        {
+          "test_body": "define <4 x i32> @test6() {\n  %tmp3 = bitcast <2 x double> <double 5.000000e-01, double 1.000000e+00> to <4 x i32>\n  ret <4 x i32> %tmp3\n}\n",
+          "test_name": "test6"
+        },
+        {
+          "test_body": "define <1 x i32> @bitcast_constexpr_scalar_fp_to_vector_int() {\n  %res = bitcast float 1.000000e+00 to <1 x i32>\n  ret <1 x i32> %res\n}\n",
+          "test_name": "bitcast_constexpr_scalar_fp_to_vector_int"
+        },
+        {
+          "test_body": "define <2 x i64> @test5() {\n  %tmp3 = bitcast <4 x float> <float 0.000000e+00, float 1.000000e+00, float 2.000000e+00, float 3.000000e+00> to <2 x i64>\n  ret <2 x i64> %tmp3\n}\n",
+          "test_name": "test5"
+        },
+        {
+          "test_body": "define <8 x i16> @bitcast_constexpr_8i16_4i32_u257u256() {\n  %cast = bitcast <4 x i32> <i32 undef, i32 65536, i32 undef, i32 65536> to <8 x i16>\n  ret <8 x i16> %cast\n}\n",
+          "test_name": "bitcast_constexpr_8i16_4i32_u257u256"
+        },
+        {
+          "test_body": "define <16 x i8> @bitcast_constexpr_16i8_4i32_u256uu() {\n  %cast = bitcast <4 x i32> <i32 undef, i32 256, i32 undef, i32 undef> to <16 x i8>\n  ret <16 x i8> %cast\n}\n",
+          "test_name": "bitcast_constexpr_16i8_4i32_u256uu"
+        },
+        {
+          "test_body": "define <3 x i32> @test13() {\n  %c = bitcast <4 x i24> <i24 1, i24 256, i24 65536, i24 0> to <3 x i32>\n  ret <3 x i32> %c\n}\n",
+          "test_name": "test13"
+        },
+        {
+          "test_body": "define <4 x i32> @bitcast_constexpr_4i32_2i64_u2() {\n  %cast = bitcast <2 x i64> <i64 undef, i64 2> to <4 x i32>\n  ret <4 x i32> %cast\n}\n",
+          "test_name": "bitcast_constexpr_4i32_2i64_u2"
+        },
+        {
+          "test_body": "define <4 x i32> @test2() {\n  %tmp3 = bitcast <2 x i64> <i64 0, i64 1> to <4 x i32>\n  ret <4 x i32> %tmp3\n}\n",
+          "test_name": "test2"
+        },
+        {
+          "test_body": "define <8 x i16> @bitcast_constexpr_8i16_4i32_10uu() {\n  %cast = bitcast <4 x i32> <i32 1, i32 0, i32 undef, i32 undef> to <8 x i16>\n  ret <8 x i16> %cast\n}\n",
+          "test_name": "bitcast_constexpr_8i16_4i32_10uu"
+        },
+        {
+          "test_body": "define <2 x double> @test3() {\n  %tmp3 = bitcast <4 x i32> <i32 0, i32 1, i32 2, i32 3> to <2 x double>\n  ret <2 x double> %tmp3\n}\n",
+          "test_name": "test3"
+        },
+        {
+          "test_body": "define <8 x i16> @bitcast_constexpr_8i16_2i64_1u() {\n  %cast = bitcast <2 x i64> <i64 1, i64 undef> to <8 x i16>\n  ret <8 x i16> %cast\n}\n",
+          "test_name": "bitcast_constexpr_8i16_2i64_1u"
+        },
+        {
+          "test_body": "define i32 @test7() {\n  %tmp3 = bitcast <2 x half> <half 0xH1100, half 0xH0011> to i32\n  ret i32 %tmp3\n}\n",
+          "test_name": "test7"
+        },
+        {
+          "test_body": "define <3 x i64> @test14() {\n  %c = bitcast <8 x i24> splat (i24 1) to <3 x i64>\n  ret <3 x i64> %c\n}\n",
+          "test_name": "test14"
+        },
+        {
+          "test_body": "define <2 x i64> @test1() {\n  %tmp3 = bitcast <4 x i32> <i32 0, i32 1, i32 2, i32 3> to <2 x i64>\n  ret <2 x i64> %tmp3\n}\n",
+          "test_name": "test1"
+        },
+        {
+          "test_body": "define <8 x i16> @bitcast_constexpr_8i16_2i64_u2() {\n  %cast = bitcast <2 x i64> <i64 undef, i64 2> to <8 x i16>\n  ret <8 x i16> %cast\n}\n",
+          "test_name": "bitcast_constexpr_8i16_2i64_u2"
+        },
+        {
+          "test_body": "define <16 x i8> @bitcast_constexpr_16i8_2i64_u256() {\n  %cast = bitcast <2 x i64> <i64 undef, i64 256> to <16 x i8>\n  ret <16 x i8> %cast\n}\n",
+          "test_name": "bitcast_constexpr_16i8_2i64_u256"
+        },
+        {
+          "test_body": "define <2 x double> @foo6() {\n  %cast = bitcast <4 x i32> splat (i32 -1) to <2 x double>\n  ret <2 x double> %cast\n}\n",
+          "test_name": "foo6"
+        },
+        {
+          "test_body": "define <3 x i32> @bitcast_constexpr_3i32_4i24_n1255uu() {\n  %cast = bitcast <4 x i24> <i24 -1, i24 255, i24 undef, i24 undef> to <3 x i32>\n  ret <3 x i32> %cast\n}\n",
+          "test_name": "bitcast_constexpr_3i32_4i24_n1255uu"
+        },
+        {
+          "test_body": "define <4 x i24> @bitcast_constexpr_4i24_3i32_u1u() {\n  %cast = bitcast <3 x i32> <i32 undef, i32 1, i32 undef> to <4 x i24>\n  ret <4 x i24> %cast\n}\n",
+          "test_name": "bitcast_constexpr_4i24_3i32_u1u"
+        },
+        {
+          "test_body": "define <1 x i1> @test10() {\n  %ret = icmp eq <1 x i64> splat (i64 -1), zeroinitializer\n  ret <1 x i1> %ret\n}\n",
+          "test_name": "test10"
+        },
+        {
+          "test_body": "define <16 x i8> @bitcast_constexpr_16i8_2i64_u2() {\n  %cast = bitcast <2 x i64> <i64 undef, i64 2> to <16 x i8>\n  ret <16 x i8> %cast\n}\n",
+          "test_name": "bitcast_constexpr_16i8_2i64_u2"
+        },
+        {
+          "test_body": "define <16 x i8> @bitcast_constexpr_16i8_2i64_256u() {\n  %cast = bitcast <2 x i64> <i64 256, i64 undef> to <16 x i8>\n  ret <16 x i8> %cast\n}\n",
+          "test_name": "bitcast_constexpr_16i8_2i64_256u"
+        },
+        {
+          "test_body": "define <8 x i16> @bitcast_constexpr_8i16_4i32_uu22() {\n  %cast = bitcast <4 x i32> <i32 undef, i32 undef, i32 2, i32 2> to <8 x i16>\n  ret <8 x i16> %cast\n}\n",
+          "test_name": "bitcast_constexpr_8i16_4i32_uu22"
+        },
+        {
+          "test_body": "define <4 x i24> @test11() {\n  %c = bitcast <3 x i32> splat (i32 1) to <4 x i24>\n  ret <4 x i24> %c\n}\n",
+          "test_name": "test11"
+        },
+        {
+          "test_body": "define <16 x i8> @bitcast_constexpr_16i8_4i32_1u1u() {\n  %cast = bitcast <4 x i32> <i32 1, i32 undef, i32 1, i32 undef> to <16 x i8>\n  ret <16 x i8> %cast\n}\n",
+          "test_name": "bitcast_constexpr_16i8_4i32_1u1u"
+        },
+        {
+          "test_body": "define <16 x i8> @bitcast_constexpr_16i8_8i16_u256uuu256uu() {\n  %cast = bitcast <8 x i16> <i16 undef, i16 256, i16 undef, i16 undef, i16 undef, i16 256, i16 undef, i16 undef> to <16 x i8>\n  ret <16 x i8> %cast\n}\n",
+          "test_name": "bitcast_constexpr_16i8_8i16_u256uuu256uu"
+        }
+      ]
+    },
+    {
+      "commands": [
+        "opt -passes=sccp -S < %s"
+      ],
+      "file": "llvm/test/Transforms/SCCP/bitcast-vector-refinement.l.ll",
+      "tests": [
+        {
+          "test_body": "define <32 x i8> @test(i1 %cond) {\nentry:\n  br label %for.cond2\n\nfor.cond2:                                        ; preds = %for.cond2, %entry\n  %BS_VAR_1.0 = phi <4 x i64> [ <i64 poison, i64 poison, i64 poison, i64 0>, %entry ], [ zeroinitializer, %for.cond2 ]\n  %0 = phi <4 x i64> [ zeroinitializer, %entry ], [ splat (i64 1), %for.cond2 ]\n  br i1 %cond, label %for.cond2, label %if.then\n\nif.then:                                          ; preds = %for.cond2\n  %sub = sub <4 x i64> <i64 poison, i64 poison, i64 poison, i64 0>, %BS_VAR_1.0\n  %and = and <4 x i64> %0, %sub\n  %1 = bitcast <4 x i64> %and to <32 x i8>\n  ret <32 x i8> %1\n}\n",
+          "test_name": "test"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

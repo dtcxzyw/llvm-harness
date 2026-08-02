@@ -1,0 +1,78 @@
+{
+  "base_commit": "351d900e6c96ee51cbb40c933969b5ebd15a4122",
+  "bug_id": "179100",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp": [
+        "SelectionDAGBuilder::getValueImpl"
+      ],
+      "llvm/lib/Target/X86/X86FastISel.cpp": [
+        "X86FastISel::fastLowerCall"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp": [
+        [
+          2016,
+          2029
+        ]
+      ],
+      "llvm/lib/Target/X86/X86FastISel.cpp": [
+        [
+          3200,
+          3205
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG",
+      "X86"
+    ],
+    "fix_commit": "41ef3d083a0925cb9c184057f76a0d42ad5680ab"
+  },
+  "issue": {
+    "author": "alexrp",
+    "body": "```llvm\n; ModuleID = 'reduced.bc'\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-freebsd15.0.68-unknown\"\n\ndefine fastcc i16 @\"simd.test.vector prefix scan\"() #0 {\nEntry:\n  %0 = call fastcc <4 x i1> null(ptr null, <4 x i1> zeroinitializer)\n  %1 = call fastcc i16 null(ptr null, <4 x i1> zeroinitializer, <4 x i1> %0)\n  ret i16 %1\n}\n\nattributes #0 = { \"target-cpu\"=\"znver5\" }\n```\n\n```console\n\u276f llc --version | head -n2\nLLVM (http://llvm.org/):\n  LLVM version 22.1.0-rc2\n\u276f llc -O0 reduced.ll\nLLVM ERROR: Cannot emit physreg copy instruction\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.      Program arguments: llc -O0 reduced.ll\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\n2.      Running pass 'Post-RA pseudo instruction expansion pass' on function '@\"simd.test.vector prefix scan\"'\n #0 0x000072bcaa62216d llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) /home/alexrp/Sources/llvm/llvm/lib/Support/Unix/Signals.inc:846:3\n #1 0x000072bcaa61f2a4 llvm::sys::RunSignalHandlers() /home/alexrp/Sources/llvm/llvm/lib/Support/Signals.cpp:108:20\n #2 0x000072bcaa61fabc SignalHandler(int, siginfo_t*, void*) /home/alexrp/Sources/llvm/llvm/lib/Support/Unix/Signals.inc:429:14\n #3 0x000072bca8e45f60 (/lib/x86_64-linux-gnu/libc.so.6+0x45f60)\n #4 0x000072bca8ea5fed __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x000072bca8ea5fed __pthread_kill_internal ./nptl/pthread_kill.c:89:10\n #6 0x000072bca8ea5fed pthread_kill ./nptl/pthread_kill.c:100:10\n #7 0x000072bca8e45e2e raise ./signal/../sysdeps/posix/raise.c:27:6\n #8 0x000072bca8e28888 internal_signal_block_all ./stdlib/../sysdeps/unix/sysv/linux/internal-signals.h:81:3\n #9 0x000072bca8e28888 __abort_lock_wrlock ./stdlib/abort.c:62:3\n#10 0x000072bca8e28888 abort ./stdlib/abort.c:85:3\n#11 0x000072bca9eb9721 std::mutex::lock() /usr/include/c++/15/bits/std_mutex.h:119:22\n#12 0x000072bca9eb9721 std::lock_guard<std::mutex>::lock_guard(std::mutex&) /usr/include/c++/15/bits/std_mutex.h:252:23\n#13 0x000072bca9eb9721 llvm::install_bad_alloc_error_handler(void (*)(void*, char const*, bool), void*) (.cold) /home/alexrp/Sources/llvm/llvm/lib/Support/ErrorHandling.cpp:162:61\n#14 0x000072bcaa5293f9 (/opt/llvm-22/bin/../lib/libLLVM.so.22.1-rc2+0xf293f9)\n#15 0x000072bcaf0534e4 llvm::X86InstrInfo::copyPhysReg(llvm::MachineBasicBlock&, llvm::MachineInstrBundleIterator<llvm::MachineInstr, false>, llvm::DebugLoc const&, llvm::Register, llvm::Register, bool, bool, bool) const /home/alexrp/Sources/llvm/llvm/lib/Target/X86/X86InstrInfo.cpp:4387:23\n#16 0x000072bcaaea9318 llvm::MachineInstr::getNumOperands() const /home/alexrp/Sources/llvm/llvm/include/llvm/CodeGen/MachineInstr.h:602:44\n#17 0x000072bcaaea9318 llvm::TargetInstrInfo::lowerCopy(llvm::MachineInstr*, llvm::TargetRegisterInfo const*) const /home/alexrp/Sources/llvm/llvm/lib/CodeGen/TargetInstrInfo.cpp:904:25\n#18 0x000072bcaaa4cf78 (anonymous namespace)::ExpandPostRA::run(llvm::MachineFunction&) (.constprop.0) /home/alexrp/Sources/llvm/llvm/lib/CodeGen/ExpandPostRAPseudos.cpp:161:20\n#19 0x000072bcaaa4d848 (anonymous namespace)::ExpandPostRALegacy::runOnMachineFunction(llvm::MachineFunction&) /home/alexrp/Sources/llvm/llvm/lib/CodeGen/ExpandPostRAPseudos.cpp:139:1\n#20 0x000072bcaabaafea llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) /home/alexrp/Sources/llvm/llvm/lib/CodeGen/MachineFunctionPass.cpp:108:30\n#21 0x000072bcaa7ddaaa llvm::FPPassManager::runOnFunction(llvm::Function&) /home/alexrp/Sources/llvm/llvm/lib/IR/LegacyPassManager.cpp:1398:40\n#22 0x000072bcaa7ddcb5 llvm::ilist_detail::node_base_prevnext<llvm::ilist_node_base<true, void>, true>::getNext() const /home/alexrp/Sources/llvm/llvm/include/llvm/ADT/ilist_node_base.h:42:38\n#23 0x000072bcaa7ddcb5 llvm::ilist_node_impl<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false, void>>::getNext() /home/alexrp/Sources/llvm/llvm/include/llvm/ADT/ilist_node.h:108:66\n#24 0x000072bcaa7ddcb5 llvm::ilist_iterator<llvm::ilist_detail::node_options<llvm::Function, true, false, void, false, void>, false, false>::operator++() /home/alexrp/Sources/llvm/llvm/include/llvm/ADT/ilist_iterator.h:187:25\n#25 0x000072bcaa7ddcb5 llvm::FPPassManager::runOnModule(llvm::Module&) /home/alexrp/Sources/llvm/llvm/lib/IR/LegacyPassManager.cpp:1443:22\n#26 0x000072bcaa7de54f runOnModule /home/alexrp/Sources/llvm/llvm/lib/IR/LegacyPassManager.cpp:1513:38\n#27 0x000072bcaa7de54f llvm::legacy::PassManagerImpl::run(llvm::Module&) /home/alexrp/Sources/llvm/llvm/lib/IR/LegacyPassManager.cpp:531:55\n#28 0x00005c416076f9f5 compileModule(char**, llvm::SmallVectorImpl<llvm::PassPlugin>&, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) /home/alexrp/Sources/llvm/llvm/tools/llc/llc.cpp:874:34\n#29 0x00005c4160762f5c main /home/alexrp/Sources/llvm/llvm/tools/llc/llc.cpp:462:35\n#30 0x000072bca8e2a575 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3\n#31 0x000072bca8e2a628 call_init ./csu/../csu/libc-start.c:128:20\n#32 0x000072bca8e2a628 __libc_start_main ./csu/../csu/libc-start.c:347:5\n#33 0x00005c4160763ce5 _start (/opt/llvm-22/bin/llc+0x15ce5)\nfish: Job 1, 'llc -O0 reduced.ll' terminated by signal SIGABRT (Abort)\n```",
+    "comments": [
+      {
+        "author": "woruyu",
+        "body": "I would like to fix it!"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "release:backport",
+      "crash-on-valid",
+      "llvm:SelectionDAG",
+      "regression:22"
+    ],
+    "title": "[X86] `LLVM ERROR: Cannot emit physreg copy instruction`"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/179100",
+  "knowledge_cutoff": "2026-02-01T11:03:01Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 41ef3d083a0925cb9c184057f76a0d42ad5680ab\nAuthor: Luo Yuanke <lyk_03@hotmail.com>\nDate:   Tue Mar 10 11:56:31 2026 +0800\n\n    [FastISel] Lower call instruction with illegal type returned (#180322)\n    \n    Fix issue https://github.com/llvm/llvm-project/issues/179100\n    When lowering the call instruction with illegal type returned, we should\n    bail out and transfer the lowering to DAG. Otherwise the return value is\n    not promoted to proper type, but DAG would assume it has been promoted.\n    \n    ---------\n    \n    Co-authored-by: Yuanke Luo <ykluo@birentech.com>\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp b/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp\nindex 2f44ad5a2d10..4875692453b9 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp\n@@ -2016,14 +2016,8 @@ SDValue SelectionDAGBuilder::getValueImpl(const Value *V) {\n   // If this is an instruction which fast-isel has deferred, select it now.\n   if (const Instruction *Inst = dyn_cast<Instruction>(V)) {\n     Register InReg = FuncInfo.InitializeRegForValue(Inst);\n-\n-    std::optional<CallingConv::ID> CallConv;\n-    auto *CB = dyn_cast<CallBase>(Inst);\n-    if (CB && !CB->isInlineAsm())\n-      CallConv = CB->getCallingConv();\n-\n     RegsForValue RFV(*DAG.getContext(), TLI, DAG.getDataLayout(), InReg,\n-                     Inst->getType(), CallConv);\n+                     Inst->getType(), std::nullopt);\n     SDValue Chain = DAG.getEntryNode();\n     return RFV.getCopyFromRegs(DAG, FuncInfo, getCurSDLoc(), Chain, nullptr, V);\n   }\ndiff --git a/llvm/lib/Target/X86/X86FastISel.cpp b/llvm/lib/Target/X86/X86FastISel.cpp\nindex bd36f2ccf4ae..2aecb51f1e42 100644\n--- a/llvm/lib/Target/X86/X86FastISel.cpp\n+++ b/llvm/lib/Target/X86/X86FastISel.cpp\n@@ -3200,6 +3200,12 @@ bool X86FastISel::fastLowerCall(CallLoweringInfo &CLI) {\n   bool Is64Bit        = Subtarget->is64Bit();\n   bool IsWin64        = Subtarget->isCallingConvWin64(CC);\n \n+  // If the return type is illegal, don't bother to promote it, just fall back\n+  // to DAG ISel.\n+  MVT RetVT;\n+  if (!isTypeLegal(CLI.RetTy, RetVT) && !CLI.RetTy->isVoidTy())\n+    return false;\n+\n   // Call / invoke instructions with NoCfCheck attribute require special\n   // handling.\n   if (CB && CB->doesNoCfCheck())\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc --fast-isel -mcpu=znver5 < %s -mtriple=x86_64-unknown-unknown"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr179100.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine fastcc i16 @test() nounwind {\nentry:\n  %0 = call fastcc <4 x i1> @foo(ptr null, <4 x i1> zeroinitializer)\n  %1 = call fastcc i16 @bar(ptr null, <4 x i1> zeroinitializer, <4 x i1> %0)\n  ret i16 %1\n}\n\ndeclare fastcc <4 x i1> @foo(ptr, <4 x i1>)\ndeclare fastcc i16 @bar(ptr, <4 x i1>, <4 x i1>)",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

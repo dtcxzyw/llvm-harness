@@ -1,0 +1,65 @@
+{
+  "base_commit": "14836597f5d86ab16f426bc256dbcf7b2af0af71",
+  "bug_id": "139288",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVVLOptimizer.cpp": [
+        "EMULAndEEWAreEqual"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVVLOptimizer.cpp": [
+        [
+          83,
+          90
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "82b179ca6621f2f0b7bc6062fddb1af663785041"
+  },
+  "issue": {
+    "author": "topperc",
+    "body": "This test case causes VL optimizer to access the value of an unset std::optional. https://godbolt.org/z/cPccraWM6\n\n```\n  source_filename = \"reduced_2.ll\"                                               \n  target datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"                \n  target triple = \"riscv64-unknown-linux-gnu\"                                    \n                                                                                 \n  define i32 @pps_is_equal(<vscale x 16 x i1> %0, <vscale x 16 x i1> %1) #0 {    \n  entry:                                                                         \n    %2 = tail call <vscale x 16 x i1> @llvm.vp.or.nxv16i1(<vscale x 16 x i1> zeroinitializer, <vscale x 16 x i1> zeroinitializer, <vscale x 16 x i1> %0, i32 1)\n    %3 = tail call i32 @llvm.vp.reduce.smax.nxv16i32(i32 0, <vscale x 16 x i32> zeroinitializer, <vscale x 16 x i1> %2, i32 1)\n    ret i32 %3                                                                   \n  }                                                                              \n                                                                                 \n  declare <vscale x 16 x i1> @llvm.vp.or.nxv16i1(<vscale x 16 x i1>, <vscale x 16 x i1>, <vscale x 16 x i1>, i32) #1\n                                                                                 \n  declare i32 @llvm.vp.reduce.smax.nxv16i32(i32, <vscale x 16 x i32>, <vscale x 16 x i1>, i32) #1\n                                                                                 \n  attributes #0 = { \"target-cpu\"=\"sifive-x280\" }                                 \n  attributes #1 = { nocallback nofree nosync nounwind willreturn memory(none) }\n```",
+    "comments": [
+      {
+        "author": "topperc",
+        "body": "CC: @BeMg @lukel97 @preames "
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash"
+    ],
+    "title": "[RISCV] Assertion failure from std::optional in VLOptimizer"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/139288",
+  "knowledge_cutoff": "2025-05-09T16:38:20Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 82b179ca6621f2f0b7bc6062fddb1af663785041\nAuthor: Piyou Chen <piyou.chen@sifive.com>\nDate:   Wed May 14 18:03:35 2025 +0800\n\n    [RISCV][VLOPT] Consider EMUL if it is unknown in EMULAndEEWAreEqual (#139670)\n    \n    Fix https://github.com/llvm/llvm-project/issues/139288\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVVLOptimizer.cpp b/llvm/lib/Target/RISCV/RISCVVLOptimizer.cpp\nindex 9ed2ba274bc5..f7cbfa1546de 100644\n--- a/llvm/lib/Target/RISCV/RISCVVLOptimizer.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVVLOptimizer.cpp\n@@ -83,8 +83,7 @@ struct OperandInfo {\n   OperandInfo() = delete;\n \n   static bool EMULAndEEWAreEqual(const OperandInfo &A, const OperandInfo &B) {\n-    return A.Log2EEW == B.Log2EEW && A.EMUL->first == B.EMUL->first &&\n-           A.EMUL->second == B.EMUL->second;\n+    return A.Log2EEW == B.Log2EEW && A.EMUL == B.EMUL;\n   }\n \n   static bool EEWAreEqual(const OperandInfo &A, const OperandInfo &B) {\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64-unknown-linux-gnu"
+      ],
+      "file": "<issue-body>",
+      "tests": [
+        {
+          "test_body": "source_filename = \"reduced_2.ll\"                                               \n  target datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"                \n  target triple = \"riscv64-unknown-linux-gnu\"                                    \n                                                                                 \n  define i32 @pps_is_equal(<vscale x 16 x i1> %0, <vscale x 16 x i1> %1) #0 {    \n  entry:                                                                         \n    %2 = tail call <vscale x 16 x i1> @llvm.vp.or.nxv16i1(<vscale x 16 x i1> zeroinitializer, <vscale x 16 x i1> zeroinitializer, <vscale x 16 x i1> %0, i32 1)\n    %3 = tail call i32 @llvm.vp.reduce.smax.nxv16i32(i32 0, <vscale x 16 x i32> zeroinitializer, <vscale x 16 x i1> %2, i32 1)\n    ret i32 %3                                                                   \n  }                                                                              \n                                                                                 \n  declare <vscale x 16 x i1> @llvm.vp.or.nxv16i1(<vscale x 16 x i1>, <vscale x 16 x i1>, <vscale x 16 x i1>, i32) #1\n                                                                                 \n  declare i32 @llvm.vp.reduce.smax.nxv16i32(i32, <vscale x 16 x i32>, <vscale x 16 x i1>, i32) #1\n                                                                                 \n  attributes #0 = { \"target-cpu\"=\"sifive-x280\" }                                 \n  attributes #1 = { nocallback nofree nosync nounwind willreturn memory(none) }",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

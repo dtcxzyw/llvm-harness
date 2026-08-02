@@ -1,0 +1,83 @@
+{
+  "base_commit": "bc76535cadfb3b767ab2dcbf14edd703466ec5a4",
+  "bug_id": "178242",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp": [
+        "GISelValueTracking::computeKnownBitsImpl"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp": [
+        [
+          258,
+          269
+        ]
+      ]
+    },
+    "components": [
+      "GlobalISel"
+    ],
+    "fix_commit": "bded7e9e49e5cc4cbb73c54ac7b113a006f0534c"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/Kahrn5MET\nTestcase:\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-musl\"\n\ndefine <2 x i8> @backsmith_pure_1(<4 x i32> %vqaddq_v2.i.i, ptr %BS_VAR_0) {\nentry:\n  br label %for.cond\n\nfor.cond:                                         ; preds = %for.cond, %entry\n  %0 = phi <64 x i16> [ %2, %for.cond ], [ zeroinitializer, %entry ]\n  %conv = extractelement <64 x i16> %0, i64 0\n  %vecext.i = extractelement <4 x i32> %vqaddq_v2.i.i, i16 %conv\n  %1 = and i32 %vecext.i, 65535\n  %conv1 = zext i32 %1 to i64\n  %vecinit16 = insertelement <16 x i64> zeroinitializer, i64 %conv1, i64 0\n  store <16 x i64> %vecinit16, ptr %BS_VAR_0, align 16\n  %2 = bitcast <16 x i64> zeroinitializer to <64 x i16>\n  br label %for.cond\n}\n```\n\nDump:\n```\nllc: /root/llvm-project/llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp:177: void llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, const llvm::APInt&, unsigned int): Assertion `DstTy.getNumElements() == DemandedElts.getBitWidth() && \"DemandedElt width should equal the fixed vector number of elements\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel --global-isel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'InstructionSelect' on function '@backsmith_pure_1'\n #0 0x000000000425bd48 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x425bd48)\n #1 0x0000000004258c24 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x0000768810e42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x0000768810e969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x0000768810e42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x0000768810e287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x0000768810e2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x0000768810e39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x000000000484b847 llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x484b847)\n #9 0x0000000004847a8d llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4847a8d)\n#10 0x0000000004847a8d llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4847a8d)\n#11 0x000000000484b5a0 llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x484b5a0)\n#12 0x0000000004847a8d llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4847a8d)\n#13 0x0000000004847d44 llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4847d44)\n#14 0x000000000484a168 llvm::GISelValueTracking::computeKnownBitsImpl(llvm::Register, llvm::KnownBits&, llvm::APInt const&, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x484a168)\n#15 0x000000000484c4f1 llvm::GISelValueTracking::getKnownBits(llvm::Register) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x484c4f1)\n#16 0x0000000000cbfa58 (anonymous namespace)::AArch64InstructionSelector::testMOPredicate_MO(unsigned int, llvm::MachineOperand const&, llvm::GIMatchTableExecutor::MatcherState const&) const AArch64InstructionSelector.cpp:0:0\n#17 0x0000000000cf0059 (anonymous namespace)::AArch64InstructionSelector::select(llvm::MachineInstr&) AArch64InstructionSelector.cpp:0:0\n#18 0x00000000048f46f5 llvm::InstructionSelect::selectMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x48f46f5)\n#19 0x00000000048f69f8 llvm::InstructionSelect::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x48f69f8)\n#20 0x0000000003115739 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#21 0x00000000037725c6 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37725c6)\n#22 0x0000000003772971 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3772971)\n#23 0x00000000037731df llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37731df)\n#24 0x00000000008ea232 compileModule(char**, llvm::SmallVectorImpl<llvm::PassPlugin>&, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#25 0x00000000007c59ec main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c59ec)\n#26 0x0000768810e29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#27 0x0000768810e29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#28 0x00000000008df2d5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8df2d5)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "davemgreen",
+        "body": "The known bits of COPY need the vector types (the number of elements in the vector) to match, or it needs to be handled more like a G_BITCAST but I don't think we handle bitcast yet."
+      },
+      {
+        "author": "Abhiramjampani",
+        "body": "@XChy  \nCan I work on this ?"
+      },
+      {
+        "author": "ahmedshakill",
+        "body": "I am sorry, but can I also look into this ? "
+      },
+      {
+        "author": "sweiglbosker",
+        "body": "@Abhiramjampani You are already assigned to another good-first-issue. Which one are you working on?"
+      },
+      {
+        "author": "Abhiramjampani",
+        "body": "> [@Abhiramjampani](https://github.com/Abhiramjampani) You are already assigned to another good-first-issue. Which one are you working on?\n\nHi, I'll work on  #178246 \nFeel free to assign this to someone else!"
+      }
+    ],
+    "labels": [
+      "good first issue",
+      "llvm:globalisel",
+      "crash-on-valid",
+      "generated by fuzzer"
+    ],
+    "title": "[AArch64][GISel] Assertion `DstTy.getNumElements() == DemandedElts.getBitWidth() && \"DemandedElt width should equal the fixed vector number of elements\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/178242",
+  "knowledge_cutoff": "2026-01-27T16:08:55Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit bded7e9e49e5cc4cbb73c54ac7b113a006f0534c\nAuthor: Shakil Ahmed <44522075+ahmedshakill@users.noreply.github.com>\nDate:   Wed Feb 25 14:54:09 2026 +0600\n\n    [AArch64][GISel] Fix computeKnownBits through a COPY with different fixed-width vector types (#179123)\n    \n    Fix an assertion in known bits through a COPY by making computeKnownBits\n    length-aware for different fixed width vectors. If the lengths of the\n    vectors are different all lanes are demanded.\n    \n    Fixes #178242\n\ndiff --git a/llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp b/llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp\nindex d39ea2bfa1a0..245ade77f736 100644\n--- a/llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp\n+++ b/llvm/lib/CodeGen/GlobalISel/GISelValueTracking.cpp\n@@ -258,12 +258,16 @@ void GISelValueTracking::computeKnownBitsImpl(Register R, KnownBits &Known,\n       // it's always defined to be 0 by tablegen.\n       if (SrcReg.isVirtual() && Src.getSubReg() == 0 /*NoSubRegister*/ &&\n           SrcTy.isValid()) {\n-        // In case we're forwarding from a vector register to a non-vector\n-        // register we need to update the demanded elements to reflect this\n-        // before recursing.\n-        APInt NowDemandedElts = SrcTy.isFixedVector() && !DstTy.isFixedVector()\n-                                    ? APInt::getAllOnes(SrcTy.getNumElements())\n-                                    : DemandedElts; // Known to be APInt(1, 1)\n+        APInt NowDemandedElts;\n+        if (!SrcTy.isFixedVector()) {\n+          NowDemandedElts = APInt(1, 1);\n+        } else if (DstTy.isFixedVector() &&\n+                   SrcTy.getNumElements() == DstTy.getNumElements()) {\n+          NowDemandedElts = DemandedElts;\n+        } else {\n+          NowDemandedElts = APInt::getAllOnes(SrcTy.getNumElements());\n+        }\n+\n         // For COPYs we don't do anything, don't increase the depth.\n         computeKnownBitsImpl(SrcReg, Known2, NowDemandedElts,\n                              Depth + (Opcode != TargetOpcode::COPY));\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-unknown-linux -global-isel -global-isel-abort=1 < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/GlobalISel/compute-known-bits-bitcast-assertion.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <2 x i8> @test_bitcast_assertion(<4 x i32> %vqaddq_v2.i.i, ptr %BS_VAR_0) {\nentry:\n  br label %for.cond\n\nfor.cond:                                         ; preds = %for.cond, %entry\n  %vec_wide = phi <64 x i16> [ %bitcasted_vec, %for.cond ], [ zeroinitializer, %entry ]\n  %conv = extractelement <64 x i16> %vec_wide, i64 0\n  %vecext.i = extractelement <4 x i32> %vqaddq_v2.i.i, i16 %conv\n  %masked_val = and i32 %vecext.i, 65535\n  %val_i64 = zext i32 %masked_val to i64\n  %vecinit16 = insertelement <16 x i64> zeroinitializer, i64 %val_i64, i64 0\n  store <16 x i64> %vecinit16, ptr %BS_VAR_0, align 16\n  %bitcasted_vec = bitcast <16 x i64> zeroinitializer to <64 x i16>\n  br label %for.cond\n}\n",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,64 @@
+{
+  "base_commit": "8b52d62d426d31169cad2e78b2463a775a97a8b0",
+  "bug_id": "159912",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "foldToMaskedStore"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          22690,
+          22695
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "f65d5a7a56c31aaa982d3d4717481d739f2f9ecb"
+  },
+  "issue": {
+    "author": "abhishek-kaushik22",
+    "body": "Godbolt: https://godbolt.org/z/Y1KrrxM5T\n\nMinimal reproducer\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-none-linux-gnu\"\n\n@BlendedStore_p = external global i64\n\ndefine void @_Z20CompressBlendedStorev(<1 x i1> %cmp.i) #0 {\nentry:\n  %0 = load <1 x i64>, ptr @BlendedStore_p, align 8\n  %1 = select <1 x i1> %cmp.i, <1 x i64> zeroinitializer, <1 x i64> %0\n  store <1 x i64> %1, ptr @BlendedStore_p, align 8\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+sve\" }\n```\n\nCrash backtrace:\n\n```\nScalarizeVectorOperand Op #4: t13: ch = masked_store<(store (s64) into @BlendedStore_p)> t0, t9, GlobalAddress:i64<ptr @BlendedStore_p> 0, undef:i64, t4\n\nLLVM ERROR: Do not know how to scalarize this operator's operand!\n\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@_Z20CompressBlendedStorev'\n #0 0x00000000040f38b8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x40f38b8)\n #1 0x00000000040f0764 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007759e7242520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007759e72969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007759e7242476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007759e72287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00000000007b6b55 llvm::json::operator==(llvm::json::Value const&, llvm::json::Value const&) (.cold) JSON.cpp:0:0\n #7 0x000000000403cac1 (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x403cac1)\n #8 0x0000000003f839bf llvm::DAGTypeLegalizer::ScalarizeVectorOperand(llvm::SDNode*, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f839bf)\n #9 0x0000000003f26b42 llvm::DAGTypeLegalizer::run() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f26b42)\n#10 0x0000000003f27899 llvm::SelectionDAG::LegalizeTypes() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f27899)\n#11 0x0000000003e8c91b llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e8c91b)\n#12 0x0000000003e9067d llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e9067d)\n#13 0x0000000003e91c65 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e91c65)\n#14 0x0000000003e7d45f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e7d45f)\n#15 0x00000000030039f9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#16 0x000000000363cb28 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x363cb28)\n#17 0x000000000363cd61 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x363cd61)\n#18 0x000000000363d5cf llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x363d5cf)\n#19 0x00000000008ed56d compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#20 0x00000000007be93e main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7be93e)\n#21 0x00007759e7229d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#22 0x00007759e7229e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#23 0x00000000008e39c5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8e39c5)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\n\nThe problem occurs because of https://github.com/llvm/llvm-project/commit/1c0ac80d4a9ef6c21914f2317003979952c2a2c3 which combines the `v1i64 store` to a masked store before legalization.\n\n",
+    "comments": [],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "LLVM ERROR: Do not know how to scalarize this operator's operand!"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/159912",
+  "knowledge_cutoff": "2025-09-20T08:42:44Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit f65d5a7a56c31aaa982d3d4717481d739f2f9ecb\nAuthor: Abhishek Kaushik <abhishek.kaushik@intel.com>\nDate:   Sun Sep 21 23:36:49 2025 +0530\n\n    [DAG] Skip `mstore` combine for `<1 x ty>` vectors (#159915)\n    \n    Fixes #159912\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex 0c773e7dcb5d..91ae7b0b28ba 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -22690,6 +22690,12 @@ static SDValue foldToMaskedStore(StoreSDNode *Store, SelectionDAG &DAG,\n   SDValue StorePtr = Store->getBasePtr();\n   SDValue StoreOffset = Store->getOffset();\n   EVT VT = Store->getMemoryVT();\n+\n+  // Skip this combine for non-vector types and for <1 x ty> vectors, as they\n+  // will be scalarized later.\n+  if (!VT.isVector() || VT.isScalableVector() || VT.getVectorNumElements() == 1)\n+    return SDValue();\n+\n   unsigned AddrSpace = Store->getAddressSpace();\n   Align Alignment = Store->getAlign();\n   const TargetLowering &TLI = DAG.getTargetLoweringInfo();\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64-- -mattr=+sve"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/combine-storetomstore.ll",
+      "tests": [
+        {
+          "test_body": "define void @test_masked_store_unaligned_v8i64(<8 x i64> %data, ptr %ptr, <8 x i1> %mask) {\n  %ptr_i8 = getelementptr i8, ptr %ptr, i64 1\n  %ptr_vec = bitcast ptr %ptr_i8 to ptr\n  %load = load <8 x i64>, ptr %ptr_vec, align 1\n  %sel = select <8 x i1> %mask, <8 x i64> %data, <8 x i64> %load\n  store <8 x i64> %sel, ptr %ptr_vec, align 1\n  ret void\n}\n",
+          "test_name": "test_masked_store_unaligned_v8i64"
+        },
+        {
+          "test_body": "define void @PR159912(<1 x i1> %arg, ptr %ptr) {\n  %load = load <1 x i64>, ptr %ptr, align 8\n  %select = select <1 x i1> %arg, <1 x i64> zeroinitializer, <1 x i64> %load\n  store <1 x i64> %select, ptr %ptr, align 8\n  ret void\n}\n",
+          "test_name": "PR159912"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

@@ -1,0 +1,82 @@
+{
+  "base_commit": "bb531c9a0068a078c5bbe95298769b235aa1ad75",
+  "bug_id": "80831",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "X86TargetLowering::LowerGlobalTLSAddress"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          18710,
+          18725
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "5a83bccb35d6b0e6914b52af6db067aa01dd3efb"
+  },
+  "issue": {
+    "author": "nikic",
+    "body": "```llvm\r\ntarget triple = \"x86_64-apple-macosx10.12.0\"\r\n\r\n@g = external thread_local global i8\r\n\r\ndefine ptr @test() {\r\n  ret ptr @g\r\n}\r\n\r\n!llvm.module.flags = !{!0}\r\n\r\n!0 = !{i32 1, !\"Code Model\", i32 4}\r\n```\r\nResults in:\r\n```\r\nllc: /home/npopov/repos/llvm-project/llvm/lib/Target/X86/X86ISelLowering.cpp:35071: MachineBasicBlock *llvm::X86TargetLowering::EmitLoweredTLSCall(MachineInstr &, MachineBasicBlock *) const: Assertion `MI.getOperand(3).isGlobal() && \"This should be a global\"' failed.\r\n```",
+    "comments": [
+      {
+        "author": "nikic",
+        "body": "Without large code model:\r\n```\r\n# *** IR Dump After Argument Stack Rebase (x86argumentstackrebase) ***:\r\n# Machine code for function test: IsSSA, TracksLiveness\r\n\r\nbb.0 (%ir-block.0):\r\n  ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp\r\n  TLSCall_64 $rip, 1, $noreg, target-flags(x86-tlvp) @g, $noreg, implicit-def $rax, implicit-def dead $eflags, implicit-def dead $df, implicit $rsp, implicit $ssp\r\n  ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp\r\n  %0:gr64 = COPY $rax\r\n  $rax = COPY %0:gr64\r\n  RET 0, $rax\r\n```\r\nWith large code model:\r\n```\r\n# *** IR Dump After Argument Stack Rebase (x86argumentstackrebase) ***:\r\n# Machine code for function test: IsSSA, TracksLiveness\r\n\r\nbb.0 (%ir-block.0):\r\n  ADJCALLSTACKDOWN64 0, 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp\r\n  %0:gr64 = MOV64ri32 target-flags(x86-tlvp) @g\r\n  TLSCall_64 killed %0:gr64, 1, $noreg, 0, $noreg, implicit-def $rax, implicit-def dead $eflags, implicit-def dead $df, implicit $rsp, implicit $ssp\r\n  ADJCALLSTACKUP64 0, 0, implicit-def dead $rsp, implicit-def dead $eflags, implicit-def dead $ssp, implicit $rsp, implicit $ssp\r\n  %1:gr64 = COPY $rax\r\n  $rax = COPY %1:gr64\r\n  RET 0, $rax\r\n```"
+      },
+      {
+        "author": "nikic",
+        "body": "Bisects to c04a05d898982614a2df80d928b97ed4f8c49b60 @aeubanks "
+      },
+      {
+        "author": "aeubanks",
+        "body": "taking a look"
+      },
+      {
+        "author": "nikic",
+        "body": "@EugeneZelenko Backports are tracked on PRs now. The backport issue is closed when the PR is created."
+      },
+      {
+        "author": "EugeneZelenko",
+        "body": "@nikic: Shouldn't issue be reopened when starting backport? It was not a case here."
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "release:backport",
+      "llvm:crash"
+    ],
+    "title": "TLS with large code model on x86_64-apple-darwin asserts"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/80831",
+  "knowledge_cutoff": "2024-02-06T13:16:04Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 5a83bccb35d6b0e6914b52af6db067aa01dd3efb\nAuthor: Arthur Eubanks <aeubanks@google.com>\nDate:   Wed Feb 7 10:16:36 2024 -0700\n\n    [X86] Fix lowering TLS under darwin large code model (#80907)\n    \n    OpFlag and WrapperKind should be chosen consistently with each other in\n    regards to PIC, otherwise we hit asserts later on.\n    \n    Broken by c04a05d8.\n    \n    Fixes #80831.\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex 9a9b0680acc2..b5b76c66c2e4 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -18710,16 +18710,18 @@ X86TargetLowering::LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const {\n   if (Subtarget.isTargetDarwin()) {\n     // Darwin only has one model of TLS.  Lower to that.\n     unsigned char OpFlag = 0;\n-    unsigned WrapperKind = Subtarget.isPICStyleRIPRel() ?\n-                           X86ISD::WrapperRIP : X86ISD::Wrapper;\n+    unsigned WrapperKind = 0;\n \n     // In PIC mode (unless we're in RIPRel PIC mode) we add an offset to the\n     // global base reg.\n     bool PIC32 = PositionIndependent && !Subtarget.is64Bit();\n-    if (PIC32)\n+    if (PIC32) {\n       OpFlag = X86II::MO_TLVP_PIC_BASE;\n-    else\n+      WrapperKind = X86ISD::Wrapper;\n+    } else {\n       OpFlag = X86II::MO_TLVP;\n+      WrapperKind = X86ISD::WrapperRIP;\n+    }\n     SDLoc DL(Op);\n     SDValue Result = DAG.getTargetGlobalAddress(GA->getGlobal(), DL,\n                                                 GA->getValueType(0),\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-apple-macosx10.12.0"
+      ],
+      "file": "<issue-body>",
+      "tests": [
+        {
+          "test_body": "target triple = \"x86_64-apple-macosx10.12.0\"\n\n@g = external thread_local global i8\n\ndefine ptr @test() {\n  ret ptr @g\n}\n\n!llvm.module.flags = !{!0}\n\n!0 = !{i32 1, !\"Code Model\", i32 4}\n",
+          "test_name": "test"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

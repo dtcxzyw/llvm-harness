@@ -1,0 +1,81 @@
+{
+  "base_commit": "ddd4974297bf8efdb67f2c03c2ed7a2328dbb40b",
+  "bug_id": "151375",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeFloatTypes.cpp": [
+        "DAGTypeLegalizer::ExpandFloatRes_FNEG",
+        "DAGTypeLegalizer::ExpandFloatRes_FP_EXTEND",
+        "DAGTypeLegalizer::ExpandFloatResult"
+      ],
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h": [
+        "DAGTypeLegalizer"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeFloatTypes.cpp": [
+        [
+          1551,
+          1556
+        ],
+        [
+          1966,
+          1971
+        ]
+      ],
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h": [
+        [
+          681,
+          686
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "63cc2e390db57cbc400b519771b7005eab1fc76a"
+  },
+  "issue": {
+    "author": "amy-kwan",
+    "body": "I've encountered the following issue on LLVM 21.1.0 rc1 as a result of https://github.com/llvm/llvm-project/pull/138839#issuecomment-3137287195 on PPC64LE, with the ppc_fp128 type.\n\n```\n$ cat t.ll\ntarget datalayout = \"e-m:e-Fn32-i64:64-i128:128-n32:64-S128-v256:256:256-v512:512:512\"\ntarget triple = \"powerpc64le-unknown-linux-gnu\"\n\ndefine ppc_fp128 @test(ppc_fp128 nofpclass(nan) %s) {\nentry:\n  ret ppc_fp128 %s\n}\n\n$ llc < t.ll\n\t.abiversion 2\n\t.file\t\"<stdin>\"\nExpandFloatResult #0: t7: ppcf128 = AssertNoFPClass t5, TargetConstant:i32<3>\n\nLLVM ERROR: Do not know how to expand the result of this operator!\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: llc\n1.\tRunning pass 'Function Pass Manager' on module '<stdin>'.\n2.\tRunning pass 'PowerPC DAG->DAG Pattern Instruction Selection' on function '@test'\n #0 0x0000071c5b0bb42c llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) \n #1 0x0000071c5b0bbbd4 PrintStackTraceSignalHandler(void*) Signals.cpp:0:0\n #2 0x0000071c5b0b7fac llvm::sys::RunSignalHandlers()  \n #3 0x0000071c5b0bc83c SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #4 0x00006b262e170444 (linux-vdso64.so.1+0x444)\n #5 0x00006b262d8f55fc __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #6 0x00006b262d8f55fc __pthread_kill_internal ./nptl/pthread_kill.c:78:10\n #7 0x00006b262d8f55fc pthread_kill ./nptl/pthread_kill.c:89:10\n #8 0x00006b262d88bd5c raise ./signal/../sysdeps/posix/raise.c:26:13\n #9 0x00006b262d86645c abort ./stdlib/abort.c:79:7\n#10 0x0000071c5aff42fc llvm::report_fatal_error(llvm::Twine const&, bool)\n#11 0x0000071c5aff402c llvm::report_fatal_error(char const*, bool)\n#12 0x0000071c5aec252c llvm::DAGTypeLegalizer::ExpandFloatResult(llvm::SDNode*, unsigned int) LegalizeFloatTypes.cpp:0:0\n#13 0x0000071c5ae5bbcc llvm::DAGTypeLegalizer::run() LegalizeTypes.cpp:0:0\n. . .\n```\n\nThe `ISD::AssertNoFPClass` presumably needs to know how to expand float results. ",
+    "comments": [
+      {
+        "author": "amy-kwan",
+        "body": "Posted https://github.com/llvm/llvm-project/pull/152357 for review."
+      }
+    ],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "LLVM 21.1.0: Unable to expand result for ppcf128 with ISD::AssertNoFPClass"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/151375",
+  "knowledge_cutoff": "2025-07-30T18:40:29Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/PowerPC"
+  ],
+  "patch": "commit 63cc2e390db57cbc400b519771b7005eab1fc76a\nAuthor: Amy Kwan <amy.kwan1@ibm.com>\nDate:   Wed Aug 13 15:00:32 2025 -0400\n\n    [PowerPC][CodeGen] Expand ISD::AssertNoFPClass for ppc_fp128 (#152357)\n    \n    780054d3ff18075a6bc433029f336931792b1d2d added support for\n    `ISD::AssertNoFPClass`.\n    \n    This ISD node can be used with the `ppc_fp128` type, which is really\n    just two `f64s` and requires expanding when used with\n    `ISD::AssertNoFPClass`. Without the support for expanding the result, we\n    get an assertion because the legalizer does not know how to expand the\n    results of `ppc_fp128` with `ISD::AssertNoFPClass`.\n    ```\n    ExpandFloatResult #0: t7: ppcf128 = AssertNoFPClass t5, TargetConstant:i32<3>\n    \n    LLVM ERROR: Do not know how to expand the result of this operator!\n    ```\n    Thus, this patch aims to add support for the expand so we no longer\n    assert.\n    \n    This fixes #151375.\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeFloatTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeFloatTypes.cpp\nindex 2cad36eff9c8..fe357106bda6 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeFloatTypes.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeFloatTypes.cpp\n@@ -1551,6 +1551,7 @@ void DAGTypeLegalizer::ExpandFloatResult(SDNode *N, unsigned ResNo) {\n   case ISD::VAARG:              ExpandRes_VAARG(N, Lo, Hi); break;\n \n   case ISD::ConstantFP: ExpandFloatRes_ConstantFP(N, Lo, Hi); break;\n+  case ISD::AssertNoFPClass: ExpandFloatRes_AssertNoFPClass(N, Lo, Hi); break;\n   case ISD::FABS:       ExpandFloatRes_FABS(N, Lo, Hi); break;\n   case ISD::STRICT_FMINNUM:\n   case ISD::FMINNUM:    ExpandFloatRes_FMINNUM(N, Lo, Hi); break;\n@@ -1966,6 +1967,13 @@ void DAGTypeLegalizer::ExpandFloatRes_FNEG(SDNode *N, SDValue &Lo,\n   Hi = DAG.getNode(ISD::FNEG, dl, Hi.getValueType(), Hi);\n }\n \n+void DAGTypeLegalizer::ExpandFloatRes_AssertNoFPClass(SDNode *N, SDValue &Lo,\n+                                                      SDValue &Hi) {\n+  // TODO: Handle ppcf128 by preserving AssertNoFPClass for one of the halves.\n+  SDLoc dl(N);\n+  GetExpandedFloat(N->getOperand(0), Lo, Hi);\n+}\n+\n void DAGTypeLegalizer::ExpandFloatRes_FP_EXTEND(SDNode *N, SDValue &Lo,\n                                                 SDValue &Hi) {\n   EVT NVT = TLI.getTypeToTransformTo(*DAG.getContext(), N->getValueType(0));\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h b/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h\nindex 63544e63e1da..33fa3012618b 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h\n+++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h\n@@ -681,6 +681,7 @@ private:\n       SDNode *N, RTLIB::Libcall LC, std::optional<unsigned> CallRetResNo = {});\n \n   // clang-format off\n+  void ExpandFloatRes_AssertNoFPClass(SDNode *N, SDValue &Lo, SDValue &Hi);\n   void ExpandFloatRes_FABS      (SDNode *N, SDValue &Lo, SDValue &Hi);\n   void ExpandFloatRes_FACOS     (SDNode *N, SDValue &Lo, SDValue &Hi);\n   void ExpandFloatRes_FASIN     (SDNode *N, SDValue &Lo, SDValue &Hi);\n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=powerpc64le-unknown-linux-gnu < %s",
+        "llc -mtriple=powerpc64-ibm-aix-xcoff < %s"
+      ],
+      "file": "llvm/test/CodeGen/PowerPC/nofpclass.ll",
+      "tests": [
+        {
+          "test_body": "\n; TODO: Update this test after adding the proper expansion of nofpclass for\n; ppc_fp128 to test with more masks and to demonstrate preserving nofpclass\n; after legalization.\n\ndefine ppc_fp128 @f(ppc_fp128 nofpclass(nan) %s) {\nentry:\n  ret ppc_fp128 %s\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

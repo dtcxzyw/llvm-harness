@@ -1,0 +1,60 @@
+{
+  "base_commit": "d8a26ca323977035969813b0e1e9fb54fd334620",
+  "bug_id": "88966",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "combineCarryDiamond"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          3520,
+          3525
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "ba1158813d4656585c7e345747bc4db4e3f03b9d"
+  },
+  "issue": {
+    "author": "regehr",
+    "body": "this seemingly vanilla code is triggering a crash in SDAG for AArch64:\r\n```\r\nJohns-MacBook-Pro:reduce2 regehr$ cat reduced.ll \r\n\r\ndefine i32 @f(ptr %0, i41 %1, ptr %2) {\r\n  %new0 = and i41 %1, 1\r\n  %last = trunc i41 %new0 to i1\r\n  %4 = add i64 0, 1\r\n  %5 = zext i1 %last to i64\r\n  %6 = add i64 %4, %5\r\n  %7 = icmp ult i64 %4, 0\r\n  %8 = icmp ult i64 %6, %4\r\n  %9 = and i1 %7, %8\r\n  %10 = zext i1 %9 to i64\r\n  store i64 %6, ptr %2, align 8\r\n  store i64 %10, ptr %0, align 8\r\n  ret i32 0\r\n}\r\nJohns-MacBook-Pro:reduce2 regehr$ ~/llvm-project/for-alive/bin/llc reduced.ll \r\nAssertion failed: (N1.getValueType().bitsLT(VT) && \"Invalid zext node, dst < src!\"), function getNode, file SelectionDAG.cpp, line 5848.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.\tProgram arguments: /Users/regehr/llvm-project/for-alive/bin/llc reduced.ll\r\n1.\tRunning pass 'Function Pass Manager' on module 'reduced.ll'.\r\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@f'\r\n #0 0x000000010816c804 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/Users/regehr/llvm-project/for-alive/lib/libLLVMSupport.dylib+0x148804)\r\n #1 0x000000010816a4d0 llvm::sys::RunSignalHandlers() (/Users/regehr/llvm-project/for-alive/lib/libLLVMSupport.dylib+0x1464d0)\r\n #2 0x000000010816cec0 SignalHandler(int) (/Users/regehr/llvm-project/for-alive/lib/libLLVMSupport.dylib+0x148ec0)\r\n #3 0x0000000184867584 (/usr/lib/system/libsystem_platform.dylib+0x180477584)\r\n #4 0x0000000184836c20 (/usr/lib/system/libsystem_pthread.dylib+0x180446c20)\r\n #5 0x0000000184743a20 (/usr/lib/system/libsystem_c.dylib+0x180353a20)\r\n #6 0x0000000184742d10 (/usr/lib/system/libsystem_c.dylib+0x180352d10)\r\n #7 0x0000000108f40770 llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags) (.cold.17) (/Users/regehr/llvm-project/for-alive/lib/libLLVMSelectionDAG.dylib+0x314770)\r\n #8 0x0000000108e55170 llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags) (/Users/regehr/llvm-project/for-alive/lib/libLLVMSelectionDAG.dylib+0x229170)\r\n #9 0x0000000108cdc128 llvm::TargetLoweringBase::promoteTargetBoolean(llvm::SelectionDAG&, llvm::SDValue, llvm::EVT) const (/Users/regehr/llvm-project/for-alive/lib/libLLVMSelectionDAG.dylib+0xb0128)\r\n#10 0x0000000108d49e6c llvm::DAGTypeLegalizer::PromoteIntOp_ADDSUBO_CARRY(llvm::SDNode*, unsigned int) (/Users/regehr/llvm-project/for-alive/lib/libLLVMSelectionDAG.dylib+0x11de6c)\r\n#11 0x0000000108d45ab8 llvm::DAGTypeLegalizer::PromoteIntegerOperand(llvm::SDNode*, unsigned int) (/Users/regehr/llvm-project/for-alive/lib/libLLVMSelectionDAG.dylib+0x119ab8)\r\n#12 0x0000000108d62144 llvm::DAGTypeLegalizer::run() (/Users/regehr/llvm-project/for-alive/lib/libLLVMSelectionDAG.dylib+0x136144)\r\n#13 0x0000000108d67358 llvm::SelectionDAG::LegalizeTypes() (/Users/regehr/llvm-project/for-alive/lib/libLLVMSelectionDAG.dylib+0x13b358)\r\n#14 0x0000000108e97f94 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/Users/regehr/llvm-project/for-alive/lib/libLLVMSelectionDAG.dylib+0x26bf94)\r\n#15 0x0000000108e96814 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/Users/regehr/llvm-project/for-alive/lib/libLLVMSelectionDAG.dylib+0x26a814)\r\n#16 0x0000000108e93324 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/Users/regehr/llvm-project/for-alive/lib/libLLVMSelectionDAG.dylib+0x267324)\r\n#17 0x000000010a0393c4 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/Users/regehr/llvm-project/for-alive/lib/libLLVMCodeGen.dylib+0x2693c4)\r\n#18 0x000000010bb5ea3c llvm::FPPassManager::runOnFunction(llvm::Function&) (/Users/regehr/llvm-project/for-alive/lib/libLLVMCore.dylib+0x1caa3c)\r\n#19 0x000000010bb6663c llvm::FPPassManager::runOnModule(llvm::Module&) (/Users/regehr/llvm-project/for-alive/lib/libLLVMCore.dylib+0x1d263c)\r\n#20 0x000000010bb5f3d4 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/Users/regehr/llvm-project/for-alive/lib/libLLVMCore.dylib+0x1cb3d4)\r\n#21 0x000000010085ad24 compileModule(char**, llvm::LLVMContext&) (/Users/regehr/llvm-project/for-alive/bin/llc+0x10001ed24)\r\n#22 0x00000001008587f8 main (/Users/regehr/llvm-project/for-alive/bin/llc+0x10001c7f8)\r\n#23 0x00000001844ae0e0 \r\nAbort trap: 6\r\nJohns-MacBook-Pro:reduce2 regehr$ \r\n```\r\n",
+    "comments": [],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "AArch64: Assertion failed: (N1.getValueType().bitsLT(VT) && \"Invalid zext node, dst < src!\"), function getNode, file SelectionDAG.cpp, line 5848."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/88966",
+  "knowledge_cutoff": "2024-04-16T19:11:10Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit ba1158813d4656585c7e345747bc4db4e3f03b9d\nAuthor: Craig Topper <craig.topper@sifive.com>\nDate:   Thu Apr 18 08:34:51 2024 -0700\n\n    [DAGCombiner][AArch64] Make combineCarryDiamond avoid creating UADDO_CARRY with carry in larger than setcc result type. (#89121)\n    \n    In the attach test case we were creating a UADDO_CARRY with i1 carry out\n    and i41 carry in. i41 exceeds is larger than the setcc result type for\n    AArch64 which is i32. i41 needs to be promoted to i64 since it is larger\n    than i32. The type legalizer tried to use promoteTargetBoolean, but that\n    can only promote from a type smaller than setcc result type.\n    \n    The easiest fix here is to force the carryin type to match the carryout\n    type at the type of creation. This should ensure the node won't exceeed\n    setcc result type as long as the output type doesn't.\n    \n    I think we should explore requiring the types to match for this node.\n    \n    Fixes #88966\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex 6ac7d4ee95fb..0ea0c0df7f37 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -3520,6 +3520,8 @@ static SDValue combineCarryDiamond(SelectionDAG &DAG, const TargetLowering &TLI,\n     return SDValue();\n \n   SDLoc DL(N);\n+  CarryIn = DAG.getBoolExtOrTrunc(CarryIn, DL, Carry1->getValueType(1),\n+                                  Carry1->getValueType(0));\n   SDValue Merged =\n       DAG.getNode(NewOp, DL, Carry1->getVTList(), Carry0.getOperand(0),\n                   Carry0.getOperand(1), CarryIn);\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/pr88966.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine i32 @f(ptr %arg, i41 %arg1, ptr %arg2) {\nbb:\n  %new0 = and i41 %arg1, 1\n  %last = trunc i41 %new0 to i1\n  %i = add i64 0, 1\n  %i3 = zext i1 %last to i64\n  %i4 = add i64 %i, %i3\n  %i5 = icmp ult i64 %i, 0\n  %i6 = icmp ult i64 %i4, %i\n  %i7 = and i1 %i5, %i6\n  %i8 = zext i1 %i7 to i64\n  store i64 %i4, ptr %arg2, align 8\n  store i64 %i8, ptr %arg, align 8\n  ret i32 0\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

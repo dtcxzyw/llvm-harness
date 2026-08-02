@@ -1,0 +1,68 @@
+{
+  "base_commit": "4e437488650690c51c1cbc241b99d824d97da9d1",
+  "bug_id": "176951",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "combineX86ShuffleChainWithExtract"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          41174,
+          41180
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "8f21ec7d78311960980dfa8e49fa6c83e4e77268"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/qqEhbYK7q\nTestcase:\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\ndefine <4 x i16> @backsmith_pure_4(<32 x i64> %shuffle, <16 x i16> %0, <16 x i1> %cmp) #0 {\nentry:\n  %conv11 = trunc <32 x i64> %shuffle to <32 x i32>\n  store <32 x i32> %conv11, ptr null, align 128\n  %sext = sext <16 x i1> %cmp to <16 x i16>\n  %shuffle35 = shufflevector <16 x i16> %sext, <16 x i16> %0, <8 x i32> <i32 5, i32 15, i32 4, i32 4, i32 3, i32 21, i32 5, i32 7>\n  %cmp36 = icmp sgt <8 x i16> %shuffle35, zeroinitializer\n  %sext37 = sext <8 x i1> %cmp36 to <8 x i16>\n  %shuffle38 = shufflevector <8 x i16> zeroinitializer, <8 x i16> %sext37, <4 x i32> <i32 2, i32 13, i32 7, i32 12>\n  ret <4 x i16> %shuffle38\n}\n\nattributes #0 = { \"target-features\"=\"+avx2\" }\n```\n\nDump:\n```\nllc: /root/llvm-project/llvm/lib/Target/X86/X86ISelLowering.cpp:41213: llvm::SDValue combineX86ShuffleChainWithExtract(llvm::ArrayRef<llvm::SDValue>, unsigned int, llvm::MVT, llvm::ArrayRef<int>, int, llvm::ArrayRef<const llvm::SDNode*>, bool, bool, bool, llvm::SelectionDAG&, const llvm::SDLoc&, const llvm::X86Subtarget&): Assertion `WideRoot.getValueSizeInBits() == WideSizeInBits && \"WideRootSize mismatch\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@backsmith_pure_4'\n #0 0x0000000004260428 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4260428)\n #1 0x000000000425d304 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x000071bbbaa42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000071bbbaa969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000071bbbaa42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000071bbbaa287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x000071bbbaa2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x000071bbbaa39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x000000000244dab6 combineX86ShuffleChainWithExtract(llvm::ArrayRef<llvm::SDValue>, unsigned int, llvm::MVT, llvm::ArrayRef<int>, int, llvm::ArrayRef<llvm::SDNode const*>, bool, bool, bool, llvm::SelectionDAG&, llvm::SDLoc const&, llvm::X86Subtarget const&) X86ISelLowering.cpp:0:0\n #9 0x0000000002448a39 combineX86ShuffleChain(llvm::ArrayRef<llvm::SDValue>, unsigned int, llvm::MVT, llvm::ArrayRef<int>, int, llvm::ArrayRef<llvm::SDNode const*>, bool, bool, bool, llvm::SelectionDAG&, llvm::SDLoc const&, llvm::X86Subtarget const&) X86ISelLowering.cpp:0:0\n#10 0x00000000024fe407 combineX86ShufflesRecursively(llvm::ArrayRef<llvm::SDValue>, int, unsigned int, llvm::MVT, llvm::ArrayRef<int>, llvm::ArrayRef<llvm::SDNode const*>, unsigned int, unsigned int, bool, bool, bool, llvm::SelectionDAG&, llvm::SDLoc const&, llvm::X86Subtarget const&) X86ISelLowering.cpp:0:0\n#11 0x00000000024fccce combineX86ShufflesRecursively(llvm::ArrayRef<llvm::SDValue>, int, unsigned int, llvm::MVT, llvm::ArrayRef<int>, llvm::ArrayRef<llvm::SDNode const*>, unsigned int, unsigned int, bool, bool, bool, llvm::SelectionDAG&, llvm::SDLoc const&, llvm::X86Subtarget const&) X86ISelLowering.cpp:0:0\n#12 0x00000000024fccce combineX86ShufflesRecursively(llvm::ArrayRef<llvm::SDValue>, int, unsigned int, llvm::MVT, llvm::ArrayRef<int>, llvm::ArrayRef<llvm::SDNode const*>, unsigned int, unsigned int, bool, bool, bool, llvm::SelectionDAG&, llvm::SDLoc const&, llvm::X86Subtarget const&) X86ISelLowering.cpp:0:0\n#13 0x0000000002507449 combineX86ShufflesRecursively(llvm::SDValue, llvm::SelectionDAG&, llvm::X86Subtarget const&) X86ISelLowering.cpp:0:0\n#14 0x000000000251dee5 combineShuffle(llvm::SDNode*, llvm::SelectionDAG&, llvm::TargetLowering::DAGCombinerInfo&, llvm::X86Subtarget const&) X86ISelLowering.cpp:0:0\n#15 0x000000000251fc05 llvm::X86TargetLowering::PerformDAGCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x251fc05)\n#16 0x0000000003e7e6ff (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#17 0x0000000003e80290 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#18 0x0000000003e82ce3 llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e82ce3)\n#19 0x0000000003ff1d55 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ff1d55)\n#20 0x0000000003ff4b58 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ff4b58)\n#21 0x0000000003ff667c llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ff667c)\n#22 0x0000000003fe1eff llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fe1eff)\n#23 0x00000000031271f9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#24 0x000000000377fb66 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x377fb66)\n#25 0x000000000377ff11 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x377ff11)\n#26 0x000000000378077f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x378077f)\n#27 0x00000000008e9522 compileModule(char**, llvm::SmallVectorImpl<llvm::PassPlugin>&, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#28 0x00000000007c50fc main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c50fc)\n#29 0x000071bbbaa29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#30 0x000071bbbaa29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#31 0x00000000008de5c5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8de5c5)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid",
+      "generated by fuzzer"
+    ],
+    "title": "[X86] Assertion `WideRoot.getValueSizeInBits() == WideSizeInBits && \"WideRootSize mismatch\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/176951",
+  "knowledge_cutoff": "2026-01-20T16:06:39Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 8f21ec7d78311960980dfa8e49fa6c83e4e77268\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Tue Jan 20 18:18:33 2026 +0000\n\n    [X86] combineX86ShuffleChainWithExtract - check inputs after resolveTargetShuffleInputsAndMask (#176980)\n    \n    Make sure resolveTargetShuffleInputsAndMask hasn't removed the need for widening\n    \n    Fixes #176951\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex f69d3814b187..12300b4f2c79 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -41174,7 +41174,10 @@ static SDValue combineX86ShuffleChainWithExtract(\n \n   // Remove unused/repeated shuffle source ops.\n   resolveTargetShuffleInputsAndMask(WideInputs, WideMask);\n-  assert(!WideInputs.empty() && \"Shuffle with no inputs detected\");\n+  if (WideInputs.empty() || all_of(WideInputs, [WideSizeInBits](SDValue V) {\n+        return V.getValueSizeInBits() < WideSizeInBits;\n+      }))\n+    return SDValue();\n \n   // Bail if we're always extracting from the lowest subvectors,\n   // combineX86ShuffleChain should match this for the current width, or the\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=i686-unknown -mattr=+avx2",
+        "llc < %s -mtriple=i686-unknown -mattr=+avx512f",
+        "llc < %s -mtriple=x86_64-unknown -mattr=+avx2",
+        "llc < %s -mtriple=x86_64-unknown -mattr=+avx512f"
+      ],
+      "file": "llvm/test/CodeGen/X86/vector-shuffle-combining-avx2.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <4 x i16> @PR176951(<32 x i64> %shuffle, <16 x i16> %0, <16 x i1> %cmp) #0 {\n  %conv11 = trunc <32 x i64> %shuffle to <32 x i32>\n  store <32 x i32> %conv11, ptr null, align 128\n  %sext = sext <16 x i1> %cmp to <16 x i16>\n  %shuffle35 = shufflevector <16 x i16> %sext, <16 x i16> %0, <8 x i32> <i32 5, i32 15, i32 4, i32 4, i32 3, i32 21, i32 5, i32 7>\n  %cmp36 = icmp sgt <8 x i16> %shuffle35, zeroinitializer\n  %sext37 = sext <8 x i1> %cmp36 to <8 x i16>\n  %shuffle38 = shufflevector <8 x i16> zeroinitializer, <8 x i16> %sext37, <4 x i32> <i32 2, i32 13, i32 7, i32 12>\n  ret <4 x i16> %shuffle38\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "PR176951"
+        },
+        {
+          "test_body": "define <8 x float> @PR173030(i8 %a0, i16 %a1, i32 %a2) {\n  %i = add i8 %a0, 1\n  %i1 = insertelement <2 x i8> poison, i8 %a0, i64 0\n  %i2 = insertelement <2 x i8> %i1, i8 %i, i64 1\n  %i3 = sitofp <2 x i8> %i2 to <2 x float>\n  %i4 = add i16 %a1, 1\n  %i5 = insertelement <2 x i16> poison, i16 %a1, i64 0\n  %i6 = insertelement <2 x i16> %i5, i16 %i4, i64 1\n  %i7 = sitofp <2 x i16> %i6 to <2 x float>\n  %i8 = add i32 %a2, 1\n  %i9 = insertelement <2 x i32> poison, i32 %a2, i64 0\n  %i10 = insertelement <2 x i32> %i9, i32 %i8, i64 1\n  %i11 = sitofp <2 x i32> %i10 to <2 x float>\n  %i12 = shufflevector <2 x float> %i3, <2 x float> %i7, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison>\n  %i13 = shufflevector <2 x float> %i11, <2 x float> poison, <8 x i32> <i32 0, i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>\n  %i14 = shufflevector <8 x float> %i12, <8 x float> %i13, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 8, i32 9, i32 poison, i32 poison>\n  %i15 = shufflevector <8 x float> %i14, <8 x float> <float poison, float poison, float poison, float poison, float poison, float poison, float 1.000000e+00, float 1.000000e+00>, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 14, i32 15>\n  ret <8 x float> %i15\n}\n",
+          "test_name": "PR173030"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

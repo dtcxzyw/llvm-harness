@@ -1,0 +1,65 @@
+{
+  "base_commit": "4fbbdb4f6b95158b87e1b072b3a246722ccf3b7d",
+  "bug_id": "171032",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp": [
+        "DAGTypeLegalizer::PromoteIntRes_EXTEND_VECTOR_INREG"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp": [
+        [
+          6206,
+          6211
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "00e6eca22773e5c714525c818b0d5c5404daea58"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/nbv9q9M3v\nReduced testcase:\n```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"aarch64-unknown-linux-musl\"\n\ndefine <64 x i1> @func_20(<2 x i1> %0) {\nentry:\n  %.splat = shufflevector <2 x i1> %0, <2 x i1> zeroinitializer, <64 x i32> <i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>\n  ret <64 x i1> %.splat\n}\n```\n\nDump:\n```\nllc: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:6646: llvm::SDValue llvm::SelectionDAG::getNode(unsigned int, const llvm::SDLoc&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags): Assertion `N1.getValueType().bitsLE(VT) && \"The input must be the same size or smaller than the result.\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@func_20'\n #0 0x0000000004210fd8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4210fd8)\n #1 0x000000000420de84 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x000075c5bb842520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000075c5bb8969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000075c5bb842476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000075c5bb8287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x000075c5bb82871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x000075c5bb839e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000003f6a711 llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f6a711)\n #9 0x00000000040f5448 llvm::DAGTypeLegalizer::PromoteIntRes_EXTEND_VECTOR_INREG(llvm::SDNode*) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x40f5448)\n#10 0x00000000040fc0d5 llvm::DAGTypeLegalizer::PromoteIntegerResult(llvm::SDNode*, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x40fc0d5)\n#11 0x0000000004040e73 llvm::DAGTypeLegalizer::run() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4040e73)\n#12 0x0000000004041ce9 llvm::SelectionDAG::LegalizeTypes() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4041ce9)\n#13 0x0000000003fa5ecb llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fa5ecb)\n#14 0x0000000003fa97c8 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fa97c8)\n#15 0x0000000003fab24c llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fab24c)\n#16 0x0000000003f96a4f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f96a4f)\n#17 0x00000000030f16b9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#18 0x000000000374a2f6 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x374a2f6)\n#19 0x000000000374a6a1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x374a6a1)\n#20 0x000000000374af0f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x374af0f)\n#21 0x00000000008fdee4 compileModule(char**, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#22 0x00000000007c7c49 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c7c49)\n#23 0x000075c5bb829d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#24 0x000075c5bb829e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#25 0x00000000008f30e5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8f30e5)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "Michael-Chen-NJU",
+        "body": "Can I give it a try?"
+      }
+    ],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[AArch64] Assertion `N1.getValueType().bitsLE(VT) && \"The input must be the same size or smaller than the result.\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/171032",
+  "knowledge_cutoff": "2025-12-07T11:39:17Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 00e6eca22773e5c714525c818b0d5c5404daea58\nAuthor: \u9648\u5b50\u6602 <2802328816@qq.com>\nDate:   Sat Dec 20 00:05:35 2025 +0800\n\n    [AArch64] Fix assertion failure during promotion of EXTEND_VECTOR_INREG. (#171619)\n    \n    This fixes an assertion failure in `SelectionDAG::getNode` on AArch64\n    during Type Legalization.\n    \n    The crash is triggered by an `ANY_EXTEND_VECTOR_INREG` operation\n    involving small vector types (e.g., v16i1).\n    \n    The crash occurs when the Type Legalizer processes a vector extend\n    operation where the input vector uses small elements, specifically in\n    the case of a ShuffleVector that generates a mask vector.\n    \n    1. **Original Node**: `any_extend_vector_inreg (v16i1) -> v2i16`. (This\n    is physically valid: 16 bits < 32 bits).\n    2. **Promotion Issue**: When both the input and result types are\n    promoted for legality:\n    * The **Result** (`v2i16`) is promoted to a larger legal type, e.g.,\n    `v2i32` (**64 bits**).\n    * The **Input** (`v16i1`) is promoted to `v16i8` (**128 bits**) due to\n    the necessary scalar promotion of `i1` to `i8`.\n    3. The legalizer then attempts to create the new node:\n    `any_extend_vector_inreg (v16i8) -> v2i32`.\n    4. Since $128 \\text{ bits} > 64 \\text{ bits}$, the physical constraint\n    of the `EXTEND_VECTOR_INREG` operation is violated, causing the\n    assertion to fail.\n    \n    ### Solution\n    \n    In `DAGTypeLegalizer::PromoteIntRes_EXTEND_VECTOR_INREG`, when the size\n    of the promoted input vector (`Promoted`) is found to be greater than\n    the size of the promoted result vector (`NVT`):\n    \n    We explicitly truncates the promoted input to the size of the result\n    type (`NVT`), ensuring the final `*_EXTEND_VECTOR_INREG` node satisfies\n    the size constraint before it is created.\n    \n    This behavior aligns with the fact that `*_EXTEND_VECTOR_INREG`\n    typically only requires the low-order lanes of the input vector.\n    \n    **Test Added**: `llvm/test/CodeGen/AArch64/issue-171032.ll`\n    \n    Fixes: #171032\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp\nindex b9377fabb863..981db6d90a8f 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp\n@@ -6206,6 +6206,15 @@ SDValue DAGTypeLegalizer::PromoteIntRes_EXTEND_VECTOR_INREG(SDNode *N) {\n       default:\n         llvm_unreachable(\"Node has unexpected Opcode\");\n     }\n+    unsigned NewSize = NVT.getSizeInBits();\n+    if (Promoted.getValueType().getSizeInBits() > NewSize) {\n+      EVT ExtractVT = EVT::getVectorVT(\n+          *DAG.getContext(), Promoted.getValueType().getVectorElementType(),\n+          NewSize / Promoted.getScalarValueSizeInBits());\n+\n+      Promoted = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, ExtractVT, Promoted,\n+                             DAG.getVectorIdxConstant(0, dl));\n+    }\n     return DAG.getNode(N->getOpcode(), dl, NVT, Promoted);\n   }\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=aarch64-unknown-linux < %s"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/issue-171032.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine <64 x i1> @func_20(<2 x i1> %0) {\nentry:\n  %.splat = shufflevector <2 x i1> %0, <2 x i1> zeroinitializer, <64 x i32> <i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>\n  ret <64 x i1> %.splat\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

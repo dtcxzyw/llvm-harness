@@ -1,0 +1,61 @@
+{
+  "base_commit": "8b41ad4430537e595ea82e0c84de9a24ee20ca1f",
+  "bug_id": "173483",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "AArch64TargetLowering::LowerBITCAST"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          5633,
+          5642
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "7ed40b525937ba59284d1f1a4bb7fcc3f129190d"
+  },
+  "issue": {
+    "author": "k-arrows",
+    "body": "Reproducer:\nhttps://godbolt.org/z/vzs6Gc1or\n\nBacktrace:\n```console\nllc: /root/llvm-project/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:5534: llvm::SDValue llvm::AArch64TargetLowering::LowerBITCAST(llvm::SDValue, llvm::SelectionDAG&) const: Assertion `ArgVT == MVT::i16' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@f'\n #0 0x000000000423f888 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x423f888)\n #1 0x000000000423c734 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x000074edba842520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x000074edba8969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x000074edba842476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x000074edba8287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x000074edba82871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x000074edba839e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000000b9a577 llvm::AArch64TargetLowering::LowerBITCAST(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xb9a577)\n #9 0x0000000000bf2fd9 llvm::AArch64TargetLowering::LowerOperation(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xbf2fd9)\n#10 0x0000000003ee4c9f llvm::TargetLowering::LowerOperationWrapper(llvm::SDNode*, llvm::SmallVectorImpl<llvm::SDValue>&, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ee4c9f)\n#11 0x000000000406f364 llvm::DAGTypeLegalizer::CustomLowerNode(llvm::SDNode*, llvm::EVT, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x406f364)\n#12 0x000000000412d987 llvm::DAGTypeLegalizer::PromoteIntegerOperand(llvm::SDNode*, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x412d987)\n#13 0x0000000004070204 llvm::DAGTypeLegalizer::run() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4070204)\n#14 0x0000000004070d09 llvm::SelectionDAG::LegalizeTypes() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4070d09)\n#15 0x0000000003fd490b llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fd490b)\n#16 0x0000000003fd81b8 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fd81b8)\n#17 0x0000000003fd9cec llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fd9cec)\n#18 0x0000000003fc557f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3fc557f)\n#19 0x0000000003117f29 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#20 0x000000000376a706 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x376a706)\n#21 0x000000000376aab1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x376aab1)\n#22 0x000000000376b31f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x376b31f)\n#23 0x000000000090253d compileModule(char**, llvm::SmallVectorImpl<llvm::PassPlugin>&, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#24 0x00000000007cbc1c main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7cbc1c)\n#25 0x000074edba829d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#26 0x000074edba829e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#27 0x00000000008f7215 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8f7215)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\n\nThis comes from the following C reproducer:\n```c\nvoid foo();\ntypedef unsigned char v2qi __attribute__((vector_size(2)));\nvoid f(v2qi *ptr)\n{\n  v2qi x = *ptr;\n  asm volatile (\"\" :: \"w\" (x));\n  asm volatile (\"\" ::: \"d8\", \"d9\", \"d10\", \"d11\", \"d12\", \"d13\", \"d14\", \"d15\");\n  foo();\n  asm volatile (\"\" :: \"w\" (x));\n  *ptr = x;\n}\n```",
+    "comments": [],
+    "labels": [
+      "backend:AArch64",
+      "crash"
+    ],
+    "title": "[AArch64] Assertion `ArgVT == MVT::i16' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/173483",
+  "knowledge_cutoff": "2025-12-24T12:19:48Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit 7ed40b525937ba59284d1f1a4bb7fcc3f129190d\nAuthor: Ryan Cowan <ryan.cowan@arm.com>\nDate:   Thu Feb 26 14:54:35 2026 +0000\n\n    [AArch64] When lowering 16 bit vector bitcasts, convert to i16. (#178249)\n    \n    https://github.com/llvm/llvm-project/issues/173483 constrains some\n    registers to be f16. A bitcast is inserted to bitcast a v2i8 to an f16\n    due to this constrain. Eventually this bitcast is routed through\n    `LowerBITCAST` due to the type being illegal. This would cause a crash.\n    By converting this v2i8 to an i16, we can continue to use the existing\n    path to lower the bitcast.\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex 0a4622e79bad..57c7f12d0236 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -5633,10 +5633,16 @@ SDValue AArch64TargetLowering::LowerBITCAST(SDValue Op,\n   if (ArgVT == MVT::f16 || ArgVT == MVT::bf16)\n     return Op;\n \n-  assert(ArgVT == MVT::i16);\n+  SDValue Src = Op.getOperand(0);\n   SDLoc DL(Op);\n+  if (ArgVT.isVector() && ArgVT.getSizeInBits() == 16) {\n+    Src = DAG.getNode(ISD::BITCAST, DL, MVT::i16, Src);\n+    ArgVT = MVT::i16;\n+  }\n+\n+  assert(ArgVT == MVT::i16);\n \n-  Op = DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i32, Op.getOperand(0));\n+  Op = DAG.getNode(ISD::ANY_EXTEND, DL, MVT::i32, Src);\n   Op = DAG.getNode(ISD::BITCAST, DL, MVT::f32, Op);\n   return DAG.getTargetExtractSubreg(AArch64::hsub, DL, OpVT, Op);\n }\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64-none-linux-gnu -verify-machineinstrs",
+        "llc < %s -mtriple=aarch64_be-none-linux-gnu -verify-machineinstrs"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/aarch64-inline-asm-bitcast-crash.ll",
+      "tests": [
+        {
+          "test_body": "\n; Check for the crash in https://github.com/llvm/llvm-project/issues/173483\ndefine void @f(<2 x i8> %1) {\n; LE-LABEL: f:\n; LE:       // %bb.0:\n; LE-NEXT:    sub sp, sp, #16\n; LE-NEXT:    .cfi_def_cfa_offset 16\n; LE-NEXT:    // kill: def $d0 killed $d0 def $q0\n; LE-NEXT:    mov s1, v0.s[1]\n; LE-NEXT:    str b0, [sp, #12]\n; LE-NEXT:    stur b1, [sp, #13]\n; LE-NEXT:    ldrh w8, [sp, #12]\n; LE-NEXT:    fmov s0, w8\n; LE-NEXT:    //APP\n; LE-NEXT:    //NO_APP\n; LE-NEXT:    add sp, sp, #16\n; LE-NEXT:    ret\n;\n; BE-LABEL: f:\n; BE:       // %bb.0:\n; BE-NEXT:    sub sp, sp, #16\n; BE-NEXT:    .cfi_def_cfa_offset 16\n; BE-NEXT:    rev64 v0.2s, v0.2s\n; BE-NEXT:    mov s1, v0.s[1]\n; BE-NEXT:    str b0, [sp, #12]\n; BE-NEXT:    stur b1, [sp, #13]\n; BE-NEXT:    ldrh w8, [sp, #12]\n; BE-NEXT:    fmov s0, w8\n; BE-NEXT:    //APP\n; BE-NEXT:    //NO_APP\n; BE-NEXT:    add sp, sp, #16\n; BE-NEXT:    ret\n  call void asm sideeffect \"\", \"w\"(<2 x i8> %1)\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

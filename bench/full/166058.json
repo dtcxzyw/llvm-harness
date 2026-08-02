@@ -1,0 +1,82 @@
+{
+  "base_commit": "c590b35f0f0417d97129cdb71ee83f85be0c1dcc",
+  "bug_id": "166058",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "X86TargetLowering::LowerAsmOperandForConstraint"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          61974,
+          61981
+        ],
+        [
+          62013,
+          62019
+        ],
+        [
+          62062,
+          62070
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "60bb4500f25b21854152eaaaa1461c569ed01065"
+  },
+  "issue": {
+    "author": "k-arrows",
+    "body": "Reproducer:\nhttps://godbolt.org/z/9z4dr8eM6\n```cpp\nint out;\n\nvoid bar(void) { asm(\"foo %1,%0\" : \"=m\"(out) : \"L\"(0xffffffff)); }\n```\n\nBacktrace:\n```console\nclang++: /root/llvm-project/llvm/include/llvm/ADT/APInt.h:127: llvm::APInt::APInt(unsigned int, uint64_t, bool, bool): Assertion `llvm::isUIntN(BitWidth, val) && \"Value is not an N-bit unsigned value\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/clang++ -g -o /app/output.s -mllvm --x86-asm-syntax=intel -fno-verbose-asm -S --gcc-toolchain=/opt/compiler-explorer/gcc-snapshot -fcolor-diagnostics -fno-crash-diagnostics <source>\n1.\t<eof> parser at end of file\n2.\tCode generation\n3.\tRunning pass 'Function Pass Manager' on module '<source>'.\n4.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@_Z3barv'\n #0 0x00000000042387e8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x42387e8)\n #1 0x0000000004235c14 llvm::sys::CleanupOnSignal(unsigned long) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4235c14)\n #2 0x0000000004179e68 CrashRecoverySignalHandler(int) CrashRecoveryContext.cpp:0:0\n #3 0x0000744d27042520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #4 0x0000744d270969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #5 0x0000744d27042476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #6 0x0000744d270287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #7 0x0000744d2702871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #8 0x0000744d27039e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #9 0x000000000584fb99 llvm::SelectionDAG::getConstant(unsigned long, llvm::SDLoc const&, llvm::EVT, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x584fb99)\n#10 0x0000000002cc66dd llvm::X86TargetLowering::LowerAsmOperandForConstraint(llvm::SDValue, llvm::StringRef, std::vector<llvm::SDValue, std::allocator<llvm::SDValue>>&, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x2cc66dd)\n#11 0x00000000057c9241 llvm::SelectionDAGBuilder::visitInlineAsm(llvm::CallBase const&, llvm::BasicBlock const*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x57c9241)\n#12 0x00000000057e5adf llvm::SelectionDAGBuilder::visitCall(llvm::CallInst const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x57e5adf)\n#13 0x00000000057fa192 llvm::SelectionDAGBuilder::visit(llvm::Instruction const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x57fa192)\n#14 0x000000000588d09d llvm::SelectionDAGISel::SelectBasicBlock(llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, llvm::ilist_iterator_w_bits<llvm::ilist_detail::node_options<llvm::Instruction, true, false, void, true, llvm::BasicBlock>, false, true>, bool&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x588d09d)\n#15 0x000000000588dfc1 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x588dfc1)\n#16 0x000000000588f5e5 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x588f5e5)\n#17 0x000000000587afef llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x587afef)\n#18 0x00000000034ec969 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#19 0x0000000003b35cb6 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3b35cb6)\n#20 0x0000000003b36061 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3b36061)\n#21 0x0000000003b368cf llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3b368cf)\n#22 0x00000000044f953e clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x44f953e)\n#23 0x0000000004b834c7 clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4b834c7)\n#24 0x000000000692f58c clang::ParseAST(clang::Sema&, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x692f58c)\n#25 0x0000000004b83928 clang::CodeGenAction::ExecuteAction() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4b83928)\n#26 0x0000000004e71515 clang::FrontendAction::Execute() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4e71515)\n#27 0x0000000004df231e clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4df231e)\n#28 0x0000000004f69ced clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4f69ced)\n#29 0x0000000000dd0670 cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xdd0670)\n#30 0x0000000000dc71da ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>) driver.cpp:0:0\n#31 0x0000000000dc735d int llvm::function_ref<int (llvm::SmallVectorImpl<char const*>&)>::callback_fn<clang_main(int, char**, llvm::ToolContext const&)::'lambda'(llvm::SmallVectorImpl<char const*>&)>(long, llvm::SmallVectorImpl<char const*>&) driver.cpp:0:0\n#32 0x0000000004bed1c9 void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::'lambda'()>(long) Job.cpp:0:0\n#33 0x000000000417a304 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x417a304)\n#34 0x0000000004bed7df clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (.part.0) Job.cpp:0:0\n#35 0x0000000004bae572 clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4bae572)\n#36 0x0000000004baf51e clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4baf51e)\n#37 0x0000000004bb6c55 clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4bb6c55)\n#38 0x0000000000dccb99 clang_main(int, char**, llvm::ToolContext const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xdccb99)\n#39 0x0000000000c7bb64 main (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xc7bb64)\n#40 0x0000744d27029d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#41 0x0000744d27029e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#42 0x0000000000dc6c75 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xdc6c75)\nclang++: error: clang frontend command failed with exit code 134 (use -v to see invocation)\nCompiler returned: 134\n```",
+    "comments": [
+      {
+        "author": "k-arrows",
+        "body": "Goes back to clang-20.1.0:\nhttps://godbolt.org/z/hMGc1a5sd"
+      },
+      {
+        "author": "ecnelises",
+        "body": "```cpp\nvoid X86TargetLowering::LowerAsmOperandForConstraint(\n  // ...\n  case 'L':\n    if (auto *C = dyn_cast<ConstantSDNode>(Op)) {\n      if (C->getZExtValue() == 0xff || C->getZExtValue() == 0xffff ||\n          (Subtarget.is64Bit() && C->getZExtValue() == 0xffffffff)) {\n        Result = DAG.getTargetConstant(C->getSExtValue(), SDLoc(Op),\n                                       Op.getValueType());\n        break;\n      }\n    }\n    return;\n```\n\nHere `C->getZExtValue() == 0xffffffff`, hence `C->getSExtValue() == -1`, but first argument of `getTargetConstant` is `uint64_t`, which makes first parameter in this function become `0xffffffffffffffffull`.\n\nOne solution is to modify `getSExtValue` into `getZExtValue`. The code is written 10+ years ago, no idea why it's not triggered before."
+      },
+      {
+        "author": "RKSimon",
+        "body": "> The code is written 10+ years ago, no idea why it's not triggered before.\n\nThe assertion is quite recent "
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash",
+      "inline-asm"
+    ],
+    "title": "[clang] Assertion `llvm::isUIntN(BitWidth, val) && \"Value is not an N-bit unsigned value\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/166058",
+  "knowledge_cutoff": "2025-11-02T12:00:26Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 60bb4500f25b21854152eaaaa1461c569ed01065\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Tue Dec 9 08:32:22 2025 +0000\n\n    [X86] LowerAsmOperandForConstraint - ensure we treat L constraint immediates as signed constants (#171098)\n    \n    getTargetConstant no longer tolerates sign-extended values that can't be\n    represented by the appropriate APInt bitwidth, which defaults to\n    unsigned behaviour.\n    \n    Fixes #166058\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex b71878ae1434..fbd875a93fd4 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -61974,8 +61974,8 @@ void X86TargetLowering::LowerAsmOperandForConstraint(SDValue Op,\n     if (auto *C = dyn_cast<ConstantSDNode>(Op)) {\n       if (C->getZExtValue() == 0xff || C->getZExtValue() == 0xffff ||\n           (Subtarget.is64Bit() && C->getZExtValue() == 0xffffffff)) {\n-        Result = DAG.getTargetConstant(C->getSExtValue(), SDLoc(Op),\n-                                       Op.getValueType());\n+        Result = DAG.getSignedTargetConstant(C->getSExtValue(), SDLoc(Op),\n+                                             Op.getValueType());\n         break;\n       }\n     }\n@@ -62013,7 +62013,8 @@ void X86TargetLowering::LowerAsmOperandForConstraint(SDValue Op,\n       if (ConstantInt::isValueValidForType(Type::getInt32Ty(*DAG.getContext()),\n                                            C->getSExtValue())) {\n         // Widen to 64 bits here to get it sign extended.\n-        Result = DAG.getTargetConstant(C->getSExtValue(), SDLoc(Op), MVT::i64);\n+        Result =\n+            DAG.getSignedTargetConstant(C->getSExtValue(), SDLoc(Op), MVT::i64);\n         break;\n       }\n     // FIXME gcc accepts some relocatable values here too, but only in certain\n@@ -62062,9 +62063,11 @@ void X86TargetLowering::LowerAsmOperandForConstraint(SDValue Op,\n       BooleanContent BCont = getBooleanContents(MVT::i64);\n       ISD::NodeType ExtOpc = IsBool ? getExtendForContent(BCont)\n                                     : ISD::SIGN_EXTEND;\n-      int64_t ExtVal = ExtOpc == ISD::ZERO_EXTEND ? CST->getZExtValue()\n-                                                  : CST->getSExtValue();\n-      Result = DAG.getTargetConstant(ExtVal, SDLoc(Op), MVT::i64);\n+      SDLoc DL(Op);\n+      Result =\n+          ExtOpc == ISD::ZERO_EXTEND\n+              ? DAG.getTargetConstant(CST->getZExtValue(), DL, MVT::i64)\n+              : DAG.getSignedTargetConstant(CST->getSExtValue(), DL, MVT::i64);\n       break;\n     }\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64--"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr166058.ll",
+      "tests": [
+        {
+          "test_body": "\n@out = global i32 0, align 4\ndefine void @bar() {\n  call void asm \"addl $1,$0\", \"=*m,L,~{dirflag},~{fpsr},~{flags}\"(ptr elementtype(i32) @out, i32 -1)\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

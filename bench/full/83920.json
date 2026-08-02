@@ -1,0 +1,69 @@
+{
+  "base_commit": "b585c43dccb2c608f698419a9c8d7645d3120fdb",
+  "bug_id": "83920",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "calculateByteProvider"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          8627,
+          8632
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "a668846202bcc34b1742f300ba1eb1a0e64fa36d"
+  },
+  "issue": {
+    "author": "patrick-rivos",
+    "body": "Testcase:\r\n```c\r\nextern char a[][5];\r\nextern int b[];\r\nshort c = -13632;\r\nchar d[5];\r\nint main() {\r\n  d[0] = 0;\r\n  for (int e = 0; e < 5; e += c - 18446744073709537983ULL) {\r\n    a[e][e] = ({ d[e]; }) | 8;\r\n    b[e] = ({ d[e]; }) >= 0;\r\n  }\r\n}\r\n```\r\n\r\nReduced LLVM IR:\r\n```llvm ir\r\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\r\ntarget triple = \"riscv64-unknown-linux-gnu\"\r\n\r\ndefine i32 @main() #0 {\r\nentry:\r\n  %0 = load <2 x i8>, ptr null, align 1\r\n  %1 = extractelement <2 x i8> %0, i64 0\r\n  %2 = or i8 %1, 1\r\n  store i8 %2, ptr null, align 1\r\n  ret i32 0\r\n}\r\n\r\nattributes #0 = { \"target-features\"=\"+64bit,+v\" }\r\n```\r\n\r\nBacktrace:\r\n```\r\n> /scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc reduced.ll\r\nllc: /scratch/tc-testing/tc-feb-22-llvm/llvm/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp:8692: std::optional<llvm::ByteProvider<llvm::SDNode*> > calculateByteProvider(llvm::SDValue, unsigned int, unsigned int, std::optional<long unsigned int>, unsigned int): Assertion `Index < ByteWidth && \"invalid index requested\"' failed.\r\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\r\nStack dump:\r\n0.      Program arguments: /scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc reduced.ll\r\n1.      Running pass 'Function Pass Manager' on module 'reduced.ll'.\r\n2.      Running pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@main'\r\n #0 0x000055e74b9d0350 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc+0x1c89350)\r\n #1 0x000055e74b9cd75f llvm::sys::RunSignalHandlers() (/scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc+0x1c8675f)\r\n #2 0x000055e74b9cd8b5 SignalHandler(int) Signals.cpp:0:0\r\n #3 0x00007f1816242520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\r\n #4 0x00007f18162969fc __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\r\n #5 0x00007f18162969fc __pthread_kill_internal ./nptl/pthread_kill.c:78:10\r\n #6 0x00007f18162969fc pthread_kill ./nptl/pthread_kill.c:89:10\r\n #7 0x00007f1816242476 gsignal ./signal/../sysdeps/posix/raise.c:27:6\r\n #8 0x00007f18162287f3 abort ./stdlib/abort.c:81:7\r\n #9 0x00007f181622871b _nl_load_domain ./intl/loadmsgcat.c:1177:9\r\n#10 0x00007f1816239e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\r\n#11 0x000055e74b57d3bb calculateByteProvider(llvm::SDValue, unsigned int, unsigned int, std::optional<unsigned long>, unsigned int) (.isra.0) DAGCombiner.cpp:0:0\r\n#12 0x000055e74b57cf7f calculateByteProvider(llvm::SDValue, unsigned int, unsigned int, std::optional<unsigned long>, unsigned int) (.isra.0) DAGCombiner.cpp:0:0\r\n#13 0x000055e74b57d1cb calculateByteProvider(llvm::SDValue, unsigned int, unsigned int, std::optional<unsigned long>, unsigned int) (.isra.0) DAGCombiner.cpp:0:0\r\n#14 0x000055e74b5dd791 (anonymous namespace)::DAGCombiner::visitOR(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#15 0x000055e74b6266b1 (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\r\n#16 0x000055e74b62810e (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\r\n#17 0x000055e74b62a7ad llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::AAResults*, llvm::CodeGenOptLevel) (/scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc+0x18e37ad)\r\n#18 0x000055e74b76fcee llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc+0x1a28cee)\r\n#19 0x000055e74b773fbf llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc+0x1a2cfbf)\r\n#20 0x000055e74b775b35 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (.part.0) SelectionDAGISel.cpp:0:0\r\n#21 0x000055e74a95bdf7 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\r\n#22 0x000055e74af44cee llvm::FPPassManager::runOnFunction(llvm::Function&) (/scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc+0x11fdcee)\r\n#23 0x000055e74af44f39 llvm::FPPassManager::runOnModule(llvm::Module&) (/scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc+0x11fdf39)\r\n#24 0x000055e74af458a5 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc+0x11fe8a5)\r\n#25 0x000055e74a279cda compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\r\n#26 0x000055e74a1d97c6 main (/scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc+0x4927c6)\r\n#27 0x00007f1816229d90 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16\r\n#28 0x00007f1816229e40 call_init ./csu/../csu/libc-start.c:128:20\r\n#29 0x00007f1816229e40 __libc_start_main ./csu/../csu/libc-start.c:379:5\r\n#30 0x000055e74a270505 _start (/scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc+0x529505)\r\nzsh: IOT instruction (core dumped)  /scratch/tc-testing/tc-feb-22-llvm/build/build-llvm-linux/bin/llc reduced.ll\r\n```\r\nGodbolt: https://godbolt.org/z/r4K8rPMzW\r\n\r\nFound via fuzzer.",
+    "comments": [
+      {
+        "author": "patrick-rivos",
+        "body": "Likely a recent regression since it was found by the fuzzer multiple times this past weekend.\r\n\r\nEDIT: I forgot that I had just started running yarpgen so this bug being found is probably just a result of that."
+      },
+      {
+        "author": "lukel97",
+        "body": "Bisected back to cebec4208982dccb70e724e38fca72823652ec76"
+      }
+    ],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[DAGCombiner][RISC-V] DAGCombiner.cpp:8692: Assertion `Index < ByteWidth && \"invalid index requested\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/83920",
+  "knowledge_cutoff": "2024-03-04T23:05:24Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit a668846202bcc34b1742f300ba1eb1a0e64fa36d\nAuthor: Luke Lau <luke@igalia.com>\nDate:   Tue Mar 5 18:31:33 2024 +0800\n\n    [DAGCombiner] Handle extending EXTRACT_VECTOR_ELTs in calculateByteProvider (#83963)\n    \n    An EXTRACT_VECTOR_ELT can extend the element to the width of its result\n    type, leaving the high bits undefined. Previously if we attempted to\n    query the bytes in these high bits we would recurse and hit an\n    assertion. This fixes it by bailing if the index is outside of the\n    vector element size.\n    \n    I think the assertion Index < ByteWidth may still be incorrect, since\n    ByteWidth is calculated from Op.getValueSizeInBits(). I believe this\n    should be Op.getScalarValueSizeInBits() whenever VectorIndex is set\n    since we're querying the element now, not the vector. But I couldn't\n    think of a test case to trigger it. It can be addressed in a follow-up\n    patch.\n    \n    Fixes #83920\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex 33ada3655dc7..f160dde25d26 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -8627,6 +8627,10 @@ calculateByteProvider(SDValue Op, unsigned Index, unsigned Depth,\n     if (NarrowBitWidth % 8 != 0)\n       return std::nullopt;\n     uint64_t NarrowByteWidth = NarrowBitWidth / 8;\n+    // EXTRACT_VECTOR_ELT can extend the element type to the width of the return\n+    // type, leaving the high bits undefined.\n+    if (Index >= NarrowByteWidth)\n+      return std::nullopt;\n \n     // Check to see if the position of the element in the vector corresponds\n     // with the byte we are trying to provide for. In the case of a vector of\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=riscv64 -mattr=+v"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/pr83920.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine i8 @or_load_combine(ptr %p) {\n  %load = load <2 x i8>, ptr %p\n  %extract = extractelement <2 x i8> %load, i64 0\n  %or = or i8 %extract, 1\n  ret i8 %or\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

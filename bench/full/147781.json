@@ -1,0 +1,65 @@
+{
+  "base_commit": "8055c0f380323fe9e1398dcb88276fd6c92ffa5d",
+  "bug_id": "147781",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "combineStore"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          53574,
+          53579
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "75656d8c1118ee96f09b88b1c635a5a2d4ca27e6"
+  },
+  "issue": {
+    "author": "nikic",
+    "body": "```llvm\ntarget triple = \"i686-pc-windows-gnu\"\n\ndefine void @test(ptr %p, ptr %p2) #0 {\n  %val = load i64, ptr %p, align 8, !range !0\n  store i64 %val, ptr %p2, align 8\n  ret void\n}\n\nattributes #0 = { \"target-cpu\"=\"pentium4\" }\n\n!0 = !{i64 1, i64 0}\n```\n\n```\nllc: /home/npopov/repos/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:9495: SDValue llvm::SelectionDAG::getLoad(ISD::MemIndexedMode, ISD::LoadExtType, EVT, const SDLoc &, SDValue, SDValue, SDValue, EVT, MachineMemOperand *): Assertion `(!MMO->getRanges() || (mdconst::extract<ConstantInt>(MMO->getRanges()->getOperand(0)) ->getBitWidth() == MemVT.getScalarSizeInBits() && MemVT.isInteger())) && \"Range metadata and load type must match!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: build/bin/llc -debug\n1.\tRunning pass 'Function Pass Manager' on module '<stdin>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@test'\n #0 0x0000000007480ce8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (build/bin/llc+0x7480ce8)\n #1 0x000000000747e3d5 llvm::sys::RunSignalHandlers() (build/bin/llc+0x747e3d5)\n #2 0x0000000007481a91 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #3 0x00007faf1d9fbc30 __restore_rt (/lib64/libc.so.6+0x19c30)\n #4 0x00007faf1da5511c __pthread_kill_implementation (/lib64/libc.so.6+0x7311c)\n #5 0x00007faf1d9fbafe gsignal (/lib64/libc.so.6+0x19afe)\n #6 0x00007faf1d9e36d0 abort (/lib64/libc.so.6+0x16d0)\n #7 0x00007faf1d9e3639 __assert_perror_fail (/lib64/libc.so.6+0x1639)\n #8 0x000000000723472c llvm::SelectionDAG::getLoad(llvm::ISD::MemIndexedMode, llvm::ISD::LoadExtType, llvm::EVT, llvm::SDLoc const&, llvm::SDValue, llvm::SDValue, llvm::SDValue, llvm::EVT, llvm::MachineMemOperand*) (build/bin/llc+0x723472c)\n #9 0x00000000072352cf llvm::SelectionDAG::getLoad(llvm::EVT, llvm::SDLoc const&, llvm::SDValue, llvm::SDValue, llvm::MachineMemOperand*) (build/bin/llc+0x72352cf)\n#10 0x0000000005ae2d78 combineStore(llvm::SDNode*, llvm::SelectionDAG&, llvm::TargetLowering::DAGCombinerInfo&, llvm::X86Subtarget const&) X86ISelLowering.cpp:0:0\n#11 0x0000000005abd1cc llvm::X86TargetLowering::PerformDAGCombine(llvm::SDNode*, llvm::TargetLowering::DAGCombinerInfo&) const X86ISelLowering.cpp:0:0\n#12 0x0000000007066302 (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#13 0x0000000007065046 llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (build/bin/llc+0x7065046)\n```",
+    "comments": [
+      {
+        "author": "RKSimon",
+        "body": "we use f64 on 32-bit targets for 64-bit copies - we've probably not cleared the MD ranges"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash"
+    ],
+    "title": "[X86] Assertion failure: Range metadata and load type must match!"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/147781",
+  "knowledge_cutoff": "2025-07-09T16:43:09Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 75656d8c1118ee96f09b88b1c635a5a2d4ca27e6\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Thu Jul 10 09:32:09 2025 +0100\n\n    [X86] combineStore - remove rangedata when converting 64-bit copies to f64 load/store (#147904)\n    \n    We're changing from i64 to f64 - we can't retain any range metadata\n    \n    Fixes #147781\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex 347ba1262b66..1ad1b47a94d2 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -53574,6 +53574,10 @@ static SDValue combineStore(SDNode *N, SelectionDAG &DAG,\n \n     SDLoc LdDL(Ld);\n     SDLoc StDL(N);\n+\n+    // Remove any range metadata as we're converting to f64 load/store.\n+    Ld->getMemOperand()->clearRanges();\n+\n     // Lower to a single movq load/store pair.\n     SDValue NewLd = DAG.getLoad(MVT::f64, LdDL, Ld->getChain(),\n                                 Ld->getBasePtr(), Ld->getMemOperand());\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=i686-pc-windows-gnu -verify-machineinstrs"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr147781.ll",
+      "tests": [
+        {
+          "test_body": "\n; Ensure i64 !range data is stripped when converting to f64 load/store.\ndefine void @test(ptr %p, ptr %p2) #0 {\n  %val = load i64, ptr %p, align 8, !range !0\n  store i64 %val, ptr %p2, align 8\n  ret void\n}\n\nattributes #0 = { \"target-cpu\"=\"pentium4\" }\n!0 = !{i64 1, i64 0}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

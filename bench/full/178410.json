@@ -1,0 +1,64 @@
+{
+  "base_commit": "bf7e2b81e779713cc535c884e287ec6cf02fcfef",
+  "bug_id": "178410",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "vectorizeExtractedCast"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          20185,
+          20193
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "ef6d452768a8a660035bb1217ce0578796a5b174"
+  },
+  "issue": {
+    "author": "alexey-bataev",
+    "body": "https://godbolt.org/z/rbqEYov8P\n@RKSimon ",
+    "comments": [],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid"
+    ],
+    "title": "[SDAG]Assertion `isSimple() && \"Expected a SimpleValueType!\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/178410",
+  "knowledge_cutoff": "2026-01-28T12:16:28Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit ef6d452768a8a660035bb1217ce0578796a5b174\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Wed Jan 28 13:59:46 2026 +0000\n\n    [X86] vectorizeExtractedCast - don't assume vector source type is simple (#178414)\n    \n    Fixes #178410\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex 1b3e0148262d..ca73b336225f 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -20185,9 +20185,10 @@ static SDValue vectorizeExtractedCast(SDValue Cast, const SDLoc &DL,\n \n   // See if we have a 128-bit vector cast op for this type of cast.\n   SDValue VecOp = Extract.getOperand(0);\n-  MVT FromVT = VecOp.getSimpleValueType();\n+  EVT FromVT = VecOp.getValueType();\n   unsigned NumEltsInXMM = 128 / FromVT.getScalarSizeInBits();\n-  MVT Vec128VT = MVT::getVectorVT(FromVT.getScalarType(), NumEltsInXMM);\n+  MVT Vec128VT =\n+      MVT::getVectorVT(FromVT.getScalarType().getSimpleVT(), NumEltsInXMM);\n   MVT ToVT = MVT::getVectorVT(DestVT, NumEltsInXMM);\n   if (!useVectorCast(Cast.getOpcode(), Vec128VT, ToVT, Subtarget))\n     return SDValue();\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=i686--",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v2",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v3",
+        "llc < %s -mtriple=x86_64-- -mcpu=x86-64-v4"
+      ],
+      "file": "llvm/test/CodeGen/X86/pr178410.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine float @PR178410(ptr %p0) nounwind {\n; X86-LABEL: PR178410:\n; X86:       # %bb.0:\n; X86-NEXT:    pushl %ebp\n; X86-NEXT:    movl %esp, %ebp\n; X86-NEXT:    andl $-8, %esp\n; X86-NEXT:    subl $8, %esp\n; X86-NEXT:    movl 8(%ebp), %eax\n; X86-NEXT:    movl (%eax), %ecx\n; X86-NEXT:    movl 4(%eax), %eax\n; X86-NEXT:    movl %eax, {{[0-9]+}}(%esp)\n; X86-NEXT:    movl %ecx, (%esp)\n; X86-NEXT:    fildll (%esp)\n; X86-NEXT:    movl %ebp, %esp\n; X86-NEXT:    popl %ebp\n; X86-NEXT:    retl\n;\n; SSE-LABEL: PR178410:\n; SSE:       # %bb.0:\n; SSE-NEXT:    cvtsi2ssq (%rdi), %xmm0\n; SSE-NEXT:    retq\n;\n; AVX-LABEL: PR178410:\n; AVX:       # %bb.0:\n; AVX-NEXT:    vcvtsi2ssq (%rdi), %xmm15, %xmm0\n; AVX-NEXT:    retq\n  %load = load <13 x i64>, ptr %p0, align 8\n  %elt = extractelement <13 x i64> %load, i64 0\n  %cvt = sitofp i64 %elt to float\n  ret float %cvt\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

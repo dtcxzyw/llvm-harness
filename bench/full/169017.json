@@ -1,0 +1,68 @@
+{
+  "base_commit": "69589dd2c0b34a664c24f7ffbb084d2eea848ab6",
+  "bug_id": "169017",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        "DAGCombiner::combineInsertEltToShuffle"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp": [
+        [
+          23469,
+          23474
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "3fec26e3294ae0f276ff08fd810850421444588c"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/qW9xEcW1x\nTestcase:\n```llvm\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"riscv64-unknown-linux-musl\"\n\ndefine <2 x i8> @g_1189(<4 x i16> %vecinit, <2 x i8> %0) #0 {\nentry:\n  %1 = bitcast <4 x i16> %vecinit to i64\n  %div.lhs.trunc = trunc i64 %1 to i8\n  %2 = insertelement <2 x i8> %0, i8 %div.lhs.trunc, i64 0\n  ret <2 x i8> %2\n}\n\nattributes #0 = { \"target-features\"=\"+v\" }\n```\n\nllc dumps:\n```\nllc: /root/llvm-project/llvm/lib/IR/Type.cpp:803: static llvm::FixedVectorType* llvm::FixedVectorType::get(llvm::Type*, unsigned int): Assertion `NumElts > 0 && \"#Elements of a VectorType must be greater than 0\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -O1 <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'RISC-V DAG->DAG Pattern Instruction Selection' on function '@g_1189'\n #0 0x00000000041ad568 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x41ad568)\n #1 0x00000000041aa414 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007475cf042520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007475cf0969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007475cf042476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007475cf0287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007475cf02871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007475cf039e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x00000000037635d6 llvm::FixedVectorType::get(llvm::Type*, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x37635d6)\n #9 0x00000000034243c7 llvm::EVT::getExtendedVectorVT(llvm::LLVMContext&, llvm::EVT, unsigned int, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x34243c7)\n#10 0x0000000003d425e3 (anonymous namespace)::DAGCombiner::visitINSERT_VECTOR_ELT(llvm::SDNode*) DAGCombiner.cpp:0:0\n#11 0x0000000003dd2037 (anonymous namespace)::DAGCombiner::visit(llvm::SDNode*) DAGCombiner.cpp:0:0\n#12 0x0000000003dd373c (anonymous namespace)::DAGCombiner::combine(llvm::SDNode*) DAGCombiner.cpp:0:0\n#13 0x0000000003dd51c0 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#14 0x0000000003dd7c13 llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3dd7c13)\n#15 0x0000000003f421c4 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f421c4)\n#16 0x0000000003f45a08 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f45a08)\n#17 0x0000000003f4748c llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f4748c)\n#18 0x0000000003f32bff llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f32bff)\n#19 0x000000000309a2a9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#20 0x00000000036e4a46 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36e4a46)\n#21 0x00000000036e4df1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36e4df1)\n#22 0x00000000036e565f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36e565f)\n#23 0x00000000008f8ddf compileModule(char**, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#24 0x00000000007c63b9 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c63b9)\n#25 0x00007475cf029d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#26 0x00007475cf029e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#27 0x00000000008ee085 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8ee085)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [],
+    "labels": [
+      "crash-on-valid",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[RISCV] llc crashed at O1/O2/O3: Assertion `NumElts > 0 && \"#Elements of a VectorType must be greater than 0\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/169017",
+  "knowledge_cutoff": "2025-11-21T08:22:34Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/RISCV"
+  ],
+  "patch": "commit 3fec26e3294ae0f276ff08fd810850421444588c\nAuthor: Hongyu Chen <xxs_chy@outlook.com>\nDate:   Sat Nov 22 03:33:53 2025 +0800\n\n    [DAGCombiner] Don't optimize insert_vector_elt into shuffle if implicit truncation exists (#169022)\n    \n    Fixes #169017\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\nindex ca2070e958fa..6b79dbb46cad 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp\n@@ -23469,6 +23469,10 @@ SDValue DAGCombiner::combineInsertEltToShuffle(SDNode *N, unsigned InsIndex) {\n   EVT SubVecVT = SubVec.getValueType();\n   EVT VT = DestVec.getValueType();\n   unsigned NumSrcElts = SubVecVT.getVectorNumElements();\n+  // Bail out if the inserted value is larger than the vector element, as\n+  // insert_vector_elt performs an implicit truncation in this case.\n+  if (InsertVal.getValueType() != VT.getVectorElementType())\n+    return SDValue();\n   // If the source only has a single vector element, the cost of creating adding\n   // it to a vector is likely to exceed the cost of a insert_vector_elt.\n   if (NumSrcElts == 1)\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=riscv32 -target-abi=ilp32d -mattr=+v,+zvfh,+zfbfmin,+zvfbfmin,+f,+d -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -target-abi=lp64d -mattr=+v,+zvfh,+zfbfmin,+zvfbfmin,+f,+d -verify-machineinstrs < %s",
+        "llc -mtriple=riscv32 -target-abi=ilp32d -mattr=+v,+zfhmin,+zvfhmin,+zfbfmin,+zvfbfmin,+f,+d -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -target-abi=lp64d -mattr=+v,+zfhmin,+zvfhmin,+zfbfmin,+zvfbfmin,+f,+d -verify-machineinstrs < %s",
+        "llc -mtriple=riscv64 -target-abi=lp64d -mattr=+v,+zvfh,+zfbfmin,+zvfbfmin,+f,+d,+experimental-xrivosvisni -verify-machineinstrs < %s"
+      ],
+      "file": "llvm/test/CodeGen/RISCV/rvv/fixed-vectors-insert.ll",
+      "tests": [
+        {
+          "test_body": "define <2 x i8> @pr169017(<4 x i16> %vecinit, <2 x i8> %dst_vec) {\nentry:\n  %cast = bitcast <4 x i16> %vecinit to i64\n  %trunc = trunc i64 %cast to i8\n  %0 = insertelement <2 x i8> %dst_vec, i8 %trunc, i64 0\n  ret <2 x i8> %0\n}\n",
+          "test_name": "pr169017"
+        },
+        {
+          "test_body": "define <4 x half> @insertelt_v4f16_idx(<4 x half> %a, half %y, i32 zeroext %idx) {\n  %b = insertelement <4 x half> %a, half %y, i32 %idx\n  ret <4 x half> %b\n}\n",
+          "test_name": "insertelt_v4f16_idx"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

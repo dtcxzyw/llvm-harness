@@ -1,0 +1,130 @@
+{
+  "base_commit": "472c2e3578e35e157c58d7011edecd3390a3087f",
+  "bug_id": "128775",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp": [
+        "HexagonTargetLowering::extractHvxSubvectorReg"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp": [
+        [
+          1265,
+          1275
+        ]
+      ]
+    },
+    "components": [
+      "Hexagon"
+    ],
+    "fix_commit": "29d3fc3f11d272a72ac255af9277c740f26c3dfc"
+  },
+  "issue": {
+    "author": "androm3da",
+    "body": "The `./reduced_matrix_types.ll` test case below asserts at O0.  This case was reduced from https://github.com/llvm/llvm-test-suite/blob/589a966491ac5edc64c6f915d7301351e309db65/SingleSource/UnitTests/matrix-types-spec.cpp\n\n```\ntarget datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon-unknown-linux-musl\"\n\ndefine void @_Z13testTransposeIjLj8ELj7EEvv(<56 x i32> %matins.7.6.i, ptr %ResSpec) #0 {\nentry:\n  %split = shufflevector <56 x i32> %matins.7.6.i, <56 x i32> zeroinitializer, <7 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6>\n  store <7 x i32> %split, ptr %ResSpec, align 32\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+hvx-ieee-fp,+hvx-length128b,+hvxv68,+v68,-long-calls\" }\n```\n\nTest build:\n```\n./bin/llc -O0 --mtriple=hexagon ./reduced_matrix_types.ll \n[44/44] Linking CXX executable bin/llc\nllc: /local/mnt/workspace/upstream/toolchain_for_hexagon/llvm-project/llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp:5444: SDValue llvm::SelectionDAG::getNode(unsigned int, const SDLoc &, EVT, SDValue, const SDNodeFlags): Assertion `VT.getSizeInBits() == Operand.getValueSizeInBits() && \"Cannot BITCAST between types of different sizes!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.\nStack dump:\n0.\tProgram arguments: ./bin/llc -O2 --mtriple=hexagon ./reduced_matrix_types.ll\n1.\tRunning pass 'Function Pass Manager' on module './reduced_matrix_types.ll'.\n2.\tRunning pass 'Hexagon DAG->DAG Pattern Instruction Selection' on function '@_Z13testTransposeIjLj8ELj7EEvv'\n #0 0x0000557da88ed474 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (./bin/llc+0x24e9474)\n #1 0x0000557da88eb14e llvm::sys::RunSignalHandlers() (./bin/llc+0x24e714e)\n #2 0x0000557da88ed93a SignalHandler(int) Signals.cpp:0:0\n #3 0x00007f35d0ec1520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #4 0x00007f35d0f159fc __pthread_kill_implementation ./nptl/pthread_kill.c:44:76\n #5 0x00007f35d0f159fc __pthread_kill_internal ./nptl/pthread_kill.c:78:10\n #6 0x00007f35d0f159fc pthread_kill ./nptl/pthread_kill.c:89:10\n #7 0x00007f35d0ec1476 gsignal ./signal/../sysdeps/posix/raise.c:27:6\n #8 0x00007f35d0ea77f3 abort ./stdlib/abort.c:81:7\n #9 0x00007f35d0ea771b _nl_load_domain ./intl/loadmsgcat.c:1177:9\n#10 0x00007f35d0eb8e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n#11 0x0000557da8617cc9 llvm::SelectionDAG::getNode(unsigned int, llvm::SDLoc const&, llvm::EVT, llvm::SDValue, llvm::SDNodeFlags) (./bin/llc+0x2213cc9)\n#12 0x0000557da8607907 llvm::SelectionDAG::getBitcast(llvm::EVT, llvm::SDValue) (./bin/llc+0x2203907)\n#13 0x0000557da759a738 llvm::HexagonTargetLowering::extractHvxSubvectorReg(llvm::SDValue, llvm::SDValue, llvm::SDValue, llvm::SDLoc const&, llvm::MVT, llvm::SelectionDAG&) const HexagonISelLoweringHVX.cpp:0:0\n#14 0x0000557da759f48c llvm::HexagonTargetLowering::LowerHvxExtractSubvector(llvm::SDValue, llvm::SelectionDAG&) const HexagonISelLoweringHVX.cpp:0:0\n#15 0x0000557da75a9b50 llvm::HexagonTargetLowering::LowerHvxOperation(llvm::SDValue, llvm::SelectionDAG&) const HexagonISelLoweringHVX.cpp:0:0\n#16 0x0000557da758cd87 llvm::HexagonTargetLowering::LowerOperation(llvm::SDValue, llvm::SelectionDAG&) const HexagonISelLowering.cpp:0:0\n#17 0x0000557da870f9c8 (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) LegalizeDAG.cpp:0:0\n#18 0x0000557da870eb96 llvm::SelectionDAG::Legalize() (./bin/llc+0x230ab96)\n#19 0x0000557da865588f llvm::SelectionDAGISel::CodeGenAndEmitDAG() (./bin/llc+0x225188f)\n#20 0x0000557da8653abc llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (./bin/llc+0x224fabc)\n#21 0x0000557da864fefd llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (./bin/llc+0x224befd)\n#22 0x0000557da768e4e4 llvm::HexagonDAGToDAGISel::runOnMachineFunction(llvm::MachineFunction&) HexagonISelDAGToDAG.cpp:0:0\n#23 0x0000557da7b786e3 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (./bin/llc+0x17746e3)\n#24 0x0000557da806a6d2 llvm::FPPassManager::runOnFunction(llvm::Function&) (./bin/llc+0x1c666d2)\n#25 0x0000557da8072b32 llvm::FPPassManager::runOnModule(llvm::Module&) (./bin/llc+0x1c6eb32)\n#26 0x0000557da806b227 llvm::legacy::PassManagerImpl::run(llvm::Module&) (./bin/llc+0x1c67227)\n#27 0x0000557da7534936 main (./bin/llc+0x1130936)\n#28 0x00007f35d0ea8d90 __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:58:16\n#29 0x00007f35d0ea8e40 call_init ./csu/../csu/libc-start.c:128:20\n#30 0x00007f35d0ea8e40 __libc_start_main ./csu/../csu/libc-start.c:379:5\n#31 0x0000557da752f465 _start (./bin/llc+0x112b465)\nAborted (core dumped)\n\n```\n\nI have bisected this failure to d9ed93da86a3ffd663f6b19481551855d5cc86be.",
+    "comments": [
+      {
+        "author": "aankit-ca",
+        "body": "Working on it"
+      },
+      {
+        "author": "androm3da",
+        "body": "Let's cherry pick this to 20.x please @iajbar "
+      },
+      {
+        "author": "androm3da",
+        "body": "Looks like the short sha was too short:\n```\ngit.exc.GitCommandError: Cmd('git') failed due to: exit code(128)\n  cmdline: git cherry-pick -x 29d3fc3\n  stderr: 'error: short object ID 29d3fc3 is ambiguous\nhint: The candidates are:\nhint:   29d3fc3f11d2 commit 2025-03-06 - [HEXAGON] Fix hvx-isel for extract_subvector op (#129672)\nhint:   29d3fc38e570 blob\nfatal: bad revision '29d3fc3''\n```\n\n\n/cherry-pick 29d3fc3f11d272a72ac255af9277c740f26c3dfc"
+      }
+    ],
+    "labels": [
+      "backend:Hexagon",
+      "release:backport",
+      "crash"
+    ],
+    "title": "Assertion `VT.getSizeInBits() == Operand.getValueSizeInBits() && \"Cannot BITCAST between types of different sizes!\""
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/128775",
+  "knowledge_cutoff": "2025-02-25T21:22:34Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/Hexagon"
+  ],
+  "patch": "commit 29d3fc3f11d272a72ac255af9277c740f26c3dfc\nAuthor: aankit-ca <quic_aankit@quicinc.com>\nDate:   Thu Mar 6 15:02:10 2025 -0800\n\n    [HEXAGON] Fix hvx-isel for extract_subvector op (#129672)\n    \n    Fixes a crash with extract_subvectors in Hexagon backend seen when the\n    source vector is a vector-pair and result vector is not hvx vector size.\n    \n    LLVM Issue: https://github.com/llvm/llvm-project/issues/128775\n    Fixes #128775\n    ---------\n    \n    Co-authored-by: aankit-quic <aankit@quicinc.com>\n\ndiff --git a/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp b/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp\nindex deffe6369df1..f77bda313835 100644\n--- a/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp\n+++ b/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp\n@@ -1265,11 +1265,15 @@ HexagonTargetLowering::extractHvxSubvectorReg(SDValue OrigOp, SDValue VecV,\n   // the subvector of interest. The subvector will never overlap two single\n   // vectors.\n   if (isHvxPairTy(VecTy)) {\n-    if (Idx * ElemWidth >= 8*HwLen)\n+    unsigned SubIdx = Hexagon::vsub_lo;\n+    if (Idx * ElemWidth >= 8 * HwLen) {\n+      SubIdx = Hexagon::vsub_hi;\n       Idx -= VecTy.getVectorNumElements() / 2;\n+    }\n \n-    VecV = OrigOp;\n-    if (typeSplit(VecTy).first == ResTy)\n+    VecTy = typeSplit(VecTy).first;\n+    VecV = DAG.getTargetExtractSubreg(SubIdx, dl, VecTy, VecV);\n+    if (VecTy == ResTy)\n       return VecV;\n   }\n \n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc -mtriple=hexagon -hexagon-hvx-widen=32 < %s"
+      ],
+      "file": "llvm/test/CodeGen/Hexagon/autohvx/fp-to-int.ll",
+      "tests": [
+        {
+          "test_body": "target datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon\"\n\ndefine void @f16u8_0(ptr %a0, ptr %a1) #0 {\n  %v0 = load <128 x half>, ptr %a0, align 128\n  %v1 = fptoui <128 x half> %v0 to <128 x i8>\n  store <128 x i8> %v1, ptr %a1, align 128\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+v68,+hvxv68,+hvx-length128b,+hvx-qfloat\" }\n",
+          "test_name": "f16u8_0"
+        },
+        {
+          "test_body": "target datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon\"\n\ndefine void @f32s8_0(ptr %a0, ptr %a1) #0 {\n  %v0 = load <128 x float>, ptr %a0, align 128\n  %v1 = fptosi <128 x float> %v0 to <128 x i8>\n  store <128 x i8> %v1, ptr %a1, align 128\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+v68,+hvxv68,+hvx-length128b,+hvx-qfloat\" }\n",
+          "test_name": "f32s8_0"
+        },
+        {
+          "test_body": "target datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon\"\n\ndefine void @f32s8_1(ptr %a0, ptr %a1) #0 {\n  %v0 = load <64 x float>, ptr %a0, align 128\n  %v1 = fptosi <64 x float> %v0 to <64 x i8>\n  store <64 x i8> %v1, ptr %a1, align 128\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+v68,+hvxv68,+hvx-length128b,+hvx-qfloat\" }\n",
+          "test_name": "f32s8_1"
+        },
+        {
+          "test_body": "target datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon\"\n\ndefine void @f32u8_0(ptr %a0, ptr %a1) #0 {\n  %v0 = load <128 x float>, ptr %a0, align 128\n  %v1 = fptoui <128 x float> %v0 to <128 x i8>\n  store <128 x i8> %v1, ptr %a1, align 128\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+v68,+hvxv68,+hvx-length128b,+hvx-qfloat\" }\n",
+          "test_name": "f32u8_0"
+        },
+        {
+          "test_body": "target datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon\"\n\ndefine void @f32s16_0(ptr %a0, ptr %a1) #0 {\n  %v0 = load <64 x float>, ptr %a0, align 128\n  %v1 = fptosi <64 x float> %v0 to <64 x i16>\n  store <64 x i16> %v1, ptr %a1, align 128\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+v68,+hvxv68,+hvx-length128b,+hvx-qfloat\" }\n",
+          "test_name": "f32s16_0"
+        },
+        {
+          "test_body": "target datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon\"\n\ndefine void @f16s8_0(ptr %a0, ptr %a1) #0 {\n  %v0 = load <128 x half>, ptr %a0, align 128\n  %v1 = fptosi <128 x half> %v0 to <128 x i8>\n  store <128 x i8> %v1, ptr %a1, align 128\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+v68,+hvxv68,+hvx-length128b,+hvx-qfloat\" }\n",
+          "test_name": "f16s8_0"
+        },
+        {
+          "test_body": "target datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon\"\n\ndefine void @f32u16_0(ptr %a0, ptr %a1) #0 {\n  %v0 = load <64 x float>, ptr %a0, align 128\n  %v1 = fptoui <64 x float> %v0 to <64 x i16>\n  store <64 x i16> %v1, ptr %a1, align 128\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+v68,+hvxv68,+hvx-length128b,+hvx-qfloat\" }\n",
+          "test_name": "f32u16_0"
+        },
+        {
+          "test_body": "target datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon\"\n\ndefine void @f32u8_1(ptr %a0, ptr %a1) #0 {\n  %v0 = load <64 x float>, ptr %a0, align 128\n  %v1 = fptoui <64 x float> %v0 to <64 x i8>\n  store <64 x i8> %v1, ptr %a1, align 128\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+v68,+hvxv68,+hvx-length128b,+hvx-qfloat\" }\n",
+          "test_name": "f32u8_1"
+        }
+      ]
+    },
+    {
+      "commands": [
+        "llc -mtriple=hexagon -hexagon-hvx-widen=32 < %s -verify-machineinstrs"
+      ],
+      "file": "llvm/test/CodeGen/Hexagon/autohvx/int-to-fp.ll",
+      "tests": [
+        {
+          "test_body": "target datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon\"\n\ndefine void @u32f16_0(ptr %a0, ptr %a1) #0 {\n  %v0 = load <64 x i32>, ptr %a0, align 128\n  %v1 = uitofp <64 x i32> %v0 to <64 x half>\n  store <64 x half> %v1, ptr %a1, align 128\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+v68,+hvxv68,+hvx-length128b,+hvx-qfloat\" }\n",
+          "test_name": "u32f16_0"
+        },
+        {
+          "test_body": "target datalayout = \"e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048\"\ntarget triple = \"hexagon\"\n\ndefine void @s32f16_0(ptr %a0, ptr %a1) #0 {\n  %v0 = load <64 x i32>, ptr %a0, align 128\n  %v1 = sitofp <64 x i32> %v0 to <64 x half>\n  store <64 x half> %v1, ptr %a1, align 128\n  ret void\n}\n\nattributes #0 = { \"target-features\"=\"+v68,+hvxv68,+hvx-length128b,+hvx-qfloat\" }\n",
+          "test_name": "s32f16_0"
+        }
+      ]
+    },
+    {
+      "commands": [
+        "llc -mtriple=hexagon -mattr=\"hvx-length128b\" < %s"
+      ],
+      "file": "llvm/test/CodeGen/Hexagon/isel/extract-subvec.ll",
+      "tests": [
+        {
+          "test_body": "; Check if extract_subvectors is handled properly in Hexagon backend when the\n; the source vector is a vector-pair and result vector is not hvx vector size.\n; https://github.com/llvm/llvm-project/issues/128775\n;\n; Example of such a case:\n;    ...\n;    t2: v64i32,ch = CopyFromReg t0, Register:v64i32 %0\n;    t17: v2i32 = extract_subvector t2, Constant:i32<4>\n;    ...\n\n\ndefine void @extract_subvec(<56 x i32> %val, ptr %buf) {\nentry:\n  %split = shufflevector <56 x i32> %val, <56 x i32> zeroinitializer, <7 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6>\n  store <7 x i32> %split, ptr %buf, align 32\n  ret void\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

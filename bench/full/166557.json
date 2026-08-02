@@ -1,0 +1,82 @@
+{
+  "base_commit": "5818435c437c654c8c17c7ba8b7eb8833b7c3229",
+  "bug_id": "166557",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/GISel/X86InstructionSelector.cpp": [
+        "X86InstructionSelector::selectCopy"
+      ],
+      "llvm/lib/Target/X86/X86InstrInfo.cpp": [
+        "CopyToFromAsymmetricReg",
+        "X86InstrInfo::copyPhysReg"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/GISel/X86InstructionSelector.cpp": [
+        [
+          312,
+          317
+        ]
+      ],
+      "llvm/lib/Target/X86/X86InstrInfo.cpp": [
+        [
+          4296,
+          4305
+        ],
+        [
+          4368,
+          4373
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "7f8c43a24949e2aa33e5f03f75ac865bb2f11ad8"
+  },
+  "issue": {
+    "author": "k-arrows",
+    "body": "Reproducer:\nhttps://godbolt.org/z/6PW8fnTP1\n```cpp\nunion foo {\n  _Float16 foo;\n  short s;\n};\n\n_Float16 bar(union foo x) { return x.foo; }\n```\n\nBacktrace:\n```console\nfatal error: error in backend: Cannot emit physreg copy instruction\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-trunk/bin/clang++ -g -o /app/output.s -mllvm --x86-asm-syntax=intel -fno-verbose-asm -S --gcc-toolchain=/opt/compiler-explorer/gcc-snapshot -fcolor-diagnostics -fno-crash-diagnostics -mllvm -global-isel <source>\n1.\t<eof> parser at end of file\n2.\tCode generation\n3.\tRunning pass 'Function Pass Manager' on module '<source>'.\n4.\tRunning pass 'Post-RA pseudo instruction expansion pass' on function '@_Z3bar3foo'\n #0 0x0000000003d11b38 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3d11b38)\n #1 0x0000000003d0f50c llvm::sys::CleanupOnSignal(unsigned long) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3d0f50c)\n #2 0x0000000003c557b3 llvm::CrashRecoveryContext::HandleExit(int) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3c557b3)\n #3 0x0000000003d06d4e llvm::sys::Process::Exit(int, bool) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3d06d4e)\n #4 0x0000000000dda51b LLVMErrorHandler(void*, char const*, bool) cc1_main.cpp:0:0\n #5 0x0000000003c5fa13 llvm::report_fatal_error(llvm::Twine const&, bool) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3c5fa13)\n #6 0x0000000003c5fb78 (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3c5fb78)\n #7 0x00000000029d9b8c llvm::X86InstrInfo::copyPhysReg(llvm::MachineBasicBlock&, llvm::MachineInstrBundleIterator<llvm::MachineInstr, false>, llvm::DebugLoc const&, llvm::Register, llvm::Register, bool, bool, bool) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x29d9b8c)\n #8 0x00000000033765c4 llvm::TargetInstrInfo::lowerCopy(llvm::MachineInstr*, llvm::TargetRegisterInfo const*) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x33765c4)\n #9 0x0000000002fcf8b8 (anonymous namespace)::ExpandPostRA::run(llvm::MachineFunction&) (.constprop.0) ExpandPostRAPseudos.cpp:0:0\n#10 0x0000000002fcfad4 (anonymous namespace)::ExpandPostRALegacy::runOnMachineFunction(llvm::MachineFunction&) ExpandPostRAPseudos.cpp:0:0\n#11 0x00000000030ef0dd llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x30ef0dd)\n#12 0x0000000003663302 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3663302)\n#13 0x0000000003663591 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3663591)\n#14 0x0000000003664e73 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3664e73)\n#15 0x0000000003fae042 clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3fae042)\n#16 0x00000000045e5ccb clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x45e5ccb)\n#17 0x000000000625ba5c clang::ParseAST(clang::Sema&, bool, bool) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x625ba5c)\n#18 0x00000000045e6825 clang::CodeGenAction::ExecuteAction() (/opt/compiler-explorer/clang-trunk/bin/clang+++0x45e6825)\n#19 0x00000000048e4c2a clang::FrontendAction::Execute() (/opt/compiler-explorer/clang-trunk/bin/clang+++0x48e4c2a)\n#20 0x000000000486496b clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x486496b)\n#21 0x00000000049dcdfb clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x49dcdfb)\n#22 0x0000000000ddc575 cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/opt/compiler-explorer/clang-trunk/bin/clang+++0xddc575)\n#23 0x0000000000dd44db ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>) driver.cpp:0:0\n#24 0x0000000000dd457d int llvm::function_ref<int (llvm::SmallVectorImpl<char const*>&)>::callback_fn<clang_main(int, char**, llvm::ToolContext const&)::'lambda'(llvm::SmallVectorImpl<char const*>&)>(long, llvm::SmallVectorImpl<char const*>&) driver.cpp:0:0\n#25 0x0000000004654899 void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::'lambda'()>(long) Job.cpp:0:0\n#26 0x0000000003c556b3 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x3c556b3)\n#27 0x0000000004654ab9 clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (.part.0) Job.cpp:0:0\n#28 0x0000000004617682 clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x4617682)\n#29 0x0000000004618561 clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/opt/compiler-explorer/clang-trunk/bin/clang+++0x4618561)\n#30 0x000000000462140c clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0x462140c)\n#31 0x0000000000dd8fa9 clang_main(int, char**, llvm::ToolContext const&) (/opt/compiler-explorer/clang-trunk/bin/clang+++0xdd8fa9)\n#32 0x0000000000c83ec4 main (/opt/compiler-explorer/clang-trunk/bin/clang+++0xc83ec4)\n#33 0x000071721c829d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#34 0x000071721c829e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#35 0x0000000000dd3f75 _start (/opt/compiler-explorer/clang-trunk/bin/clang+++0xdd3f75)\nclang++: error: clang frontend command failed with exit code 70 (use -v to see invocation)\nCompiler returned: 70\n```",
+    "comments": [
+      {
+        "author": "GrumpyPigSkin",
+        "body": "I have a fix for this if someone could assign me please :)"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "llvm:globalisel",
+      "crash"
+    ],
+    "title": "[X86][GISel] fatal error: error in backend: Cannot emit physreg copy instruction"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/166557",
+  "knowledge_cutoff": "2025-11-05T13:42:31Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 7f8c43a24949e2aa33e5f03f75ac865bb2f11ad8\nAuthor: GrumpyPigSkin <130710602+GrumpyPigSkin@users.noreply.github.com>\nDate:   Tue Nov 25 14:31:27 2025 +0000\n\n    [X86][GISel] Fix crash on bitcasting i16 <-> half with gisel enabled. (#168456)\n    \n    Added missing checks for casting half to/from i16 with global-isel\n    enabled.\n    \n    \n    Fixes #166557\n\ndiff --git a/llvm/lib/Target/X86/GISel/X86InstructionSelector.cpp b/llvm/lib/Target/X86/GISel/X86InstructionSelector.cpp\nindex 53ec7125a649..f499e6f9d079 100644\n--- a/llvm/lib/Target/X86/GISel/X86InstructionSelector.cpp\n+++ b/llvm/lib/Target/X86/GISel/X86InstructionSelector.cpp\n@@ -312,6 +312,53 @@ bool X86InstructionSelector::selectCopy(MachineInstr &I,\n       }\n     }\n \n+    // Special case GPR16 -> XMM\n+    if (SrcSize == 16 && SrcRegBank.getID() == X86::GPRRegBankID &&\n+        (DstRegBank.getID() == X86::VECRRegBankID)) {\n+\n+      const DebugLoc &DL = I.getDebugLoc();\n+\n+      // Any extend GPR16 -> GPR32\n+      Register ExtReg = MRI.createVirtualRegister(&X86::GR32RegClass);\n+      BuildMI(*I.getParent(), I, DL, TII.get(TargetOpcode::SUBREG_TO_REG),\n+              ExtReg)\n+          .addImm(0)\n+          .addReg(SrcReg)\n+          .addImm(X86::sub_16bit);\n+\n+      // Copy GR32 -> XMM\n+      BuildMI(*I.getParent(), I, DL, TII.get(TargetOpcode::COPY), DstReg)\n+          .addReg(ExtReg);\n+\n+      I.eraseFromParent();\n+    }\n+\n+    // Special case XMM -> GR16\n+    if (DstSize == 16 && DstRegBank.getID() == X86::GPRRegBankID &&\n+        (SrcRegBank.getID() == X86::VECRRegBankID)) {\n+\n+      const DebugLoc &DL = I.getDebugLoc();\n+\n+      // Move XMM to GR32 register.\n+      Register Temp32 = MRI.createVirtualRegister(&X86::GR32RegClass);\n+      BuildMI(*I.getParent(), I, DL, TII.get(TargetOpcode::COPY), Temp32)\n+          .addReg(SrcReg);\n+\n+      // Extract the lower 16 bits\n+      if (Register Dst32 = TRI.getMatchingSuperReg(DstReg, X86::sub_16bit,\n+                                                   &X86::GR32RegClass)) {\n+        // Optimization for Physical Dst (e.g. AX): Copy to EAX directly.\n+        BuildMI(*I.getParent(), I, DL, TII.get(TargetOpcode::COPY), Dst32)\n+            .addReg(Temp32);\n+      } else {\n+        // Handle if there is no super.\n+        BuildMI(*I.getParent(), I, DL, TII.get(TargetOpcode::COPY), DstReg)\n+            .addReg(Temp32, 0, X86::sub_16bit);\n+      }\n+\n+      I.eraseFromParent();\n+    }\n+\n     return true;\n   }\n \ndiff --git a/llvm/lib/Target/X86/X86InstrInfo.cpp b/llvm/lib/Target/X86/X86InstrInfo.cpp\nindex b988ae0aca91..ebed733314c6 100644\n--- a/llvm/lib/Target/X86/X86InstrInfo.cpp\n+++ b/llvm/lib/Target/X86/X86InstrInfo.cpp\n@@ -4296,10 +4296,11 @@ static unsigned CopyToFromAsymmetricReg(Register DestReg, Register SrcReg,\n \n   if (X86::VR128XRegClass.contains(DestReg) &&\n       X86::GR32RegClass.contains(SrcReg))\n-    // Copy from a VR128 register to a VR128 register.\n+    // Copy from a GR32 register to a VR128 register.\n     return HasAVX512 ? X86::VMOVDI2PDIZrr\n            : HasAVX  ? X86::VMOVDI2PDIrr\n                      : X86::MOVDI2PDIrr;\n+\n   return 0;\n }\n \n@@ -4368,6 +4369,7 @@ void X86InstrInfo::copyPhysReg(MachineBasicBlock &MBB,\n   else if (X86::VK16RegClass.contains(DestReg, SrcReg))\n     Opc = Subtarget.hasBWI() ? (HasEGPR ? X86::KMOVQkk_EVEX : X86::KMOVQkk)\n                              : (HasEGPR ? X86::KMOVQkk_EVEX : X86::KMOVWkk);\n+\n   if (!Opc)\n     Opc = CopyToFromAsymmetricReg(DestReg, SrcReg, Subtarget);\n \n",
+  "properties": {
+    "difficulty": "hard",
+    "is_single_file_fix": false,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-unknown-unknown -global-isel",
+        "llc < %s -mtriple=x86_64-unknown-unknown -global-isel -mattr=+avx",
+        "llc < %s -mtriple=x86_64-unknown-unknown -global-isel -mattr=+avx512f"
+      ],
+      "file": "llvm/test/CodeGen/X86/GlobalISel/fp-bitcast.ll",
+      "tests": [
+        {
+          "test_body": "\ndefine half @test_i16_to_half(i16 %0) {\n; SSE2-LABEL: test_i16_to_half:\n; SSE2:       # %bb.0: # %entry\n; SSE2-NEXT:    movd %edi, %xmm0\n; SSE2-NEXT:    retq\n;\n; AVX-LABEL: test_i16_to_half:\n; AVX:       # %bb.0: # %entry\n; AVX-NEXT:    vmovd %edi, %xmm0\n; AVX-NEXT:    retq\n;\n; AVX512-LABEL: test_i16_to_half:\n; AVX512:       # %bb.0: # %entry\n; AVX512-NEXT:    vmovd %edi, %xmm0\n; AVX512-NEXT:    retq\nentry:\n  %2 = bitcast i16 %0 to half\n  ret half %2\n}\n\ndefine i16 @test_half_to_i16(half %0) {\n; SSE2-LABEL: test_half_to_i16:\n; SSE2:       # %bb.0: # %entry\n; SSE2-NEXT:    movd %xmm0, %eax\n; SSE2-NEXT:    # kill: def $eax killed $eax def $ax\n; SSE2-NEXT:    retq\n;\n; AVX-LABEL: test_half_to_i16:\n; AVX:       # %bb.0: # %entry\n; AVX-NEXT:    vmovd %xmm0, %eax\n; AVX-NEXT:    # kill: def $eax killed $eax def $ax\n; AVX-NEXT:    retq\n;\n; AVX512-LABEL: test_half_to_i16:\n; AVX512:       # %bb.0: # %entry\n; AVX512-NEXT:    vmovd %xmm0, %eax\n; AVX512-NEXT:    # kill: def $eax killed $eax def $ax\n; AVX512-NEXT:    retq\nentry:\n  %2 = bitcast half %0 to i16\n  ret i16 %2\n}",
+          "test_name": "<module>"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

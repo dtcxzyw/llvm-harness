@@ -1,0 +1,75 @@
+{
+  "base_commit": "eaa889ab1791618eddc6a22d777750ac936b65a1",
+  "bug_id": "166732",
+  "bug_type": "crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/RISCV/RISCVTargetTransformInfo.cpp": [
+        "RISCVTTIImpl::getCastInstrCost"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/RISCV/RISCVTargetTransformInfo.cpp": [
+        [
+          1683,
+          1689
+        ]
+      ]
+    },
+    "components": [
+      "RISCV"
+    ],
+    "fix_commit": "3637f66b4d819c1cef6a3b58466fc8b1f983cfe0"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/fjhevfM8b\nReduced testcase:\n```llvm\ntarget datalayout = \"e-m:e-p:64:64-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"riscv64-unknown-linux-musl\"\n\ndefine <512 x i2> @backsmith_pure_9(<16 x i64> %BS_ARG_0) #0 {\nentry:\n  %0 = bitcast <16 x i64> %BS_ARG_0 to <512 x i2>\n  ret <512 x i2> %0\n}\n\nattributes #0 = { \"target-features\"=\"+v\" }\n```\n\nopt output:\n```\nopt: /root/llvm-project/llvm/lib/Target/RISCV/RISCVTargetTransformInfo.cpp:1690: virtual llvm::InstructionCost llvm::RISCVTTIImpl::getCastInstrCost(unsigned int, llvm::Type*, llvm::Type*, llvm::TargetTransformInfo::CastContextHint, llvm::TargetTransformInfo::TargetCostKind, const llvm::Instruction*) const: Assertion `(SrcLT.first == 1) && (DstLT.first == 1) && \"Illegal type\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/opt -o /app/output.s -S -O1 <source>\n1.\tRunning pass \"ipsccp\" on module \"<source>\"\n #0 0x00000000059aa7e8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x59aa7e8)\n #1 0x00000000059a7694 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007f300f042520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007f300f0969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007f300f042476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007f300f0287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00007f300f02871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x00007f300f039e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000001db220c llvm::RISCVTTIImpl::getCastInstrCost(unsigned int, llvm::Type*, llvm::Type*, llvm::TargetTransformInfo::CastContextHint, llvm::TargetTransformInfo::TargetCostKind, llvm::Instruction const*) const (.part.0) RISCVTargetTransformInfo.cpp:0:0\n #9 0x0000000001dc818f llvm::TargetTransformInfoImplCRTPBase<llvm::RISCVTTIImpl>::getInstructionCost(llvm::User const*, llvm::ArrayRef<llvm::Value const*>, llvm::TargetTransformInfo::TargetCostKind) const (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x1dc818f)\n#10 0x00000000050409ad llvm::TargetTransformInfo::getInstructionCost(llvm::User const*, llvm::ArrayRef<llvm::Value const*>, llvm::TargetTransformInfo::TargetCostKind) const (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x50409ad)\n#11 0x0000000004d547aa llvm::CodeMetrics::analyzeBasicBlock(llvm::BasicBlock const*, llvm::TargetTransformInfo const&, llvm::SmallPtrSetImpl<llvm::Value const*> const&, bool, llvm::Loop const*) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x4d547aa)\n#12 0x0000000003402713 llvm::FunctionSpecializer::run() (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x3402713)\n#13 0x00000000033ca78b runIPSCCP(llvm::Module&, llvm::DataLayout const&, llvm::AnalysisManager<llvm::Function>*, std::function<llvm::TargetLibraryInfo const& (llvm::Function&)>, std::function<llvm::TargetTransformInfo& (llvm::Function&)>, std::function<llvm::AssumptionCache& (llvm::Function&)>, std::function<llvm::DominatorTree& (llvm::Function&)>, std::function<llvm::BlockFrequencyInfo& (llvm::Function&)>, bool) SCCP.cpp:0:0\n#14 0x00000000033cc2bd llvm::IPSCCPPass::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x33cc2bd)\n#15 0x0000000002fc41ee llvm::detail::PassModel<llvm::Module, llvm::IPSCCPPass, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x2fc41ee)\n#16 0x0000000005781121 llvm::PassManager<llvm::Module, llvm::AnalysisManager<llvm::Module>>::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x5781121)\n#17 0x000000000098745a llvm::runPassPipeline(llvm::StringRef, llvm::Module&, llvm::TargetMachine*, llvm::TargetLibraryInfoImpl*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::ToolOutputFile*, llvm::StringRef, llvm::ArrayRef<llvm::PassPlugin>, llvm::ArrayRef<std::function<void (llvm::PassBuilder&)>>, llvm::opt_tool::OutputKind, llvm::opt_tool::VerifierKind, bool, bool, bool, bool, bool, bool, bool, bool) (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x98745a)\n#18 0x000000000097b6d1 optMain (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x97b6d1)\n#19 0x00007f300f029d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#20 0x00007f300f029e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#21 0x0000000000972ae5 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/opt+0x972ae5)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "topperc",
+        "body": "CC: @ElvisWang123 "
+      },
+      {
+        "author": "XChy",
+        "body": "For your information, this testcase is reduced from a valid C program containing `_BitInt`. Maybe the bitwidth is changed after reduction. Let me know if anyone needs an unreduced C testcase."
+      }
+    ],
+    "labels": [
+      "backend:RISC-V",
+      "crash-on-valid"
+    ],
+    "title": "[RISCV][CostModel] opt crashed and triggered assertion `(SrcLT.first == 1) && (DstLT.first == 1) && \"Illegal type\"'"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/166732",
+  "knowledge_cutoff": "2025-11-06T09:07:05Z",
+  "lit_test_dir": [
+    "llvm/test/Analysis/CostModel"
+  ],
+  "patch": "commit 3637f66b4d819c1cef6a3b58466fc8b1f983cfe0\nAuthor: Elvis Wang <elvis.wang@sifive.com>\nDate:   Mon Nov 10 17:01:43 2025 +0800\n\n    [RISCV][TTI] Fix crash of non-built-in vector type cost quering. (#167258)\n    \n    For the non-built-in vector type, the RISCV cost model cannot handle\n    this properly.\n    So fall back to the BasicTTI for this situation.\n    \n    Fixes: #166732\n\ndiff --git a/llvm/lib/Target/RISCV/RISCVTargetTransformInfo.cpp b/llvm/lib/Target/RISCV/RISCVTargetTransformInfo.cpp\nindex 332433b4e530..3d8eb4097604 100644\n--- a/llvm/lib/Target/RISCV/RISCVTargetTransformInfo.cpp\n+++ b/llvm/lib/Target/RISCV/RISCVTargetTransformInfo.cpp\n@@ -1683,7 +1683,8 @@ InstructionCost RISCVTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst,\n       !TypeSize::isKnownLE(DL.getTypeSizeInBits(Src),\n                            SrcLT.second.getSizeInBits()) ||\n       !TypeSize::isKnownLE(DL.getTypeSizeInBits(Dst),\n-                           DstLT.second.getSizeInBits()))\n+                           DstLT.second.getSizeInBits()) ||\n+      SrcLT.first > 1 || DstLT.first > 1)\n     return BaseT::getCastInstrCost(Opcode, Dst, Src, CCH, CostKind, I);\n \n   // The split cost is handled by the base getCastInstrCost\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "opt < %s -mtriple=riscv32 -mattr=+v,+zfh,+zvfh -passes=\"print<cost-model>\" -cost-kind=throughput -intrinsic-cost-strategy=type-based-intrinsic-cost 2>&1 -disable-output",
+        "opt < %s -mtriple=riscv64 -mattr=+v,+zfh,+zvfh -passes=\"print<cost-model>\" -cost-kind=throughput -intrinsic-cost-strategy=type-based-intrinsic-cost 2>&1 -disable-output",
+        "opt < %s -mtriple=riscv64 -mattr=+zvl128b,+zve64x -passes=\"print<cost-model>\" -cost-kind=throughput -intrinsic-cost-strategy=type-based-intrinsic-cost 2>&1 -disable-output"
+      ],
+      "file": "llvm/test/Analysis/CostModel/RISCV/cast.ll",
+      "tests": [
+        {
+          "test_body": "define void @BitInt_crash() {\n  %1 = bitcast <16 x i64> poison to <512 x i2>\n  ret void\n}\n",
+          "test_name": "BitInt_crash"
+        },
+        {
+          "test_body": "define void @legalization_crash() {\n  %1 = bitcast <24 x i8> undef to <192 x i1>\n  %2 = trunc <192 x i8> undef to <192 x i1>\n  %3 = zext <192 x i1> undef to <192 x i8>\n  %4 = sext <192 x i1> undef to <192 x i8>\n  %5 = sitofp <192 x i1> undef to <192 x float>\n  %6 = uitofp <192 x i1> undef to <192 x float>\n  %7 = fptosi <192 x float> undef to <192 x i1>\n  %8 = fptoui <192 x float> undef to <192 x i1>\n  ret void\n}\n",
+          "test_name": "legalization_crash"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

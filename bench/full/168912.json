@@ -1,0 +1,70 @@
+{
+  "base_commit": "b5a3b8b704cf7f54531f18966cdcc25f5c4e5044",
+  "bug_id": "168912",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        "AArch64TargetLowering::LowerMUL"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/AArch64/AArch64ISelLowering.cpp": [
+        [
+          5804,
+          5811
+        ]
+      ]
+    },
+    "components": [
+      "AArch64"
+    ],
+    "fix_commit": "e16cc8ed4636c36fc6e4e95289faf94048ec79b2"
+  },
+  "issue": {
+    "author": "XChy",
+    "body": "Reproducer: https://godbolt.org/z/4Td5GMoes\nTestcase:\n```llvm\ntarget triple = \"aarch64-unknown-linux-musl\"\n\n; Function Attrs: vscale_range(1,16)\ndefine <2 x i8> @backsmith_pure_1() #0 {\nentry:\n  %0 = load <2 x i8>, ptr null, align 2\n  %mul = mul <2 x i8> %0, <i8 2, i8 5>\n  ret <2 x i8> %mul\n}\n\nattributes #0 = { vscale_range(1,16) \"target-features\"=\"+sve\" }\n```\n\nllc dumps:\n```\nllc: /root/llvm-project/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp:5545: llvm::SDValue skipExtensionForVectorMULL(llvm::SDValue, llvm::SelectionDAG&): Assertion `VT.is128BitVector() && \"Unexpected vector MULL size\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -x86-asm-syntax=intel -O1 <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'AArch64 Instruction Selection' on function '@backsmith_pure_1'\n #0 0x00000000041a28a8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x41a28a8)\n #1 0x000000000419f754 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x0000783b95642520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x0000783b956969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x0000783b95642476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x0000783b956287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x0000783b9562871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #7 0x0000783b95639e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #8 0x0000000000d2abfc skipExtensionForVectorMULL(llvm::SDValue, llvm::SelectionDAG&) AArch64ISelLowering.cpp:0:0\n #9 0x0000000000d96f78 llvm::AArch64TargetLowering::LowerMUL(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xd96f78)\n#10 0x0000000000de0971 llvm::AArch64TargetLowering::LowerOperation(llvm::SDValue, llvm::SelectionDAG&) const (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0xde0971)\n#11 0x0000000003e14b9e (anonymous namespace)::SelectionDAGLegalize::LegalizeOp(llvm::SDNode*) (.part.0) LegalizeDAG.cpp:0:0\n#12 0x0000000003e186ea llvm::SelectionDAG::LegalizeOp(llvm::SDNode*, llvm::SmallSetVector<llvm::SDNode*, 16u>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e186ea)\n#13 0x0000000003dca706 (anonymous namespace)::DAGCombiner::Run(llvm::CombineLevel) DAGCombiner.cpp:0:0\n#14 0x0000000003dcce93 llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3dcce93)\n#15 0x0000000003f37ad5 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f37ad5)\n#16 0x0000000003f3ad88 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f3ad88)\n#17 0x0000000003f3c805 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f3c805)\n#18 0x0000000003f27f7f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3f27f7f)\n#19 0x000000000308fab9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#20 0x00000000036d9f66 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36d9f66)\n#21 0x00000000036da311 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36da311)\n#22 0x00000000036dab7f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x36dab7f)\n#23 0x00000000008f8a9f compileModule(char**, llvm::LLVMContext&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&) llc.cpp:0:0\n#24 0x00000000007c6079 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7c6079)\n#25 0x0000783b95629d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#26 0x0000783b95629e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#27 0x00000000008edd45 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8edd45)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```",
+    "comments": [
+      {
+        "author": "cofibrant",
+        "body": "I can pick this up"
+      },
+      {
+        "author": "cofibrant",
+        "body": "Apologies, I've only just gotten around to this. I did some digging and it looks like `LowerMUL()` falls into the following code path (introduced by @davemgreen):\n\nhttps://github.com/llvm/llvm-project/blob/58fa7e4ccd533e5547868a9211d4da16bc80ac20/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp#L5796-L5803\n\nBut, in this specific reproducer, `N1` ends up with a scalable vector type, which the subsequent code isn't expecting.\n\nI'm definitely not qualified to resolve this so I'll bow out."
+      }
+    ],
+    "labels": [
+      "backend:AArch64",
+      "crash"
+    ],
+    "title": "[AArch64] llc crash at -O1/O2/O3: Assertion `VT.is128BitVector() && \"Unexpected vector MULL size\"' failed."
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/168912",
+  "knowledge_cutoff": "2025-11-20T17:30:05Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit e16cc8ed4636c36fc6e4e95289faf94048ec79b2\nAuthor: David Green <david.green@arm.com>\nDate:   Fri Nov 28 12:06:17 2025 +0000\n\n    [AArch64] Guard for 128bit vectors in mull combine. (#169839)\n    \n    The test case generates a extract_subvector(index) leading into a mul.\n    Make sure we don't try and treat the scalable vector extract as a 128bit\n    vector in the mull combine.\n    \n    Fixes #168912\n\ndiff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\nindex 019f21613029..6072fd9d8f24 100644\n--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n+++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp\n@@ -5804,8 +5804,10 @@ SDValue AArch64TargetLowering::LowerMUL(SDValue Op, SelectionDAG &DAG) const {\n   if (VT.is64BitVector()) {\n     if (N0.getOpcode() == ISD::EXTRACT_SUBVECTOR &&\n         isNullConstant(N0.getOperand(1)) &&\n+        N0.getOperand(0).getValueType().is128BitVector() &&\n         N1.getOpcode() == ISD::EXTRACT_SUBVECTOR &&\n-        isNullConstant(N1.getOperand(1))) {\n+        isNullConstant(N1.getOperand(1)) &&\n+        N1.getOperand(0).getValueType().is128BitVector()) {\n       N0 = N0.getOperand(0);\n       N1 = N1.getOperand(0);\n       VT = N0.getValueType();\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=aarch64 -o -",
+        "llc < %s -mtriple=aarch64 -global-isel -o -"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/neon-extadd-extract.ll",
+      "tests": [
+        {
+          "test_body": "; Function Attrs: vscale_range(1,16)\ndefine <2 x i8> @extract_scalable_vec() #0 {\nentry:\n  %0 = load <2 x i8>, ptr null, align 2\n  %mul = mul <2 x i8> %0, <i8 2, i8 5>\n  ret <2 x i8> %mul\n}\n\nattributes #0 = { vscale_range(1,16) \"target-features\"=\"+sve\" }\n",
+          "test_name": "extract_scalable_vec"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

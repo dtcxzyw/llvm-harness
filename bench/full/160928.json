@@ -1,0 +1,126 @@
+{
+  "base_commit": "d70490c6940f0bca4f13be199396701249876685",
+  "bug_id": "160928",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        "SplitOpsAndApply",
+        "combineAdd",
+        "matchVPMADD52"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/Target/X86/X86ISelLowering.cpp": [
+        [
+          4452,
+          4462
+        ],
+        [
+          58076,
+          58082
+        ]
+      ]
+    },
+    "components": [
+      "X86"
+    ],
+    "fix_commit": "0df3651802d35b26ae857b549de9edf73b67fb98"
+  },
+  "issue": {
+    "author": "abhishek-kaushik22",
+    "body": "```llvm\ntarget datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\ndefine <8 x i64> @emulate_hi(<8 x i64> %0) #0 {\nentry:\n  %1 = and <8 x i64> %0, splat (i64 1)\n  %2 = mul <8 x i64> %1, splat (i64 4294967295)\n  %3 = add <8 x i64> %2, splat (i64 1)\n  ret <8 x i64> %3\n}\n\nattributes #0 = { \"target-features\"=\"+avx512vl,+avxifma\" }\n```\n\nThis IR fails to compile with trunk with this error\n```\nLLVM ERROR: Cannot select: t14: v8i64 = X86ISD::VPMADD52L t5, t16, t18\n  t5: v8i64 = and t2, t18\n    t2: v8i64,ch = CopyFromReg t0, Register:v8i64 %0\n    t18: v8i64,ch = X86ISD::VBROADCAST_LOAD<(load (s64) from constant-pool)> t0, t20\n      t20: i64 = X86ISD::Wrapper TargetConstantPool:i64<i64 1> 0\n  t16: v8i64,ch = X86ISD::VBROADCAST_LOAD<(load (s64) from constant-pool)> t0, t22\n    t22: i64 = X86ISD::Wrapper TargetConstantPool:i64<i64 4294967295> 0\n  t18: v8i64,ch = X86ISD::VBROADCAST_LOAD<(load (s64) from constant-pool)> t0, t20\n    t20: i64 = X86ISD::Wrapper TargetConstantPool:i64<i64 1> 0\nIn function: emulate_hi\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/llc -o /app/output.s -debug <source>\n1.\tRunning pass 'Function Pass Manager' on module '<source>'.\n2.\tRunning pass 'X86 DAG->DAG Instruction Selection' on function '@emulate_hi'\n #0 0x0000000004114118 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x4114118)\n #1 0x0000000004110fc4 SignalHandler(int, siginfo_t*, void*) Signals.cpp:0:0\n #2 0x00007dc1c1642520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #3 0x00007dc1c16969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #4 0x00007dc1c1642476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #5 0x00007dc1c16287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #6 0x00000000007b7d63 llvm::json::operator==(llvm::json::Value const&, llvm::json::Value const&) (.cold) JSON.cpp:0:0\n #7 0x0000000003ea2241 llvm::SelectionDAGISel::CannotYetSelect(llvm::SDNode*) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ea2241)\n #8 0x0000000003ea6bd9 llvm::SelectionDAGISel::SelectCodeCommon(llvm::SDNode*, unsigned char const*, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ea6bd9)\n #9 0x0000000002294a77 (anonymous namespace)::X86DAGToDAGISel::Select(llvm::SDNode*) X86ISelDAGToDAG.cpp:0:0\n#10 0x0000000003e9e0fb llvm::SelectionDAGISel::DoInstructionSelection() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e9e0fb)\n#11 0x0000000003ead4d0 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3ead4d0)\n#12 0x0000000003eb0b0d llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3eb0b0d)\n#13 0x0000000003eb20f5 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3eb20f5)\n#14 0x0000000003e9d8ef llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x3e9d8ef)\n#15 0x00000000030129c9 llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#16 0x000000000365b4e8 llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x365b4e8)\n#17 0x000000000365b721 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x365b721)\n#18 0x000000000365bf8f llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x365bf8f)\n#19 0x00000000008eee3d compileModule(char**, llvm::LLVMContext&) llc.cpp:0:0\n#20 0x00000000007bfba6 main (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x7bfba6)\n#21 0x00007dc1c1629d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#22 0x00007dc1c1629e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#23 0x00000000008e5295 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/llc+0x8e5295)\nProgram terminated with signal: SIGSEGV\nCompiler returned: 139\n```\n\nThe guilty commit seems to be 212ba92d308d52451dd27dfca06fd3b32f2dce77 and this is a regression from `21.1.0`. @Arghnews can you please take a look?",
+    "comments": [
+      {
+        "author": "Arghnews",
+        "body": "@abhishek-kaushik22 thank you for finding and making the issue. I'm sorry for breaking it, I'll have a look when I can yes and get a fix together"
+      },
+      {
+        "author": "abhishek-kaushik22",
+        "body": "Thank you @RKSimon :)"
+      }
+    ],
+    "labels": [
+      "backend:X86",
+      "crash-on-valid"
+    ],
+    "title": "LLVM ERROR: Cannot select: t14: v8i64 = X86ISD::VPMADD52L t5, t16, t18"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/160928",
+  "knowledge_cutoff": "2025-09-26T18:02:51Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/X86"
+  ],
+  "patch": "commit 0df3651802d35b26ae857b549de9edf73b67fb98\nAuthor: Simon Pilgrim <llvm-dev@redking.me.uk>\nDate:   Sat Sep 27 17:43:58 2025 +0100\n\n    [X86] matchVPMADD52 - only use 512-bit MADD52 on AVX512IFMA targets (#161011)\n    \n    If we have a AVX512 target capable of AVXIFMA but not AVX512IFMA then we must split 512-bit (or larger) types to 256-bits\n    \n    Fixes #160928\n\ndiff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp\nindex 3af673d951f6..efeddd7c9bd4 100644\n--- a/llvm/lib/Target/X86/X86ISelLowering.cpp\n+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp\n@@ -4452,11 +4452,12 @@ static SDValue splitVectorIntBinary(SDValue Op, SelectionDAG &DAG,\n template <typename F>\n SDValue SplitOpsAndApply(SelectionDAG &DAG, const X86Subtarget &Subtarget,\n                          const SDLoc &DL, EVT VT, ArrayRef<SDValue> Ops,\n-                         F Builder, bool CheckBWI = true) {\n+                         F Builder, bool CheckBWI = true,\n+                         bool AllowAVX512 = true) {\n   assert(Subtarget.hasSSE2() && \"Target assumed to support at least SSE2\");\n   unsigned NumSubs = 1;\n   if ((CheckBWI && Subtarget.useBWIRegs()) ||\n-      (!CheckBWI && Subtarget.useAVX512Regs())) {\n+      (!CheckBWI && AllowAVX512 && Subtarget.useAVX512Regs())) {\n     if (VT.getSizeInBits() > 512) {\n       NumSubs = VT.getSizeInBits() / 512;\n       assert((VT.getSizeInBits() % 512) == 0 && \"Illegal vector size\");\n@@ -58076,7 +58077,8 @@ static SDValue matchVPMADD52(SDNode *N, SelectionDAG &DAG, const SDLoc &DL,\n   };\n \n   return SplitOpsAndApply(DAG, Subtarget, DL, VT, {Acc, X, Y}, VPMADD52Builder,\n-                          /*CheckBWI*/ false);\n+                          /*CheckBWI*/ false,\n+                          /*AllowAVX512*/ Subtarget.hasIFMA());\n }\n \n static SDValue combineAdd(SDNode *N, SelectionDAG &DAG,\n",
+  "properties": {
+    "difficulty": "medium",
+    "is_single_file_fix": true,
+    "is_single_func_fix": false
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc < %s -mtriple=x86_64-- -mattr=+avxifma",
+        "llc < %s -mtriple=x86_64-- -mattr=+avx512ifma",
+        "llc < %s -mtriple=x86_64-- -mattr=+avx512ifma,+avx512vl",
+        "llc < %s -mtriple=x86_64-- -mattr=+avxifma,+avx512vl"
+      ],
+      "file": "llvm/test/CodeGen/X86/ifma-combine-vpmadd52.ll",
+      "tests": [
+        {
+          "test_body": "define <6 x i64> @test_v6i64(<6 x i64> %x, <6 x i64> %y, <6 x i64> %z) {\n  %x_masked = and <6 x i64> %x, splat (i64 67108863)\n  %y_masked = and <6 x i64> %x, splat (i64 67108863)\n  %mul = mul <6 x i64> %x_masked, %y_masked\n  %res = add <6 x i64> %mul, %z\n  ret <6 x i64> %res\n}\n",
+          "test_name": "test_v6i64"
+        },
+        {
+          "test_body": "define <3 x i64> @test_v3i64(<3 x i64> %x, <3 x i64> %y, <3 x i64> %z) {\n  %x_masked = and <3 x i64> %x, splat (i64 67108863)\n  %y_masked = and <3 x i64> %x, splat (i64 67108863)\n  %mul = mul <3 x i64> %x_masked, %y_masked\n  %res = add <3 x i64> %mul, %z\n  ret <3 x i64> %res\n}\n",
+          "test_name": "test_v3i64"
+        },
+        {
+          "test_body": "define <8 x i64> @test_512_combine_v2(<8 x i64> %x, <8 x i64> %y, <8 x i64> %z) {\n  %x_masked = and <8 x i64> %x, splat (i64 1125899906842623)\n  %y_masked = and <8 x i64> %y, splat (i64 3)\n  %mul = mul nuw nsw <8 x i64> %x_masked, %y_masked\n  %res = add nuw nsw <8 x i64> %mul, %z\n  ret <8 x i64> %res\n}\n",
+          "test_name": "test_512_combine_v2"
+        },
+        {
+          "test_body": "define <8 x i64> @test_512_no_combine_v2(<8 x i64> %x, <8 x i64> %y, <8 x i64> %z) {\n  %mul = mul <8 x i64> %x, %y\n  %res = add <8 x i64> %mul, %z\n  ret <8 x i64> %res\n}\n",
+          "test_name": "test_512_no_combine_v2"
+        },
+        {
+          "test_body": "define <1 x i64> @test_scalar_no_ifma(<1 x i64> %x, <1 x i64> %y, <1 x i64> %z) {\n  %mul = mul <1 x i64> %x, %y\n  %res = add <1 x i64> %mul, %z\n  ret <1 x i64> %res\n}\n",
+          "test_name": "test_scalar_no_ifma"
+        },
+        {
+          "test_body": "define <8 x i64> @test_zext32_inputs_not_safe(<8 x i32> %xi32, <8 x i32> %yi32, <8 x i64> %z) {\n  %x = zext <8 x i32> %xi32 to <8 x i64>\n  %y = zext <8 x i32> %yi32 to <8 x i64>\n  %mul = mul <8 x i64> %x, %y\n  %res = add <8 x i64> %z, %mul\n  ret <8 x i64> %res\n}\n",
+          "test_name": "test_zext32_inputs_not_safe"
+        },
+        {
+          "test_body": "define <1 x i64> @test_not_v1i64(<1 x i64> %x, <1 x i64> %y, <1 x i64> %z) {\n  %x_masked = and <1 x i64> %x, splat (i64 67108863)\n  %y_masked = and <1 x i64> %x, splat (i64 67108863)\n  %mul = mul <1 x i64> %x_masked, %y_masked\n  %res = add <1 x i64> %mul, %z\n  ret <1 x i64> %res\n}\n",
+          "test_name": "test_not_v1i64"
+        },
+        {
+          "test_body": "define <9 x i64> @test_v9i64(<9 x i64> %x, <9 x i64> %y, <9 x i64> %z) {\n  %x_masked = and <9 x i64> %x, splat (i64 67108863)\n  %y_masked = and <9 x i64> %x, splat (i64 67108863)\n  %mul = mul <9 x i64> %x_masked, %y_masked\n  %res = add <9 x i64> %mul, %z\n  ret <9 x i64> %res\n}\n",
+          "test_name": "test_v9i64"
+        },
+        {
+          "test_body": "define <5 x i64> @test_v5i64(<5 x i64> %x, <5 x i64> %y, <5 x i64> %z) {\n  %x_masked = and <5 x i64> %x, splat (i64 67108863)\n  %y_masked = and <5 x i64> %x, splat (i64 67108863)\n  %mul = mul <5 x i64> %x_masked, %y_masked\n  %res = add <5 x i64> %mul, %z\n  ret <5 x i64> %res\n}\n",
+          "test_name": "test_v5i64"
+        },
+        {
+          "test_body": "; Function Attrs: nounwind\ndefine <16 x i64> @test_1024_combine_split(<16 x i64> %x, <16 x i64> %y, <16 x i64> %z) #0 {\n  %x_masked = and <16 x i64> %x, splat (i64 67108863)\n  %y_masked = and <16 x i64> %y, splat (i64 67108863)\n  %mul = mul <16 x i64> %x_masked, %y_masked\n  %res = add <16 x i64> %z, %mul\n  ret <16 x i64> %res\n}\n\nattributes #0 = { nounwind }\n",
+          "test_name": "test_1024_combine_split"
+        },
+        {
+          "test_body": "define <8 x i64> @test_512_combine(<8 x i64> %x, <8 x i64> %y, <8 x i64> %z) {\n  %x_masked = and <8 x i64> %x, splat (i64 67108863)\n  %y_masked = and <8 x i64> %y, splat (i64 67108863)\n  %mul = mul nuw nsw <8 x i64> %x_masked, %y_masked\n  %res = add nuw nsw <8 x i64> %mul, %z\n  ret <8 x i64> %res\n}\n",
+          "test_name": "test_512_combine"
+        },
+        {
+          "test_body": "define <8 x i64> @test_mixed_width_too_wide(<8 x i64> %x, <8 x i64> %y, <8 x i64> %z) {\n  %x40 = and <8 x i64> %x, splat (i64 1099511627775)\n  %y13 = and <8 x i64> %y, splat (i64 8191)\n  %mul = mul <8 x i64> %x40, %y13\n  %res = add <8 x i64> %z, %mul\n  ret <8 x i64> %res\n}\n",
+          "test_name": "test_mixed_width_too_wide"
+        },
+        {
+          "test_body": "define <8 x i64> @test_512_no_combine(<8 x i64> %x, <8 x i64> %y, <8 x i64> %z) {\n  %x_masked = and <8 x i64> %x, splat (i64 4503599627370495)\n  %y_masked = and <8 x i64> %y, splat (i64 4503599627370495)\n  %mul = mul nuw nsw <8 x i64> %x_masked, %y_masked\n  %res = add nuw nsw <8 x i64> %mul, %z\n  ret <8 x i64> %res\n}\n",
+          "test_name": "test_512_no_combine"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}

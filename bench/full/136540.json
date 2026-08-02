@@ -1,0 +1,65 @@
+{
+  "base_commit": "4eeee41f52d08dc544812a2c3a37e0adf686251a",
+  "bug_id": "136540",
+  "bug_type": "backend-crash",
+  "hints": {
+    "bug_location_funcname": {
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp": [
+        "DAGTypeLegalizer::WidenVecRes_SETCC"
+      ]
+    },
+    "bug_location_lineno": {
+      "llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp": [
+        [
+          6634,
+          6641
+        ]
+      ]
+    },
+    "components": [
+      "SelectionDAG"
+    ],
+    "fix_commit": "c95bc415620cc7e832f4e768030e6e6cb5f9d45e"
+  },
+  "issue": {
+    "author": "JustinKim98",
+    "body": "I tried to compile following code in newest clang built from source in current main branch, but there seems to be a bug in AArch64 nstruction selection.\n\nThis happens only when I put -O3 option for optimization in debug build.\n\nHere's the compilation command\n```bash\nclang error.ll  -c -O3 --target=aarch64-linux-gnu -o error\n```\n\n```llvmir\n; error.ll\ntarget triple = \"aarch64-unknown-linux-gnu\"\n\ndefine i32 @error(ptr %0, i64 %1) {\n  br label %3\n\n3:                                                ; preds = %6, %2\n  %.sroa.0.0 = phi <5 x i64> [ zeroinitializer, %2 ], [ %.sroa.0.24.vec.insert, %6 ]\n  %4 = phi i64 [ 0, %2 ], [ %15, %6 ]\n  %5 = icmp slt i64 %4, 5\n  br i1 %5, label %6, label %16\n\n6:                                                ; preds = %3\n  %7 = getelementptr i8, ptr %0, i64 %4\n  %8 = load half, ptr %7, align 2\n  %9 = insertelement <1 x half> zeroinitializer, half %8, i64 0\n  %10 = fcmp ule <1 x half> %9, zeroinitializer\n  %11 = insertelement <1 x i64> zeroinitializer, i64 %4, i64 0\n  %12 = shufflevector <5 x i64> %.sroa.0.0, <5 x i64> zeroinitializer, <1 x i32> <i32 3>\n  %13 = select <1 x i1> %10, <1 x i64> %12, <1 x i64> %11\n  %14 = shufflevector <1 x i64> %13, <1 x i64> zeroinitializer, <5 x i32> <i32 0, i32 poison, i32 poison, i32 poison, i32 poison>\n  %.sroa.0.24.vec.insert = shufflevector <5 x i64> zeroinitializer, <5 x i64> %14, <5 x i32> <i32 0, i32 1, i32 2, i32 5, i32 4>\n  %15 = add i64 %4, 1\n  br label %3\n\n16:                                               ; preds = %16, %3\n  %17 = extractelement <5 x i64> %.sroa.0.0, i64 %1\n  store i64 %17, ptr %0, align 4\n  br label %16\n}\n\n```\n\nHere's the output\n```\nclang++: warning: argument unused during compilation: '-c' [-Wunused-command-line-argument]\nclang++: /root/llvm-project/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp:6598: llvm::SDValue llvm::DAGTypeLegalizer::WidenVecRes_SETCC(llvm::SDNode*): Assertion `InOp1.getValueType() == WidenInVT && InOp2.getValueType() == WidenInVT && \"Input not widened to expected type!\"' failed.\nPLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.\nStack dump:\n0.\tProgram arguments: /opt/compiler-explorer/clang-assertions-trunk/bin/clang++ -g -o /app/output.s -fno-verbose-asm -S -x ir -fcolor-diagnostics -fno-crash-diagnostics -O3 --target=aarch64-linux-gnu -c <source>\n1.\tCode generation\n2.\tRunning pass 'Function Pass Manager' on module '<source>'.\n3.\tRunning pass 'AArch64 Instruction Selection' on function '@error'\n #0 0x0000000003ef1728 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3ef1728)\n #1 0x0000000003eef3b4 llvm::sys::CleanupOnSignal(unsigned long) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3eef3b4)\n #2 0x0000000003e33ef8 CrashRecoverySignalHandler(int) CrashRecoveryContext.cpp:0:0\n #3 0x00007381dee42520 (/lib/x86_64-linux-gnu/libc.so.6+0x42520)\n #4 0x00007381dee969fc pthread_kill (/lib/x86_64-linux-gnu/libc.so.6+0x969fc)\n #5 0x00007381dee42476 gsignal (/lib/x86_64-linux-gnu/libc.so.6+0x42476)\n #6 0x00007381dee287f3 abort (/lib/x86_64-linux-gnu/libc.so.6+0x287f3)\n #7 0x00007381dee2871b (/lib/x86_64-linux-gnu/libc.so.6+0x2871b)\n #8 0x00007381dee39e96 (/lib/x86_64-linux-gnu/libc.so.6+0x39e96)\n #9 0x00000000053428bf llvm::DAGTypeLegalizer::WidenVecRes_SETCC(llvm::SDNode*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x53428bf)\n#10 0x000000000534dffa llvm::DAGTypeLegalizer::WidenVectorResult(llvm::SDNode*, unsigned int) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x534dffa)\n#11 0x00000000052f6e4b llvm::DAGTypeLegalizer::run() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x52f6e4b)\n#12 0x00000000052f7c39 llvm::SelectionDAG::LegalizeTypes() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x52f7c39)\n#13 0x000000000526a843 llvm::SelectionDAGISel::CodeGenAndEmitDAG() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x526a843)\n#14 0x000000000526e0c5 llvm::SelectionDAGISel::SelectAllBasicBlocks(llvm::Function const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x526e0c5)\n#15 0x000000000526f385 llvm::SelectionDAGISel::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x526f385)\n#16 0x000000000525ff2f llvm::SelectionDAGISelLegacy::runOnMachineFunction(llvm::MachineFunction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x525ff2f)\n#17 0x000000000321baea llvm::MachineFunctionPass::runOnFunction(llvm::Function&) (.part.0) MachineFunctionPass.cpp:0:0\n#18 0x000000000383d41f llvm::FPPassManager::runOnFunction(llvm::Function&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x383d41f)\n#19 0x000000000383d7d1 llvm::FPPassManager::runOnModule(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x383d7d1)\n#20 0x000000000383e071 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x383e071)\n#21 0x00000000041a85de clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::unique_ptr<llvm::raw_pwrite_stream, std::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x41a85de)\n#22 0x000000000488fa5e clang::CodeGenAction::ExecuteAction() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x488fa5e)\n#23 0x0000000004b81c05 clang::FrontendAction::Execute() (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4b81c05)\n#24 0x0000000004b00bde clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4b00bde)\n#25 0x0000000004c70e6e clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x4c70e6e)\n#26 0x0000000000d9decf cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xd9decf)\n#27 0x0000000000d955da ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&) driver.cpp:0:0\n#28 0x00000000048f57c9 void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const::'lambda'()>(long) Job.cpp:0:0\n#29 0x0000000003e34394 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x3e34394)\n#30 0x00000000048f5ddf clang::driver::CC1Command::Execute(llvm::ArrayRef<std::optional<llvm::StringRef>>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*, bool*) const (.part.0) Job.cpp:0:0\n#31 0x00000000048b82fd clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x48b82fd)\n#32 0x00000000048b938e clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x48b938e)\n#33 0x00000000048c11b5 clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0x48c11b5)\n#34 0x0000000000d9ac18 clang_main(int, char**, llvm::ToolContext const&) (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xd9ac18)\n#35 0x0000000000c229f4 main (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xc229f4)\n#36 0x00007381dee29d90 (/lib/x86_64-linux-gnu/libc.so.6+0x29d90)\n#37 0x00007381dee29e40 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29e40)\n#38 0x0000000000d95085 _start (/opt/compiler-explorer/clang-assertions-trunk/bin/clang+++0xd95085)\nclang++: error: clang frontend command failed with exit code 134 (use -v to see invocation)\nCompiler returned: 134\n```\n\nCheck this out \nhttps://godbolt.org/z/nP11TYxqW",
+    "comments": [
+      {
+        "author": "davemgreen",
+        "body": "A smaller example from running clang -O3 -S -emit-llvm, running llvm-reduce on the output and some manual adjustments: https://godbolt.org/z/4GY1b57zc"
+      }
+    ],
+    "labels": [
+      "crash",
+      "llvm:SelectionDAG"
+    ],
+    "title": "[clang] compilation (instruction selection) failure (crash) while targeting AArch64 architecture"
+  },
+  "issue_url": "https://github.com/llvm/llvm-project/issues/136540",
+  "knowledge_cutoff": "2025-04-21T06:20:13Z",
+  "lit_test_dir": [
+    "llvm/test/CodeGen/AArch64"
+  ],
+  "patch": "commit c95bc415620cc7e832f4e768030e6e6cb5f9d45e\nAuthor: Benjamin Maxwell <benjamin.maxwell@arm.com>\nDate:   Fri Jun 6 11:20:52 2025 +0100\n\n    [AArch64][SDAG] Fix selection of extend of v1if16 SETCC (#140274)\n    \n    There is a DAG combine, that folds:\n    \n    ```\n    t1: v1i1 = setcc x:v1f16, y:v1f16, setogt:ch\n            t2: v1i64 = zero_extend t1\n    ```\n    \n    ->\n    \n    ```\n    t1: v1i16 = setcc x:v1f16, y:v1f16, setogt:ch\n            t2: v1i64 = any_extend t1\n    ```\n    \n    This creates an issue on AArch64 when attempting to widen the result to\n    `v4i16`. The operand types (`v1f16`) are set to be scalarized, so the\n    \"by hand\" widening with `DAG.WidenVector` is used for them, however,\n    this only widens to the next power-of-2, so returns `v2f16`, which does\n    not match the result VF. The fix is to manually construct the widened\n    inputs using `INSERT_SUBVECTOR`.\n    \n    Fixes #136540\n\ndiff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\nindex 4d844f0036a7..5582dc98d35c 100644\n--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\n+++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp\n@@ -6634,8 +6634,12 @@ SDValue DAGTypeLegalizer::WidenVecRes_SETCC(SDNode *N) {\n     InOp1 = GetWidenedVector(InOp1);\n     InOp2 = GetWidenedVector(InOp2);\n   } else {\n-    InOp1 = DAG.WidenVector(InOp1, SDLoc(N));\n-    InOp2 = DAG.WidenVector(InOp2, SDLoc(N));\n+    SDValue Poison = DAG.getPOISON(WidenInVT);\n+    SDValue ZeroIdx = DAG.getVectorIdxConstant(0, SDLoc(N));\n+    InOp1 = DAG.getNode(ISD::INSERT_SUBVECTOR, SDLoc(N), WidenInVT, Poison,\n+                        InOp1, ZeroIdx);\n+    InOp2 = DAG.getNode(ISD::INSERT_SUBVECTOR, SDLoc(N), WidenInVT, Poison,\n+                        InOp2, ZeroIdx);\n   }\n \n   // Assume that the input and output will be widen appropriately.  If not,\n",
+  "properties": {
+    "difficulty": "easy",
+    "is_single_file_fix": true,
+    "is_single_func_fix": true
+  },
+  "tests": [
+    {
+      "commands": [
+        "llc %s -o - -verify-machineinstrs -mtriple=arm64-none-linux-gnu"
+      ],
+      "file": "llvm/test/CodeGen/AArch64/arm64-neon-v1i1-setcc.ll",
+      "tests": [
+        {
+          "test_body": "define <1 x i64> @test_zext_half(<1 x half> %v1) {\n  %1 = fcmp ogt <1 x half> %v1, zeroinitializer\n  %2 = zext <1 x i1> %1 to <1 x i64>\n  ret <1 x i64> %2\n}\n",
+          "test_name": "test_zext_half"
+        }
+      ]
+    }
+  ],
+  "verified": true
+}
